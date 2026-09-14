@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Design audit — {{ host }}</title>
+<style>
+  /* Palette: dataviz reference instance — status roles for state, blue ramp for
+     magnitude, ink tokens for all text. Print target, so light surface only. */
+  :root {
+    --surface:   #fcfcfb;
+    --plane:     #f9f9f7;
+    --ink:       #0b0b0b;
+    --ink-2:     #52514e;
+    --muted:     #898781;
+    --grid:      #e1e0d9;
+    --rule:      #c3c2b7;
+    --brand:     #2a78d6;
+    --brand-dim: #cde2fb;
+    --good:      #0ca30c;
+    --warning:   #fab219;
+    --serious:   #ec835a;
+    --critical:  #d03b3b;
+  }
+
+  @page { size: A4; margin: 14mm 13mm 16mm; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--surface);
+    color: var(--ink);
+    font: 10pt/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: 26pt; line-height: 1.15; }
+  h2 { font-size: 14pt; line-height: 1.2; }
+  h3 { font-size: 10.5pt; line-height: 1.3; }
+  p  { margin: 0 0 6pt; }
+  small { font-size: 8pt; color: var(--muted); }
+
+  .page-break { break-before: page; }
+  section { margin-bottom: 16pt; }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10pt; border-bottom: 1px solid var(--rule);
+    padding-bottom: 5pt; margin-bottom: 10pt;
+  }
+  .section-head .eyebrow {
+    font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted);
+  }
+
+  /* ---------- cover ---------- */
+  .cover-head { border-bottom: 2px solid var(--ink); padding-bottom: 10pt; margin-bottom: 14pt; }
+  .cover-head .eyebrow {
+    font-size: 8pt; text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--brand); font-weight: 600; margin-bottom: 8pt;
+  }
+  .cover-url { font-size: 9.5pt; color: var(--ink-2); word-break: break-all; margin-top: 6pt; }
+
+  .hero { display: grid; grid-template-columns: 118pt 1fr; gap: 18pt; align-items: start; }
+  .grade {
+    border: 1px solid var(--grid); border-radius: 8pt; padding: 12pt 10pt;
+    text-align: center; background: var(--plane);
+  }
+  .grade .value { font-size: 40pt; font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
+  .grade .out-of { font-size: 9pt; color: var(--muted); margin-top: 3pt; }
+  .grade .letter {
+    margin-top: 8pt; padding-top: 8pt; border-top: 1px solid var(--grid);
+    font-size: 8pt; color: var(--ink-2);
+  }
+
+  /* score meters: 8px track, 4px rounded ends, anchored at the baseline */
+  .meters { display: grid; gap: 7pt; }
+  .meter { display: grid; grid-template-columns: 86pt 1fr 26pt; align-items: center; gap: 8pt; }
+  .meter .label { font-size: 8.5pt; color: var(--ink-2); }
+  .meter .track { height: 8pt; background: var(--grid); border-radius: 4pt; overflow: hidden; }
+  .meter .fill { height: 100%; border-radius: 4pt; }
+  .meter .value { font-size: 8.5pt; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+  .tally { display: flex; gap: 6pt; flex-wrap: wrap; margin-top: 12pt; }
+  .tally .chip {
+    display: flex; align-items: center; gap: 5pt;
+    border: 1px solid var(--grid); border-radius: 20pt; padding: 3pt 9pt; font-size: 8.5pt;
+  }
+  .dot { width: 7pt; height: 7pt; border-radius: 50%; flex: none; }
+
+  .shots { display: grid; grid-template-columns: 1fr 108pt; gap: 10pt; margin-top: 14pt; }
+  .shot { border: 1px solid var(--grid); border-radius: 6pt; overflow: hidden; background: var(--plane); }
+  .shot img { display: block; width: 100%; }
+  .shot .cap { font-size: 7.5pt; color: var(--muted); padding: 4pt 6pt; border-top: 1px solid var(--grid); }
+
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8pt; margin-top: 14pt; }
+  .fact { border-left: 2pt solid var(--brand-dim); padding-left: 7pt; }
+  .fact .n { font-size: 14pt; font-weight: 600; line-height: 1.1; }
+  .fact .k { font-size: 7.5pt; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ---------- tables ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  th {
+    text-align: left; font-weight: 600; font-size: 7.5pt; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--rule);
+    padding: 0 6pt 4pt 0;
+  }
+  td { padding: 5pt 6pt 5pt 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  tr { break-inside: avoid; }
+  .mono, code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 8pt; }
+  code { background: var(--plane); border: 1px solid var(--grid); border-radius: 2pt; padding: 0 2pt; }
+
+  /* ---------- palette ---------- */
+  .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8pt; }
+  .swatch { border: 1px solid var(--grid); border-radius: 6pt; overflow: hidden; break-inside: avoid; }
+  .swatch .chipface { height: 40pt; display: flex; align-items: flex-end; padding: 5pt 6pt; }
+  .swatch .chipface span { font-size: 8.5pt; font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+  .swatch .meta { padding: 5pt 6pt; font-size: 7.5pt; color: var(--ink-2); line-height: 1.35; }
+  .swatch .meta b { display: block; color: var(--ink); font-size: 8pt; font-weight: 600; }
+
+  .contrast-demo { padding: 3pt 6pt; border-radius: 3pt; display: inline-block; font-size: 8.5pt; }
+
+  /* ---------- findings ---------- */
+  .finding { break-inside: avoid; border-top: 1px solid var(--grid); padding: 9pt 0; }
+  .finding:first-of-type { border-top: 1px solid var(--rule); }
+  .finding-head { display: flex; gap: 7pt; align-items: baseline; margin-bottom: 4pt; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4pt; flex: none;
+    font-size: 7pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    border: 1px solid var(--grid); border-radius: 3pt; padding: 1.5pt 5pt; color: var(--ink-2);
+  }
+  .finding .detail { color: var(--ink-2); font-size: 9pt; }
+  .evidence {
+    margin: 6pt 0; padding: 6pt 8pt; background: var(--plane);
+    border-left: 2pt solid var(--grid); border-radius: 0 4pt 4pt 0;
+  }
+  .evidence li { font-size: 8pt; color: var(--ink-2); margin-bottom: 2pt; word-break: break-word; }
+  .evidence ul { margin: 0; padding-left: 12pt; }
+  .fix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8pt; margin-top: 5pt; }
+  .fix-grid div { font-size: 8.5pt; }
+  .fix-grid .k {
+    font-size: 7pt; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); display: block; margin-bottom: 2pt;
+  }
+  .empty { color: var(--good); font-size: 9.5pt; }
+  footer { margin-top: 16pt; padding-top: 7pt; border-top: 1px solid var(--grid); font-size: 7.5pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ============================ COVER ============================ -->
+<div class="cover-head">
+  <div class="eyebrow">Website design audit</div>
+  <h1>{{ host }}</h1>
+  <div class="cover-url">{{ data.final_url }}</div>
+  <small>Generated {{ generated_at }} · Chromium {{ viewport.width }}×{{ viewport.height }} · HTTP {{ data.status or '—' }}</small>
+</div>
+
+<div class="hero">
+  <div class="grade">
+    <div class="value" style="color: {{ score_colour(scores.overall) }}">{{ scores.overall }}</div>
+    <div class="out-of">out of 100</div>
+    <div class="letter">Grade <strong>{{ scores.grade }}</strong> · {{ findings|length }} findings</div>
+    <div class="letter" style="border: 0; padding-top: 4pt; margin-top: 2pt;">
+      <small>Category average, pulled toward the weakest category.</small>
+    </div>
+  </div>
+  <div>
+    <div class="meters">
+      {% for name, value in scores.categories.items() %}
+      <div class="meter">
+        <div class="label">{{ name }}</div>
+        <div class="track"><div class="fill" style="width: {{ value }}%; background: {{ score_colour(value) }}"></div></div>
+        <div class="value">{{ value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="tally">
+      {% for severity in ['critical', 'high', 'medium', 'low'] %}
+      <div class="chip">
+        <span class="dot" style="background: {{ severity_colour[severity] }}"></span>
+        <strong>{{ scores.counts.get(severity, 0) }}</strong> {{ severity }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="facts">
+  <div class="fact"><div class="n">{{ typography.content_families|length }}</div><div class="k">Typefaces</div></div>
+  <div class="fact"><div class="n">{{ palette|length }}</div><div class="k">Colour clusters</div></div>
+  <div class="fact"><div class="n">{{ contrast_issues|length }}</div><div class="k">Contrast fails</div></div>
+  <div class="fact"><div class="n">{{ '%.1f'|format(data.load_ms / 1000) }}s</div><div class="k">DOM ready</div></div>
+</div>
+
+<div class="shots">
+  <div class="shot">
+    <img src="{{ shots.desktop }}" alt="Desktop rendering">
+    <div class="cap">Desktop — 1440×900</div>
+  </div>
+  <div class="shot">
+    <img src="{{ shots.mobile }}" alt="Mobile rendering">
+    <div class="cap">Mobile — 390px</div>
+  </div>
+</div>
+
+<!-- ========================== TYPOGRAPHY ========================== -->
+<div class="page-break"></div>
+<section class="flow">
+  <div class="section-head">
+    <h2>Typography</h2>
+    <span class="eyebrow">{{ typography.total_chars|int }} characters sampled</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Family</th><th>Share of text</th><th>Sizes</th><th>Weights</th><th>Mostly used on</th><th>Fallback</th></tr>
+    </thead>
+    <tbody>
+      {% for family in typography.families[:8] %}
+      <tr>
+        <td><strong>{{ family.name }}</strong>{% if family.is_icon_font %} <small>icon font</small>{% endif %}</td>
+        <td>{{ (100 * family.chars / typography.total_chars)|round(1) }}%</td>
+        <td class="mono">{{ family.size_range }}</td>
+        <td class="mono">{{ family.weight_list }}</td>
+        <td class="mono">&lt;{{ family.sample_tag }}&gt;</td>
+        <td>{{ 'yes' if family.has_fallback else 'none' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="margin-top: 10pt;">
+    <h3>Type scale in use</h3>
+    <p style="font-size: 8.5pt; color: var(--ink-2); margin-top: 3pt;">
+      {{ typography.distinct_sizes }} distinct sizes and {{ typography.distinct_weights }} weights were rendered.
+      A deliberate scale uses 6–8 sizes and 2–3 weights.
+    </p>
+    <table>
+      <thead><tr><th>Size</th><th>Share of text</th><th>Typical role</th></tr></thead>
+      <tbody>
+        {% for size, chars in typography.sizes.most_common(10) %}
+        <tr>
+          <td class="mono">{{ size }}px</td>
+          <td>{{ (100 * chars / typography.total_chars)|round(1) }}%</td>
+          <td>{{ size_role(size) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if typography.body_size %}
+  <p style="margin-top: 9pt; font-size: 8.5pt; color: var(--ink-2);">
+    <strong>Dominant text size:</strong> {{ typography.body_size }}px
+    ({{ (100 * typography.sizes[typography.body_size] / typography.total_chars)|round(0)|int }}% of all text on the page).
+  </p>
+  {% endif %}
+  {% if typography.body_run %}
+  <p style="font-size: 8.5pt; color: var(--ink-2);">
+    <strong>Body copy:</strong> {{ typography.body_run.font_size }}px
+    {{ typography.body_run.font_weight }}
+    {{ primary_family(typography.body_run.font_family) }},
+    line-height {{ typography.body_run.line_height or 'normal' }}{% if typography.body_run.line_height %}
+    ({{ (typography.body_run.line_height / typography.body_run.font_size)|round(2) }}×){% endif %},
+    {{ typography.body_run.color }} on {{ typography.body_run.background }}.
+  </p>
+  {% endif %}
+</section>
+
+<!-- =========================== PALETTE =========================== -->
+<section>
+  <div class="section-head">
+    <h2>Colour palette</h2>
+    <span class="eyebrow">Near-identical shades merged</span>
+  </div>
+  <div class="swatches">
+    {% for swatch in palette[:12] %}
+    <div class="swatch">
+      <div class="chipface" style="background: {{ swatch.hex }}; color: {{ swatch.readable_on }}">
+        <span>{{ swatch.hex|upper }}</span>
+      </div>
+      <div class="meta">
+        <b>{{ swatch.role }}</b>
+        {{ swatch.usage }}<br>
+        HSL {{ swatch.hsl[0]|round|int }}° {{ swatch.hsl[1]|round|int }}% {{ swatch.hsl[2]|round|int }}%
+        {%- if swatch.members|length > 1 %}<br><small>+{{ swatch.members|length - 1 }} near-duplicates</small>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Contrast against WCAG AA</h2>
+    <span class="eyebrow">{{ contrast_issues|length }} failing pairs</span>
+  </div>
+  {% if contrast_issues %}
+  <table>
+    <thead>
+      <tr><th>Sample</th><th>Foreground</th><th>Background</th><th>Ratio</th><th>Needs</th><th>Suggested fix</th></tr>
+    </thead>
+    <tbody>
+      {% for issue in contrast_issues[:14] %}
+      <tr>
+        <td>
+          <span class="contrast-demo" style="color: {{ issue.color }}; background: {{ issue.background }}">
+            {{ issue.sample[:26] or 'Sample text' }}
+          </span><br><small>{{ issue.font_size }}px {{ issue.font_weight }} · &lt;{{ issue.tags }}&gt;</small>
+        </td>
+        <td class="mono">{{ issue.color }}</td>
+        <td class="mono">{{ issue.background }}</td>
+        <td class="mono" style="color: {{ severity_colour['critical'] if issue.ratio < 3 else severity_colour['high'] }}">
+          {{ issue.ratio }}:1
+        </td>
+        <td class="mono">{{ issue.required }}:1</td>
+        <td>
+          <span class="contrast-demo" style="color: {{ issue.suggestion }}; background: {{ issue.background }}">
+            {{ issue.suggestion }}
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin-top: 7pt;"><small>Suggested fixes keep the original hue and saturation and move lightness only until the pair clears the threshold. Text over background images could not be measured and is excluded.</small></p>
+  {% else %}
+  <p class="empty">Every measurable text/background pair on this page clears WCAG AA.</p>
+  {% endif %}
+</section>
+
+<!-- =========================== FINDINGS =========================== -->
+<div class="page-break"></div>
+<section>
+  <div class="section-head">
+    <h2>Findings</h2>
+    <span class="eyebrow">Ordered by severity</span>
+  </div>
+  {% if findings %}
+  {% for finding in findings %}
+  <div class="finding">
+    <div class="finding-head">
+      <span class="badge"><span class="dot" style="background: {{ severity_colour[finding.severity] }}"></span>{{ finding.severity }}</span>
+      <h3>{{ finding.title }}</h3>
+    </div>
+    <div class="detail">{{ finding.detail|code }}</div>
+    {% if finding.evidence %}
+    <div class="evidence"><ul>
+      {% for item in finding.evidence %}<li>{{ item|code }}</li>{% endfor %}
+    </ul></div>
+    {% endif %}
+    <div class="fix-grid">
+      <div><span class="k">Fix</span>{{ finding.fix|code }}</div>
+      <div><span class="k">Automate it</span>{{ finding.automation|code }}</div>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="empty">No findings — this page passed every check in the rule set.</p>
+  {% endif %}
+</section>
+
+<!-- ======================== AUTOMATION PLAN ======================== -->
+{% if roadmap %}
+<section>
+  <div class="section-head">
+    <h2>What to automate first</h2>
+    <span class="eyebrow">Impact over effort</span>
+  </div>
+  <p style="font-size: 9pt; color: var(--ink-2);">
+    Every row below is a fix a machine can either apply or police. Work down the list:
+    the top rows are high impact and cheap to wire up, and once a check is in CI the
+    problem cannot come back.
+  </p>
+  <table>
+    <thead><tr><th style="width: 30%">Issue</th><th>Impact</th><th>Effort</th><th>Tooling</th><th style="width: 34%">How the automation works</th></tr></thead>
+    <tbody>
+      {% for row in roadmap %}
+      <tr>
+        <td><strong>{{ row.title }}</strong><br><small>{{ row.category }}</small></td>
+        <td><span class="dot" style="background: {{ severity_colour[row.severity] }}; display: inline-block; margin-right: 4pt;"></span>{{ row.impact }}</td>
+        <td>{{ row.effort }}</td>
+        <td>{{ row.tooling }}</td>
+        <td>{{ row.automation|code }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<!-- ========================== PAGE FACTS ========================== -->
+<section>
+  <div class="section-head">
+    <h2>Page facts</h2>
+    <span class="eyebrow">Appendix</span>
+  </div>
+  <table>
+    <tbody>
+      <tr><td style="width: 30%">Title</td><td>{{ probe.title or '— none —' }}</td></tr>
+      <tr><td>Meta description</td><td>{{ probe.meta_description or '— none —' }}</td></tr>
+      <tr><td>Language</td><td class="mono">{{ probe.lang or '— none —' }}</td></tr>
+      <tr><td>Viewport meta</td><td class="mono">{{ probe.viewport_meta or '— none —' }}</td></tr>
+      <tr><td>DOM nodes</td><td class="mono">{{ probe.dom_nodes }}</td></tr>
+      <tr><td>CSS custom properties</td><td class="mono">{{ probe.css_var_count }}{% if probe.inaccessible_sheets %} <small>({{ probe.inaccessible_sheets }} cross-origin stylesheet(s) could not be read)</small>{% endif %}</td></tr>
+      <tr><td>Inline style attributes</td><td class="mono">{{ probe.inline_style_attrs }}</td></tr>
+      <tr><td>Images</td><td class="mono">{{ probe.images.total }} total · {{ probe.images.missing_alt }} without alt · {{ probe.images.lazy }} lazy</td></tr>
+      <tr><td>Dark mode</td><td>{{ 'prefers-color-scheme rules found' if probe.prefers_color_scheme else 'not supported' }}</td></tr>
+      <tr><td>Total transferred</td><td class="mono">{{ fmt_bytes(total_bytes) }} across {{ data.resources|length }} requests</td></tr>
+      {% for kind, info in resource_rows %}
+      <tr><td>&nbsp;&nbsp;{{ kind }}</td><td class="mono">{{ info.count|int }} requests · {{ fmt_bytes(info.bytes) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if data.warnings %}
+  <p style="margin-top: 8pt;"><small>{{ data.warnings|join(' ') }}</small></p>
+  {% endif %}
+</section>
+
+<footer>
+  Automated design audit of {{ data.final_url }} · generated {{ generated_at }}.
+  Measurements come from a real Chromium render of the page as loaded; they describe this page only,
+  not the whole site. Recommendations are heuristics — a designer's judgement still outranks them.
+</footer>
+
+</body>
+</html>

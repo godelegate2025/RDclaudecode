@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- A deliberately flawed page: every problem here should show up as a finding. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fixture Page</title>
+  <style>
+    body { background: #ffffff; font-family: Georgia; color: #111111; margin: 0; }
+    .low-contrast { color: #bbbbbb; background: #ffffff; font-size: 13px; }
+    .tiny { font-size: 11px; font-family: "Comic Sans MS"; }
+    .third { font-family: Courier; font-size: 19px; }
+    .fourth { font-family: Impact; font-size: 23px; }
+    p { font-size: 13px; line-height: 15px; width: 1200px; }
+    .wide { width: 1800px; background: #ff0055; height: 20px; }
+    .a { color: #ff0055; } .b { color: #ff0056; } .c { color: #fe0154; }
+    .d { color: #00aa88; } .e { color: #8800ff; } .f { color: #ffaa00; }
+    .g { color: #0066cc; } .h { color: #cc3300; } .i { color: #669900; }
+    h2 { font-size: 31px; } h4 { font-size: 27px; }
+  </style>
+</head>
+<body>
+  <h2>Section without an h1</h2>
+  <h4>Skipped straight to h4</h4>
+  <p class="low-contrast">
+    This paragraph is deliberately low contrast and small, and it runs to a very long
+    measure so the characters-per-line check has something to complain about. It repeats
+    itself a little to make sure there is enough text to be sampled by the collector.
+    This paragraph is deliberately low contrast and small, and it runs to a very long measure.
+  </p>
+  <p class="tiny">A second family in tiny type, with more than sixty characters of content here.</p>
+  <p class="third">A third family, with more than sixty characters of content in it as well.</p>
+  <p class="fourth">A fourth family, with more than sixty characters of content in it too.</p>
+  <p class="a">Accent one</p><p class="b">Accent two</p><p class="c">Accent three</p>
+  <p class="d">Accent four</p><p class="e">Accent five</p><p class="f">Accent six</p>
+  <p class="g">Accent seven</p><p class="h">Accent eight</p><p class="i">Accent nine</p>
+  <div class="wide">Overflowing block</div>
+  <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==">
+  <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==">
+  <a href="#" style="display:block;width:12px;height:12px;">·</a>
+  <a href="#" style="display:block;width:12px;height:12px;">·</a>
+  <a href="#" style="display:block;width:12px;height:12px;">·</a>
+</body>
+</html>
