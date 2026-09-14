@@ -45,6 +45,30 @@
     return { color: base, behindImage };
   };
 
+  /* What is painted beneath this element at its centre point? Only answerable for
+     elements inside the viewport; off-screen text falls back to the ancestor walk. */
+  const mediaBehind = (el, rect) => {
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) return false;
+    const x = Math.min(Math.max(rect.left + rect.width / 2, 1), window.innerWidth - 1);
+    const y = Math.min(Math.max(rect.top + rect.height / 2, 1), window.innerHeight - 1);
+    let stack;
+    try {
+      stack = document.elementsFromPoint(x, y);
+    } catch (e) {
+      return false;
+    }
+    if (!stack || !stack.length) return false;
+    const index = stack.indexOf(el);
+    /* Not in its own hit-stack means something is painted over it — also unmeasurable. */
+    if (index === -1) return true;
+    for (const node of stack.slice(index + 1)) {
+      if (/^(img|video|canvas|svg|picture)$/.test(node.tagName.toLowerCase())) return true;
+      const s = getComputedStyle(node);
+      if (s.backgroundImage && s.backgroundImage !== 'none') return true;
+    }
+    return false;
+  };
+
   const isVisible = (el, style) =>
     style.visibility !== 'hidden' &&
     style.display !== 'none' &&
@@ -125,7 +149,7 @@
       text_transform: style.textTransform,
       color: hex(blended),
       background: hex(bg.color),
-      background_is_image: bg.behindImage,
+      background_unverified: bg.behindImage || mediaBehind(el, rect),
       width: Math.round(rect.width),
       is_large_text: size >= 24 || (size >= 18.66 && weight >= 700),
     });

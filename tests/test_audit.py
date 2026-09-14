@@ -97,6 +97,15 @@ class FixtureAuditTest(unittest.TestCase):
                 contrast_ratio(issue["suggestion"], issue["background"]), issue["required"]
             )
 
+    def test_text_over_imagery_is_not_scored(self):
+        """White-on-white is never a real measurement — it means the backdrop is an image."""
+        for issue in self.results["contrast_issues"]:
+            self.assertNotEqual(issue["color"], issue["background"])
+        runs = {r["sample"]: r for r in self.data.probe["text_runs"]}
+        hero = next((r for k, r in runs.items() if "over a photo" in k), None)
+        self.assertIsNotNone(hero, "fixture should contain text over an image")
+        self.assertTrue(hero["background_unverified"], "hero text should be flagged unmeasurable")
+
     def test_scores_are_bounded(self):
         scores = self.results["scores"]
         self.assertTrue(0 <= scores["overall"] <= 100)

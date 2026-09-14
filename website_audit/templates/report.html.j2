@@ -292,7 +292,7 @@
 <section>
   <div class="section-head">
     <h2>Contrast against WCAG AA</h2>
-    <span class="eyebrow">{{ contrast_issues|length }} failing pairs</span>
+    <span class="eyebrow">{{ contrast_issues|length }} failing pairs{% if contrast_unverified %} · {{ contrast_unverified }} unmeasurable{% endif %}</span>
   </div>
   {% if contrast_issues %}
   <table>
@@ -322,9 +322,16 @@
       {% endfor %}
     </tbody>
   </table>
-  <p style="margin-top: 7pt;"><small>Suggested fixes keep the original hue and saturation and move lightness only until the pair clears the threshold. Text over background images could not be measured and is excluded.</small></p>
+  <p style="margin-top: 7pt;"><small>Suggested fixes keep the original hue and saturation and move lightness only until the pair clears the threshold.</small></p>
   {% else %}
   <p class="empty">Every measurable text/background pair on this page clears WCAG AA.</p>
+  {% endif %}
+  {% if contrast_unverified %}
+  <p style="margin-top: 5pt;"><small>
+    {{ contrast_unverified }} text run(s) sit over photography, video or an overlay, so their effective
+    background is not a single colour and no ratio was computed for them. Hero text over imagery is the
+    usual case — check those by eye, or place the text on a scrim.
+  </small></p>
   {% endif %}
 </section>
 

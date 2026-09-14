@@ -88,6 +88,7 @@ def render_html(data, results: dict[str, Any]) -> str:
         palette=results["palette"],
         typography=results["typography"],
         contrast_issues=results["contrast_issues"],
+        contrast_unverified=results["contrast_unverified"],
         findings=results["findings"],
         scores=results["scores"],
         roadmap=automation_roadmap(results["findings"]),
@@ -176,6 +177,7 @@ def write_json(data, results: dict[str, Any], path: Path) -> Path:
             "distinct_sizes": results["typography"]["distinct_sizes"],
             "distinct_weights": results["typography"]["distinct_weights"],
         },
+        "contrast_unverified_runs": results["contrast_unverified"],
         "contrast_failures": [
             {k: v for k, v in issue.items() if k != "tags"} | {"elements": issue["tags"]}
             for issue in results["contrast_issues"]

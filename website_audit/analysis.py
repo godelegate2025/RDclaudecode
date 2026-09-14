@@ -271,10 +271,17 @@ def build_typography(text_runs: list[dict[str, Any]]) -> dict[str, Any]:
 # ------------------------------------------------------------------------- contrast
 
 
-def contrast_issues(text_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def contrast_issues(text_runs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Failing pairs, plus the number of text runs whose real background was unmeasurable."""
     seen: dict[tuple[str, str, float, int], dict[str, Any]] = {}
+    unverified = 0
     for run in text_runs:
-        if run["background_is_image"] or run["chars"] < 2:
+        if run["chars"] < 2:
+            continue
+        # Text over imagery, or text covered by an overlay: the effective background is
+        # not one colour, so any ratio computed from it would be fiction.
+        if run["background_unverified"] or run["color"] == run["background"]:
+            unverified += 1
             continue
         key = (run["color"], run["background"], run["font_size"], run["font_weight"])
         ratio = contrast_ratio(run["color"], run["background"])
@@ -303,7 +310,7 @@ def contrast_issues(text_runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for issue in issues:
         issue["tags"] = ", ".join(sorted(issue["tags"]))
         issue["suggestion"] = suggest_accessible_colour(issue["color"], issue["background"], issue["required"])
-    return issues
+    return issues, unverified
 
 
 def suggest_accessible_colour(foreground: str, background: str, required: float) -> str | None:
@@ -350,7 +357,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
     probe = data.probe
     palette = build_palette(probe["color_usage"])
     typography = build_typography(probe["text_runs"])
-    contrast = contrast_issues(probe["text_runs"])
+    contrast, unverified_runs = contrast_issues(probe["text_runs"])
     findings: list[Finding] = []
 
     def add(**kwargs):
@@ -849,6 +856,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
         "palette": palette,
         "typography": typography,
         "contrast_issues": contrast,
+        "contrast_unverified": unverified_runs,
         "findings": findings,
         "scores": score(findings),
         "resource_summary": {k: dict(v) for k, v in by_type.items()},
