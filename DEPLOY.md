@@ -13,7 +13,12 @@ without a database or shared disk.
 
 ## 1. Prerequisites
 
-Install the [gcloud CLI](https://cloud.google.com/sdk/docs/install), then:
+Install the [gcloud CLI](https://cloud.google.com/sdk/docs/install). On Windows
+that is the [installer](https://cloud.google.com/sdk/docs/install-sdk#windows) —
+and you must **close the terminal and open a new one afterwards**, because the
+installer updates PATH and existing terminals do not pick that up.
+
+You do not need Docker locally: Cloud Build builds the image from source.
 
 ```bash
 gcloud auth login
@@ -42,7 +47,11 @@ gcloud services enable run.googleapis.com \
 From the repository root:
 
 ```bash
-./deploy.sh
+./deploy.sh          # macOS, Linux, or Git Bash on Windows
+```
+
+```powershell
+.\deploy.ps1         # Windows PowerShell
 ```
 
 It enables the APIs, builds, deploys, then checks the health endpoint, the SSRF
@@ -51,6 +60,10 @@ the service in place. Override the defaults with environment variables:
 
 ```bash
 REGION=us-central1 MAX_INSTANCES=5 ./deploy.sh
+```
+
+```powershell
+.\deploy.ps1 -Region us-central1 -MaxInstances 5
 ```
 
 The equivalent by hand, if you would rather see it:

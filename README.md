@@ -43,7 +43,7 @@ uvicorn service.app:app --port 8000     # then open http://127.0.0.1:8000
 ```
 
 `Dockerfile` builds it for any container host. To put it on Google Cloud Run,
-`./deploy.sh` does the whole thing and verifies the result;
+`./deploy.sh` (or `.\deploy.ps1` on Windows) does the whole thing and verifies the result;
 [DEPLOY.md](DEPLOY.md) explains each flag, the cost maths (~3,000 audits/month
 inside the free tier), and the hardening checklist.
 
