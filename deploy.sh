@@ -58,7 +58,13 @@ URL="$(gcloud run services describe "$SERVICE" \
 bold "3/3  Checking the deployment"
 
 printf '  health:      '
-curl -fsS "$URL/healthz" >/dev/null && echo "ok" || fail "health check failed"
+for attempt in $(seq 1 30); do
+  if curl -fsS "$URL/healthz" >/dev/null 2>&1; then
+    echo "ok"; break
+  fi
+  [ "$attempt" = 30 ] && fail "health check failed after 2 minutes — try: curl $URL/healthz"
+  sleep 4
+done
 
 printf '  SSRF guard:  '
 CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/audit" \

@@ -71,10 +71,18 @@ $url = (gcloud run services describe $Service --project $Project --region $Regio
 
 Write-Step "3/3  Checking the deployment"
 
-try {
-  Invoke-RestMethod -Uri "$url/healthz" -TimeoutSec 60 | Out-Null
-  Write-Host "  health:      ok"
-} catch { Fail "  health check failed: $_" }
+# A freshly deployed URL is not routable for up to a minute, so poll rather than
+# reporting Google's frontend 404 as a failure.
+$healthy = $false
+foreach ($attempt in 1..30) {
+  try {
+    Invoke-RestMethod -Uri "$url/healthz" -TimeoutSec 20 | Out-Null
+    $healthy = $true
+    break
+  } catch { Start-Sleep -Seconds 4 }
+}
+if ($healthy) { Write-Host "  health:      ok" }
+else { Fail "  health check failed after 2 minutes. Try opening $url in a browser." }
 
 # The guard must refuse the cloud metadata address. PowerShell throws on 4xx,
 # so a 400 here is the success path.
