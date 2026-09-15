@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .analysis import analyse
+from .browser import browser_session
 from .collector import collect
 from .report import html_to_pdf, render_html, write_json
 
@@ -52,16 +53,22 @@ def main(argv: list[str] | None = None) -> int:
 
     log(f"→ Loading {args.url} in Chromium…")
     try:
-        data = collect(args.url, work_dir, timeout_ms=args.timeout)
+        # One browser for the audit and the print — launching twice doubles the
+        # startup cost and the peak memory for no gain.
+        with browser_session() as browser:
+            data = collect(args.url, work_dir, timeout_ms=args.timeout, browser=browser)
+
+            log(
+                f"→ Analysing {len(data.probe['text_runs'])} text runs "
+                f"and {len(data.probe['color_usage'])} colours…"
+            )
+            results = analyse(data)
+
+            log("→ Rendering PDF…")
+            html_to_pdf(render_html(data, results), pdf_path, work_dir, browser=browser)
     except Exception as exc:  # noqa: BLE001 - surfaced to the caller as a clean message
         print(f"Audit failed: {exc}", file=sys.stderr)
         return 1
-
-    log(f"→ Analysing {len(data.probe['text_runs'])} text runs and {len(data.probe['color_usage'])} colours…")
-    results = analyse(data)
-
-    log("→ Rendering PDF…")
-    html_to_pdf(render_html(data, results), pdf_path, work_dir)
 
     if args.json_path:
         json_path = pdf_path.with_suffix(".json") if args.json_path == "auto" else Path(args.json_path)

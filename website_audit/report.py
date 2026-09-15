@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,10 +13,10 @@ from urllib.parse import urlparse
 
 from jinja2 import Environment, FileSystemLoader
 from markupsafe import Markup, escape
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Browser
 
 from .analysis import automation_roadmap, primary_family
-from .collector import CHROMIUM_PATHS, LAUNCH_ARGS
+from .browser import browser_session
 
 SEVERITY_COLOUR = {
     "critical": "#d03b3b",
@@ -103,22 +104,17 @@ def render_html(data, results: dict[str, Any]) -> str:
     )
 
 
-def html_to_pdf(html: str, pdf_path: Path, work_dir: Path) -> Path:
+def html_to_pdf(
+    html: str, pdf_path: Path, work_dir: Path, browser: Browser | None = None
+) -> Path:
     """Chromium prints the PDF, so the report renders exactly as the audit saw the page."""
     work_dir.mkdir(parents=True, exist_ok=True)
     html_path = work_dir / "report.html"
     html_path.write_text(html, encoding="utf-8")
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with sync_playwright() as pw:
-        browser = None
-        for path in CHROMIUM_PATHS:
-            if path and Path(path).exists():
-                browser = pw.chromium.launch(executable_path=path, args=LAUNCH_ARGS)
-                break
-        if browser is None:
-            browser = pw.chromium.launch(args=LAUNCH_ARGS)
-        page = browser.new_page()
+    with browser_session() if browser is None else nullcontext(browser) as active:
+        page = active.new_page()
         page.goto(html_path.as_uri(), wait_until="load")
         page.emulate_media(media="print")
         page.pdf(
@@ -135,7 +131,7 @@ def html_to_pdf(html: str, pdf_path: Path, work_dir: Path) -> Path:
             ),
             margin={"top": "14mm", "bottom": "16mm", "left": "13mm", "right": "13mm"},
         )
-        browser.close()
+        page.close()
     return pdf_path
 
 

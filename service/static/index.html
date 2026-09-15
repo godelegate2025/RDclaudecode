@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Website design audit</title>
+<style>
+  :root {
+    --surface: #fcfcfb; --plane: #f4f4f1; --ink: #0b0b0b; --ink-2: #52514e;
+    --muted: #898781; --line: #e1e0d9; --brand: #2a78d6; --good: #0ca30c;
+    --warn: #fab219; --bad: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #1a1a19; --plane: #242422; --ink: #ffffff; --ink-2: #c3c2b7;
+      --muted: #898781; --line: #2c2c2a; --brand: #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface); color: var(--ink); min-height: 100vh;
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .sub { color: var(--ink-2); margin: 0 0 28px; max-width: 54ch; }
+
+  form { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=url] {
+    flex: 1 1 320px; min-width: 0; padding: 13px 15px; font: inherit;
+    color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 9px;
+  }
+  input[type=url]:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
+  button {
+    padding: 13px 22px; font: inherit; font-weight: 600; cursor: pointer;
+    color: #fff; background: var(--brand); border: 0; border-radius: 9px;
+  }
+  button:disabled { opacity: 0.55; cursor: progress; }
+
+  .status { margin-top: 20px; color: var(--ink-2); display: none; }
+  .status[data-show] { display: block; }
+  .status.error { color: var(--bad); }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 12px; }
+  .bar i { display: block; height: 100%; width: 30%; background: var(--brand); border-radius: 2px;
+           animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+
+  .result { margin-top: 28px; display: none; }
+  .result[data-show] { display: block; }
+  .summary {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 16px 18px; border: 1px solid var(--line); border-radius: 11px; background: var(--plane);
+  }
+  .score { font-size: 32px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
+  .meta { flex: 1 1 200px; font-size: 14px; color: var(--ink-2); }
+  .meta strong { display: block; color: var(--ink); font-size: 16px; font-weight: 600; }
+  .actions { display: flex; gap: 10px; }
+  .actions a {
+    padding: 10px 16px; border-radius: 9px; font-size: 14px; font-weight: 600;
+    text-decoration: none; color: #fff; background: var(--ink); border: 1px solid var(--ink);
+  }
+  .actions a.ghost { color: var(--ink); background: transparent; border-color: var(--line); }
+  iframe {
+    width: 100%; height: 78vh; min-height: 460px; margin-top: 16px;
+    border: 1px solid var(--line); border-radius: 11px; background: var(--plane);
+  }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line);
+           font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Website design audit</h1>
+  <p class="sub">
+    Enter a page and it is rendered in a real browser, then measured: the fonts in use,
+    the colour palette, WCAG contrast, and what can be improved — with each finding
+    labelled by how to automate the fix.
+  </p>
+
+  <form id="form">
+    <input id="url" type="url" placeholder="https://example.com" required
+           autocomplete="url" spellcheck="false">
+    <button id="go" type="submit">Audit this page</button>
+  </form>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <div class="result" id="result">
+    <div class="summary">
+      <div class="score" id="score">—</div>
+      <div class="meta"><strong id="host">—</strong><span id="detail"></span></div>
+      <div class="actions">
+        <a id="download" download>Download PDF</a>
+        <a id="open" class="ghost" target="_blank" rel="noopener">Open in new tab</a>
+      </div>
+    </div>
+    <iframe id="frame" title="Audit report"></iframe>
+  </div>
+
+  <footer>
+    One page, audited as an anonymous visitor. Load timing is a single cold measurement.
+    Findings are heuristics — a deliberate design decision can legitimately fail one.
+  </footer>
+</div>
+
+<script>
+  const form = document.getElementById('form');
+  const status = document.getElementById('status');
+  const result = document.getElementById('result');
+  const button = document.getElementById('go');
+  let currentObjectUrl = null;
+
+  const show = (message, isError) => {
+    status.textContent = message;
+    status.classList.toggle('error', !!isError);
+    status.toggleAttribute('data-show', !!message);
+    if (message && !isError) {
+      status.insertAdjacentHTML('beforeend', '<div class="bar"><i></i></div>');
+    }
+  };
+
+  const scoreColour = (n) =>
+    n >= 80 ? 'var(--good)' : n >= 60 ? 'var(--warn)' : 'var(--bad)';
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const url = document.getElementById('url').value.trim();
+    if (!url) return;
+
+    button.disabled = true;
+    result.removeAttribute('data-show');
+    show('Rendering the page and measuring it — this takes 20–60 seconds.');
+
+    try {
+      const response = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+
+      if (!response.ok) {
+        let message = 'Something went wrong.';
+        try { message = (await response.json()).detail || message; } catch (e) { /* keep default */ }
+        show(message, true);
+        return;
+      }
+
+      const blob = await response.blob();
+      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = URL.createObjectURL(blob);
+
+      const score = Number(response.headers.get('X-Audit-Score'));
+      const host = response.headers.get('X-Audit-Host') || url;
+      const grade = response.headers.get('X-Audit-Grade') || '';
+      const findings = response.headers.get('X-Audit-Findings') || '0';
+
+      const scoreEl = document.getElementById('score');
+      scoreEl.textContent = Number.isFinite(score) ? score : '—';
+      scoreEl.style.color = scoreColour(score);
+      document.getElementById('host').textContent = host;
+      document.getElementById('detail').textContent =
+        `Grade ${grade} · ${findings} findings · out of 100`;
+
+      const download = document.getElementById('download');
+      download.href = currentObjectUrl;
+      download.download = `${host.replace(/[^a-z0-9.-]/gi, '-')}-audit.pdf`;
+      document.getElementById('open').href = currentObjectUrl;
+      document.getElementById('frame').src = currentObjectUrl;
+
+      show('');
+      result.setAttribute('data-show', '');
+    } catch (error) {
+      show('Could not reach the auditor. Check your connection and try again.', true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

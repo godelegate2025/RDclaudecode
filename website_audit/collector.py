@@ -2,29 +2,18 @@
 
 from __future__ import annotations
 
-import os
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from playwright.sync_api import Browser
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import sync_playwright
+
+from .browser import browser_session
 
 PROBE = (Path(__file__).parent / "probe.js").read_text()
-
-# The sandbox ships a pinned Chromium; fall back to Playwright's own lookup.
-CHROMIUM_PATHS = [
-    os.environ.get("AUDIT_CHROMIUM_PATH"),
-    "/opt/pw-browsers/chromium",
-]
-
-# Encrypted Client Hello hides the SNI, which TLS-inspecting corporate/CI proxies
-# cannot parse — they drop the connection. Turning ECH off restores the handshake;
-# certificate verification is untouched. Override with AUDIT_CHROMIUM_ARGS.
-LAUNCH_ARGS = os.environ.get(
-    "AUDIT_CHROMIUM_ARGS", "--disable-features=EncryptedClientHello"
-).split()
 
 DESKTOP = {"width": 1440, "height": 900}
 MOBILE = {"width": 390, "height": 844}
@@ -44,38 +33,34 @@ class PageData:
     warnings: list[str] = field(default_factory=list)
 
 
-def _launch(pw):
-    last_error = None
-    for path in CHROMIUM_PATHS:
-        try:
-            if path and Path(path).exists():
-                return pw.chromium.launch(executable_path=path, args=LAUNCH_ARGS)
-        except PlaywrightError as exc:  # pragma: no cover - environment dependent
-            last_error = exc
-    try:
-        return pw.chromium.launch(args=LAUNCH_ARGS)
-    except PlaywrightError as exc:
-        raise RuntimeError(
-            f"Could not launch Chromium ({exc}). Set AUDIT_CHROMIUM_PATH to a Chromium binary."
-        ) from last_error or exc
-
-
 def _normalise(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         return "https://" + url
     return url
 
 
-def collect(url: str, out_dir: Path, timeout_ms: int = 45000) -> PageData:
+def collect(
+    url: str,
+    out_dir: Path,
+    timeout_ms: int = 45000,
+    browser: Browser | None = None,
+    route_guard=None,
+) -> PageData:
+    """Render the page and gather the evidence.
+
+    Pass an existing `browser` to reuse one Chromium across many audits; without
+    one a private session is launched and closed around this call. `route_guard`
+    is a Playwright route handler given every request — a public deployment uses
+    it to re-check redirect targets against its blocklist.
+    """
     url = _normalise(url)
     out_dir.mkdir(parents=True, exist_ok=True)
     resources: list[dict[str, Any]] = []
     console_errors: list[str] = []
     warnings: list[str] = []
 
-    with sync_playwright() as pw:
-        browser = _launch(pw)
-        context = browser.new_context(
+    with browser_session() if browser is None else nullcontext(browser) as active:
+        context = active.new_context(
             viewport=DESKTOP,
             device_scale_factor=1,
             user_agent=(
@@ -84,6 +69,8 @@ def collect(url: str, out_dir: Path, timeout_ms: int = 45000) -> PageData:
             ),
         )
         page = context.new_page()
+        if route_guard is not None:
+            page.route("**/*", route_guard)
 
         def on_response(response):
             try:
@@ -144,7 +131,6 @@ def collect(url: str, out_dir: Path, timeout_ms: int = 45000) -> PageData:
 
         final_url = page.url
         context.close()
-        browser.close()
 
     return PageData(
         url=url,

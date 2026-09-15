@@ -31,6 +31,28 @@ Claude runs the audit, delivers the PDF, and summarises what matters. See
 [the skill](.claude/skills/website-audit/SKILL.md) for the workflow it follows
 and for scheduling recurring audits.
 
+## As a hosted service
+
+`service/` wraps the same engine in a web app: a form, an audit endpoint that
+returns the PDF, and a page that shows the report inline with a download button.
+It is stateless, so it scales to zero.
+
+```bash
+pip install -r requirements.txt -r requirements-service.txt
+uvicorn service.app:app --port 8000     # then open http://127.0.0.1:8000
+```
+
+`Dockerfile` builds it for any container host; [DEPLOY.md](DEPLOY.md) has the
+Google Cloud Run commands, the cost maths (~3,000 audits/month inside the free
+tier), and the hardening checklist.
+
+**Public deployments must keep `service/security.py`.** A hosted browser that
+fetches whatever a stranger types is a server-side request forgery engine — it
+will happily render a cloud metadata endpoint or an internal admin panel and
+hand back a screenshot. Every URL is resolved and checked against private,
+loopback, link-local and metadata ranges before Chromium sees it, and re-checked
+on each redirect.
+
 ## What it measures
 
 **Typography** — every font family that rendered text, weighted by how much text
@@ -67,11 +89,16 @@ area cannot hide behind six healthy ones.
 ```
 website_audit/
   cli.py          argument parsing, output paths
+  browser.py      Chromium lifecycle — one launch serves audit and PDF print
   collector.py    Chromium: navigation, screenshots, network tally
   probe.js        runs in the page — computed styles, colours, structure
   analysis.py     palette clustering, WCAG maths, the findings rules, scoring
   report.py       Jinja → HTML → Chromium print-to-PDF
   templates/      the report layout
+service/
+  app.py          FastAPI: one request runs one audit and returns the PDF
+  security.py     SSRF guard — required for any public deployment
+  static/         the form and report viewer
 tests/            offline end-to-end run against a deliberately flawed fixture
 ```
 
@@ -81,9 +108,12 @@ local fixture, so no network is needed.
 ## Environment notes
 
 - `AUDIT_CHROMIUM_PATH` — use an existing Chromium instead of Playwright's.
-- `AUDIT_CHROMIUM_ARGS` — override the launch flags. The default disables
-  Encrypted Client Hello, which TLS-inspecting proxies cannot parse; certificate
-  verification is untouched.
+- `AUDIT_CHROMIUM_ARGS` — replace the launch flags. The defaults disable
+  Encrypted Client Hello (which TLS-inspecting proxies cannot parse; certificate
+  verification is untouched) and `/dev/shm` usage (64 MB in most containers).
+- `AUDIT_CHROMIUM_EXTRA_ARGS` — append flags instead of replacing them. The
+  container image uses this for `--no-sandbox`.
+- `RATE_LIMIT_PER_HOUR` — per-IP limit for the hosted service (default 10).
 - Behind a TLS-inspecting proxy, install its CA into the browser trust store
   (`certutil -A -d sql:$HOME/.pki/nssdb -n proxy-ca -t "C,," -i <ca.crt>`).
 

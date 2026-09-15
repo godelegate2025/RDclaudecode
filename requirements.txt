@@ -1,2 +1,4 @@
-playwright>=1.40
+# Pinned to match the Playwright Docker image tag in the Dockerfile — the pip
+# package and the image's bundled browsers must be the same version.
+playwright==1.62.0
 Jinja2>=3.1
