@@ -51,6 +51,14 @@ scored like one, producing an authoritative report about someone's firewall. The
 service detects them (`website_audit/blocking.py`) and returns 422 with an
 explanation instead of a report.
 
+Once deployed, `audit.ps1` runs batches against it from Windows with nothing
+installed locally:
+
+```powershell
+$env:AUDIT_SERVICE = "https://your-service.run.app"
+.\audit.ps1 https://a.com, https://b.com -OutDir .\reports
+```
+
 `Dockerfile` builds it for any container host. To put it on Google Cloud Run,
 `./deploy.sh` (or `.\deploy.ps1` on Windows) does the whole thing and verifies the result;
 [DEPLOY.md](DEPLOY.md) explains each flag, the cost maths (~3,000 audits/month
