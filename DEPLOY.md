@@ -42,6 +42,20 @@ gcloud services enable run.googleapis.com \
 From the repository root:
 
 ```bash
+./deploy.sh
+```
+
+It enables the APIs, builds, deploys, then checks the health endpoint, the SSRF
+guard and a real audit before telling you the URL. Safe to re-run — it updates
+the service in place. Override the defaults with environment variables:
+
+```bash
+REGION=us-central1 MAX_INSTANCES=5 ./deploy.sh
+```
+
+The equivalent by hand, if you would rather see it:
+
+```bash
 gcloud run deploy website-audit \
   --source . \
   --region europe-west2 \
