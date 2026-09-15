@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -33,10 +34,14 @@ class PageData:
     warnings: list[str] = field(default_factory=list)
 
 
+# Anything already carrying a scheme is left alone; only a bare host gets https://.
+# Prefixing blindly turned "file:///tmp/x.html" into "https://file///tmp/x.html".
+HAS_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+
+
 def _normalise(url: str) -> str:
-    if not url.startswith(("http://", "https://")):
-        return "https://" + url
-    return url
+    url = url.strip()
+    return url if HAS_SCHEME.match(url) else "https://" + url
 
 
 def collect(

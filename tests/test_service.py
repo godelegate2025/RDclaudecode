@@ -5,7 +5,28 @@ import unittest
 from fastapi.testclient import TestClient
 
 from service.app import app
-from service.security import UnsafeURL, validate
+from service.security import UnsafeURL, guard_route, validate
+
+
+class FakeRequest:
+    def __init__(self, url, navigation=True):
+        self.url = url
+        self._navigation = navigation
+
+    def is_navigation_request(self):
+        return self._navigation
+
+
+class FakeRoute:
+    def __init__(self):
+        self.aborted_with = None
+        self.continued = False
+
+    def abort(self, reason=None):
+        self.aborted_with = reason
+
+    def continue_(self):
+        self.continued = True
 
 
 class SSRFGuardTest(unittest.TestCase):
@@ -44,6 +65,28 @@ class SSRFGuardTest(unittest.TestCase):
         self.assertEqual(safe.hostname, "example.com")
         self.assertTrue(safe.url.startswith("https://"))
         self.assertTrue(safe.addresses)
+
+
+class RouteGuardTest(unittest.TestCase):
+    """The in-browser guard catches a redirect that lands somewhere private."""
+
+    def test_blocks_a_navigation_to_a_private_address(self):
+        route = FakeRoute()
+        guard_route(route, FakeRequest("http://169.254.169.254/latest/meta-data/"))
+        self.assertEqual(route.aborted_with, "blockedbyclient")
+        self.assertFalse(route.continued)
+
+    def test_allows_a_public_navigation(self):
+        route = FakeRoute()
+        guard_route(route, FakeRequest("https://example.com/pricing"))
+        self.assertTrue(route.continued)
+        self.assertIsNone(route.aborted_with)
+
+    def test_subresources_are_not_re_resolved(self):
+        """Only documents are checked; a DNS lookup per image would be crippling."""
+        route = FakeRoute()
+        guard_route(route, FakeRequest("http://10.0.0.1/logo.png", navigation=False))
+        self.assertTrue(route.continued)
 
 
 class HTTPSurfaceTest(unittest.TestCase):

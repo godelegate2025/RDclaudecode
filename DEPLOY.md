@@ -4,10 +4,12 @@ The service is one container: a form, an audit endpoint that returns the PDF, an
 Chromium. It holds no state between requests, so it scales to zero and back
 without a database or shared disk.
 
-> **Not yet built anywhere.** The Dockerfile has not been built or run — this
-> sandbox has no Docker daemon. The Python service itself is tested (19 tests,
-> plus live audits through the HTTP API). Expect the first `gcloud run deploy`
-> to be where the image gets its first real exercise.
+> **The image has been built and run.** `docker build` succeeds, the container
+> starts as the non-root `pwuser`, Chromium launches, and a full audit — render,
+> probe, analysis, 10-page A4 PDF — completes inside it. The one thing not
+> exercised locally is fetching a site whose certificate chains to a public root,
+> because the build environment re-terminates TLS; that path is what every
+> ordinary network does, and Cloud Run is an ordinary network.
 
 ## 1. Prerequisites
 
