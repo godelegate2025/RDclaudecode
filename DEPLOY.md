@@ -102,6 +102,26 @@ Cloud Run gives you a `https://website-audit-….run.app` URL. First build takes
 Pick `--region` near the audience you audit for — it is measured in the report's
 performance numbers.
 
+### If the first deploy fails with PERMISSION_DENIED
+
+New projects no longer grant their Compute Engine default service account build
+permissions, so the first `--source` deploy can fail with
+`Build failed because the default service account is missing required IAM
+permissions`. Grant it the builder role, wait a minute for IAM to propagate, and
+re-run the deploy:
+
+```bash
+PROJECT=$(gcloud config get-value project)
+NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
+
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:${NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/cloudbuild.builds.builder"
+```
+
+If a later run names a different missing permission, add
+`roles/artifactregistry.writer` and `roles/logging.logWriter` the same way.
+
 ## 3. Check it
 
 ```bash
