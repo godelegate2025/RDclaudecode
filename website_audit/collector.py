@@ -68,10 +68,8 @@ def collect(
         context = active.new_context(
             viewport=DESKTOP,
             device_scale_factor=1,
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 WebsiteAuditBot/1.0"
-            ),
+            locale="en-US",
+            timezone_id="UTC",
         )
         page = context.new_page()
         if route_guard is not None:

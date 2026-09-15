@@ -248,6 +248,7 @@
 
   return {
     title: document.title || null,
+    body_text_sample: (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1500),
     lang: document.documentElement.getAttribute('lang'),
     meta_description: meta('description'),
     viewport_meta: meta('viewport'),

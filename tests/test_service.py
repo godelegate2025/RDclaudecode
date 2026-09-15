@@ -96,7 +96,7 @@ class HTTPSurfaceTest(unittest.TestCase):
     def test_index_serves_the_form(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Website design audit", response.text)
+        self.assertIn("Redefine Website Design Audit", response.text)
         self.assertIn('id="form"', response.text)
 
     def test_healthz(self):
@@ -110,9 +110,99 @@ class HTTPSurfaceTest(unittest.TestCase):
     def test_missing_url_is_a_client_error(self):
         self.assertEqual(self.client.post("/api/audit", json={}).status_code, 400)
 
+    def test_a_blocked_site_returns_422_not_a_report(self):
+        """The wiring, not the detector: a BlockedError must not become a PDF."""
+        import service.app as app_module
+
+        original = app_module.run_audit
+        app_module.run_audit = lambda *a, **k: (_ for _ in ()).throw(
+            app_module.BlockedError("example.com blocked the audit (Cloudflare).")
+        )
+        try:
+            response = self.client.post("/api/audit", json={"url": "https://example.com"})
+        finally:
+            app_module.run_audit = original
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("blocked", response.json()["detail"].lower())
+        self.assertNotIn("application/pdf", response.headers.get("content-type", ""))
+
     def test_body_must_be_valid(self):
         self.assertEqual(self.client.post("/api/audit", json={"url": 42}).status_code, 422)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BlockDetectionTest(unittest.TestCase):
+    """A bot wall must be reported as a wall, never scored as a design."""
+
+    def _page(self, status=200, title="", text="", runs=200):
+        from website_audit.collector import PageData
+
+        return PageData(
+            url="https://example.com",
+            final_url="https://example.com",
+            status=status,
+            load_ms=100,
+            probe={"title": title, "body_text_sample": text, "text_runs": [{}] * runs},
+            mobile={},
+        )
+
+    def test_detects_the_page_that_shipped_a_false_grade_a(self):
+        from website_audit.blocking import detect
+
+        verdict = detect(self._page(
+            status=403,
+            title="Access denied",
+            text="Sorry, you have been blocked. You are unable to access "
+                 "secureservercdn2.net. Cloudflare Ray ID: 8f2c",
+            runs=12,
+        ))
+        self.assertTrue(verdict)
+        self.assertEqual(verdict.vendor, "Cloudflare")
+        self.assertIn("403", verdict.reason)
+
+    def test_detects_a_200_challenge_page(self):
+        from website_audit.blocking import detect
+
+        verdict = detect(self._page(
+            status=200,
+            title="Just a moment...",
+            text="Just a moment... Enable JavaScript and cookies to continue",
+            runs=6,
+        ))
+        self.assertTrue(verdict)
+
+    def test_a_real_page_is_not_flagged(self):
+        from website_audit.blocking import detect
+
+        verdict = detect(self._page(
+            status=200,
+            title="Acme — Insurance for families",
+            text="Innovative health coverage tailored to your individual needs. "
+                 "Apply anytime of the year. Get started now.",
+            runs=180,
+        ))
+        self.assertFalse(verdict)
+
+    def test_an_article_about_being_blocked_is_not_flagged(self):
+        """Phrase matching alone must not condemn a long, real page."""
+        from website_audit.blocking import detect
+
+        verdict = detect(self._page(
+            status=200,
+            title="Why your users see 'access denied'",
+            text="access denied is a common error. " + ("Body copy. " * 100),
+            runs=300,
+        ))
+        self.assertFalse(verdict)
+
+    def test_explanation_names_the_host_and_the_remedy(self):
+        from website_audit.blocking import detect, explain
+
+        verdict = detect(self._page(status=403, text="sorry, you have been blocked", runs=5))
+        message = explain(verdict, "healthpro-consultants.com")
+        self.assertIn("healthpro-consultants.com", message)
+        self.assertIn("allowlist", message)

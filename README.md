@@ -42,6 +42,15 @@ pip install -r requirements.txt -r requirements-service.txt
 uvicorn service.app:app --port 8000     # then open http://127.0.0.1:8000
 ```
 
+The page is branded for Redefine (coral `#FC4452`, ink `#191616`, paper `#F4F3F0`,
+Anton + Archivo). Drop a logo at `service/static/logo.png` and the header uses it;
+without one it falls back to a coral monogram.
+
+**Bot walls.** A WAF challenge page renders like any other page and would be
+scored like one, producing an authoritative report about someone's firewall. The
+service detects them (`website_audit/blocking.py`) and returns 422 with an
+explanation instead of a report.
+
 `Dockerfile` builds it for any container host. To put it on Google Cloud Run,
 `./deploy.sh` (or `.\deploy.ps1` on Windows) does the whole thing and verifies the result;
 [DEPLOY.md](DEPLOY.md) explains each flag, the cost maths (~3,000 audits/month

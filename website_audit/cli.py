@@ -10,6 +10,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .analysis import analyse
+from .blocking import detect as detect_block
+from .blocking import explain as explain_block
 from .browser import browser_session
 from .collector import collect
 from .report import html_to_pdf, render_html, write_json
@@ -57,6 +59,13 @@ def main(argv: list[str] | None = None) -> int:
         # startup cost and the peak memory for no gain.
         with browser_session() as browser:
             data = collect(args.url, work_dir, timeout_ms=args.timeout, browser=browser)
+
+            verdict = detect_block(data)
+            if verdict:
+                print(
+                    "WARNING: " + explain_block(verdict, urlparse(data.final_url).netloc),
+                    file=sys.stderr,
+                )
 
             log(
                 f"→ Analysing {len(data.probe['text_runs'])} text runs "

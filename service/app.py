@@ -19,9 +19,12 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from website_audit.analysis import analyse
+from website_audit.blocking import detect as detect_block
+from website_audit.blocking import explain as explain_block
 from website_audit.browser import browser_session
 from website_audit.collector import collect
 from website_audit.report import render_html, html_to_pdf, write_json
@@ -47,7 +50,13 @@ _hits_lock = threading.Lock()
 # true regardless of how the service is run.
 _audit_lock = threading.Lock()
 
-INDEX = Path(__file__).parent / "static" / "index.html"
+STATIC = Path(__file__).parent / "static"
+INDEX = STATIC / "index.html"
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+class BlockedError(RuntimeError):
+    """The page we reached was a bot wall, not the site."""
 
 
 class AuditRequest(BaseModel):
@@ -88,6 +97,13 @@ def run_audit(target: str, work_dir: Path):
             browser=browser,
             route_guard=guard_route,
         )
+
+        # A bot wall renders like any other page and would score like one. Refuse
+        # rather than hand back an authoritative report about someone's firewall.
+        verdict = detect_block(data)
+        if verdict:
+            raise BlockedError(explain_block(verdict, urlparse(data.final_url).netloc or target))
+
         results = analyse(data)
         pdf_path = work_dir / "report.pdf"
         html_to_pdf(render_html(data, results), pdf_path, work_dir, browser=browser)
@@ -158,6 +174,9 @@ def audit(payload: AuditRequest, request: Request) -> Response:
         )
     except HTTPException:
         raise
+    except BlockedError as exc:
+        log.info("blocked by %s", safe.hostname)
+        raise HTTPException(422, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - one bad page must not kill the instance
         log.exception("audit failed for %s", safe.hostname)
         raise HTTPException(502, f"Could not audit that page: {exc}") from exc
