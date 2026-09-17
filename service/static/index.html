@@ -83,7 +83,7 @@ header .tagline {
 main {
   height: calc(100vh - var(--header-h));
   display: grid;
-  grid-template-columns: minmax(340px, 400px) 1fr;
+  grid-template-columns: 460px 1fr;
   gap: 0;
 }
 
@@ -101,7 +101,7 @@ h1 {
   margin: 0; color: var(--ink);
 }
 h1 .accent { color: var(--coral); display: block; }
-.lede { margin: 0; color: var(--charcoal); font-size: 14.5px; max-width: 42ch; }
+.lede { margin: 0; color: var(--charcoal); font-size: 14.5px; max-width: 52ch; }
 
 /* ---------- form ---------- */
 form { display: flex; flex-direction: column; gap: var(--space-3); }
@@ -244,6 +244,10 @@ button:disabled { opacity: .5; cursor: progress; }
   header .tagline { display: none; }
   button { width: 100%; }
 }
+@media (max-width: 480px) {
+  /* The wordmark alone fits a phone; the tool label pushed the header past the edge. */
+  .brand .tool { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
@@ -276,14 +280,16 @@ button:disabled { opacity: .5; cursor: progress; }
       <h1>Website<span class="accent">Design Audit</span></h1>
     </div>
     <p class="lede">
-      Every page is rendered in a real browser and measured — fonts, colour palette,
-      WCAG contrast, structure — then compared against the others, which is the only
-      way cross-page problems show up. Each finding says how to automate the fix.
+      Enter a website and every page is rendered in a real browser and measured:
+      fonts, colour palette, WCAG contrast, structure and findability. Pages are
+      compared with each other, which is the only way cross-page problems show up.
+      You get a scored PDF report with a fix for every finding, plus a home page
+      draft built from the site's own words with those fixes already applied.
     </p>
 
     <form id="form">
       <label for="url">Website to audit</label>
-      <input id="url" type="text" inputmode="url" placeholder="windandwaterhomes.com" required
+      <input id="url" type="text" inputmode="url" placeholder="https://example.com" required
              autocomplete="url" spellcheck="false" autocapitalize="off" autocorrect="off">
       <div class="modes" role="radiogroup" aria-label="Audit scope">
         <label class="mode">
