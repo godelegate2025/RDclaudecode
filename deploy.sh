@@ -52,19 +52,34 @@ gcloud run deploy "$SERVICE" \
   --cpu-boost \
   --allow-unauthenticated
 
-URL="$(gcloud run services describe "$SERVICE" \
-        --project "$PROJECT" --region "$REGION" --format='value(status.url)')"
+describe() {
+  gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format="$1" 2>/dev/null
+}
+# status.urls lists every assigned URL; status.url alone can be the legacy one.
+CANDIDATES="$(printf '%s\n%s\n' "$(describe 'value(status.urls)' | tr ';,' '\n')" "$(describe 'value(status.url)')" \
+              | tr -d ' ' | grep -E '^https://' | sort -u)"
+[ -n "$CANDIDATES" ] || fail "Could not read the service URL from gcloud."
 
 bold "3/3  Checking the deployment"
 
 printf '  health:      '
+URL=""
 for attempt in $(seq 1 30); do
-  if curl -fsS "$URL/healthz" >/dev/null 2>&1; then
-    echo "ok"; break
-  fi
-  [ "$attempt" = 30 ] && fail "health check failed after 2 minutes — try: curl $URL/healthz"
+  for candidate in $CANDIDATES; do
+    if curl -fsS "$candidate/healthz" >/dev/null 2>&1; then
+      URL="$candidate"; break 2
+    fi
+  done
   sleep 4
 done
+if [ -n "$URL" ]; then
+  echo "ok"
+else
+  echo "no response"
+  fail "No service URL answered in 2 minutes. Tried:
+$CANDIDATES
+The deploy itself succeeded — try those in a browser before assuming it is broken."
+fi
 
 printf '  SSRF guard:  '
 CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/audit" \

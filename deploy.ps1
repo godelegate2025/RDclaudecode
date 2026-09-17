@@ -66,23 +66,38 @@ gcloud run deploy $Service `
   --allow-unauthenticated
 if ($LASTEXITCODE -ne 0) { Fail "Deploy failed. See the build log link above." }
 
-$url = (gcloud run services describe $Service --project $Project --region $Region `
-        --format="value(status.url)")
+# Cloud Run assigns more than one URL and status.url can hand back the legacy
+# .a.run.app form, which may not resolve. Try every URL it reports.
+$listed = (gcloud run services describe $Service --project $Project --region $Region `
+           --format="value(status.urls)")
+$single = (gcloud run services describe $Service --project $Project --region $Region `
+           --format="value(status.url)")
+$candidates = @($listed, $single) -join ";" -split "[;,\s]+" |
+  Where-Object { $_ -match "^https://" } | Select-Object -Unique
+if (-not $candidates) { Fail "Could not read the service URL from gcloud." }
 
 Write-Step "3/3  Checking the deployment"
 
 # A freshly deployed URL is not routable for up to a minute, so poll rather than
 # reporting Google's frontend 404 as a failure.
-$healthy = $false
+$url = $null
 foreach ($attempt in 1..30) {
-  try {
-    Invoke-RestMethod -Uri "$url/healthz" -TimeoutSec 20 | Out-Null
-    $healthy = $true
-    break
-  } catch { Start-Sleep -Seconds 4 }
+  foreach ($candidate in $candidates) {
+    try {
+      Invoke-RestMethod -Uri "$candidate/healthz" -TimeoutSec 20 | Out-Null
+      $url = $candidate
+      break
+    } catch { }
+  }
+  if ($url) { break }
+  Start-Sleep -Seconds 4
 }
-if ($healthy) { Write-Host "  health:      ok" }
-else { Fail "  health check failed after 2 minutes. Try opening $url in a browser." }
+if ($url) { Write-Host "  health:      ok" }
+else {
+  Write-Host "  health:      no response" -ForegroundColor Red
+  Fail ("  No service URL answered in 2 minutes. Tried:`n    " + ($candidates -join "`n    ") +
+        "`n  The deploy itself succeeded - try those in a browser before assuming it is broken.")
+}
 
 # The guard must refuse the cloud metadata address. PowerShell throws on 4xx,
 # so a 400 here is the success path.
