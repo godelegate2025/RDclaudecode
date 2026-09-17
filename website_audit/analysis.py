@@ -1033,21 +1033,66 @@ CATEGORIES = [
 ]
 
 
-def score(findings: list[Finding]) -> dict[str, Any]:
-    per_category: dict[str, int] = {c: 100 for c in CATEGORIES}
+# Categories weighted by consequence to the business, not by how much of the
+# code measures them. Adding checks to a category must not make it count for
+# more.
+CATEGORY_WEIGHT = {
+    "Accessibility": 1.5,   # legal exposure, and real people shut out
+    "Content": 1.5,         # placeholder copy and contradictions cost credibility at a glance
+    "Findability": 1.25,    # unreadable to crawlers means the rest never gets seen
+    "Performance": 1.25,    # measurably changes whether visitors stay
+    "Responsive": 1.0,
+    "Structure": 1.0,
+    "Typography": 0.75,     # craft: it matters, but visitors rarely name it
+    "Colour": 0.75,
+    "Consistency": 0.75,    # token hygiene: invisible to visitors, expensive for the team
+}
+
+# How fast a category's score falls as findings accumulate. Subtracting a fixed
+# amount per finding pinned busy categories at zero, after which further
+# problems were free; this curve keeps every finding costing something.
+PENALTY_HALF_LIFE = 55.0
+
+
+def category_score(penalty: float) -> int:
+    return round(100 * (1 - penalty / (penalty + PENALTY_HALF_LIFE)))
+
+
+def score(findings: list[Finding], categories: list[str] | None = None) -> dict[str, Any]:
+    """Category scores and one headline number.
+
+    Three things the headline has to do: stay at 100 for a clean page, make a
+    severe finding impossible to miss, and still rank two bad sites against each
+    other. A weighted mean alone fails the second — a single critical lands in
+    one category of nine and barely moves the average — so severity also lowers a
+    ceiling the score cannot exceed.
+    """
+    names = categories or CATEGORIES
+    penalties: dict[str, float] = {c: 0.0 for c in names}
     for finding in findings:
-        per_category[finding.category] = max(
-            0, per_category.get(finding.category, 100) - SEVERITY_WEIGHT[finding.severity]
-        )
-    # A flat average lets six healthy categories bury one failing one, so the
-    # headline number is pulled a third of the way toward the weakest category.
-    mean = sum(per_category.values()) / len(per_category)
-    overall = round(0.65 * mean + 0.35 * min(per_category.values()))
+        penalties[finding.category] = penalties.get(finding.category, 0.0) + SEVERITY_WEIGHT[finding.severity]
+    per_category = {name: category_score(p) for name, p in penalties.items()}
+
+    total_weight = sum(CATEGORY_WEIGHT.get(c, 1.0) for c in per_category)
+    weighted_mean = sum(
+        per_category[c] * CATEGORY_WEIGHT.get(c, 1.0) for c in per_category
+    ) / total_weight
+    # Still pulled toward the weakest area, so one broken category cannot hide
+    # behind eight healthy ones.
+    base = 0.75 * weighted_mean + 0.25 * min(per_category.values())
+
+    counts = Counter(f.severity for f in findings)
+    ceiling = 100
+    if counts["critical"]:
+        ceiling -= 30 + 6 * (counts["critical"] - 1)
+    ceiling -= 8 * min(counts["high"], 2) + 3 * max(0, counts["high"] - 2)
+
+    overall = max(0, min(round(base), ceiling))
     return {
         "categories": per_category,
         "overall": overall,
         "grade": grade(overall),
-        "counts": Counter(f.severity for f in findings),
+        "counts": counts,
     }
 
 

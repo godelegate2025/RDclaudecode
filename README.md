@@ -126,9 +126,29 @@ formats, layout-shift risk, render-blocking CSS, page weight, meta and Open Grap
 tags, dark-mode support, design-token usage.
 
 Each finding carries a severity, the evidence behind it, the fix, and the
-automation that keeps it from coming back. Category scores roll up into one
-number, pulled a third of the way toward the weakest category so a single bad
-area cannot hide behind six healthy ones.
+automation that keeps it from coming back.
+
+## Scoring
+
+Every finding costs its category points on a curve, so the tenth problem in a
+category still counts — a fixed subtraction pinned busy categories at zero,
+after which further problems were free.
+
+Categories are weighted by consequence, not by how much of the code measures
+them, so adding checks to an area never makes that area count for more:
+
+| Weight | Categories | Why |
+|---|---|---|
+| 1.5 | Accessibility, Content | Legal exposure; placeholder copy costs credibility at a glance |
+| 1.25 | Findability, Performance | Unreadable to crawlers, or too slow to wait for |
+| 1.0 | Responsive, Structure | |
+| 0.75 | Typography, Colour, Consistency | Craft: it matters, but visitors rarely name it |
+
+The headline is a weighted mean pulled a quarter of the way toward the weakest
+category, then held under a ceiling that drops as severe findings accumulate.
+The ceiling exists because a mean alone hides severity — one critical finding
+lands in one category of nine and barely moves the average. Before this, a page
+with live lorem ipsum scored 88 out of 100.
 
 ## Output
 

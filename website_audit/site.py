@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from .analysis import CATEGORIES, SEVERITY_WEIGHT, Finding, analyse, build_palette, grade
+from .analysis import CATEGORIES, Finding, analyse, build_palette, score
 from .blocking import detect as detect_block
 from .blocking import explain as explain_block
 from .browser import browser_session
@@ -117,22 +117,6 @@ def _reach(page_results: list[PageResult]) -> list[Finding]:
     return rolled
 
 
-def _score(findings: list[Finding]) -> dict[str, Any]:
-    per_category = {c: 100 for c in [*CATEGORIES, "Content"]}
-    for finding in findings:
-        per_category[finding.category] = max(
-            0, per_category.get(finding.category, 100) - SEVERITY_WEIGHT[finding.severity]
-        )
-    mean = sum(per_category.values()) / len(per_category)
-    overall = round(0.65 * mean + 0.35 * min(per_category.values()))
-    return {
-        "categories": per_category,
-        "overall": overall,
-        "grade": grade(overall),
-        "counts": Counter(f.severity for f in findings),
-    }
-
-
 def audit_site(
     start_url: str,
     work_dir: Path,
@@ -221,7 +205,7 @@ def audit_site(
         palette=_merge_palette(audited),
         families=_merge_families(audited),
         findings=findings,
-        scores=_score(findings),
+        scores=score(findings, [*CATEGORIES, "Content"]),
         discovery_source=found.source,
         discovery_notes=found.notes,
         elapsed_s=time.time() - started,
