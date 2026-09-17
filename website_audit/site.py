@@ -20,6 +20,7 @@ from .browser import browser_session
 from .collector import collect
 from .content import Page, page_findings, site_findings, to_page
 from .discovery import discover
+from .structure import site_findings as structure_site_findings
 
 
 @dataclass
@@ -33,6 +34,7 @@ class PageResult:
     error: str | None = None
     results: dict[str, Any] | None = None
     page: Page | None = None
+    probe: dict[str, Any] | None = None
 
 
 @dataclass
@@ -180,6 +182,7 @@ def audit_site(
                         title=data.probe.get("title"),
                         results=analysis,
                         page=page,
+                        probe=data.probe,
                     )
                 )
                 if not screenshots:  # the first page stands in for the site
@@ -199,6 +202,12 @@ def audit_site(
     for page in pages:
         findings.extend(page_findings(page))
     findings.extend(site_findings(pages))
+    findings.extend(
+        structure_site_findings(
+            {r.url: r.probe for r in audited if r.probe},
+            [r.url for r in results],
+        )
+    )
 
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     findings.sort(key=lambda f: (order[f.severity], f.category))

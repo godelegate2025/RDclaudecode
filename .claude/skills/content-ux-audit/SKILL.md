@@ -44,6 +44,10 @@ Things no single-page audit can see:
 - **Copy pasted between pages** (shared headers and footers are excluded)
 - **Placeholder text still live** — lorem ipsum, "Coming soon", TBD
 - **Findings ranked by reach** — "affects 7 of 8 pages"
+- **Navigation drift** — pages whose nav differs from the rest of the site
+- **CTA conflicts** — the same button label pointing somewhere different
+- **Orphan pages** — published, in the sitemap, linked from nowhere
+- **Missing expected pages** — contact, privacy, terms
 
 All of it is measured or compared, never judged: no model in the loop, no tokens,
 and the same answer every run.

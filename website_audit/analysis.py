@@ -1008,6 +1008,10 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
             automation="Fail the end-to-end test run when the console reports an error.",
         )
 
+    from .structure import page_findings as structure_findings
+
+    findings.extend(structure_findings(probe, data.final_url))
+
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     findings.sort(key=lambda f: (order[f.severity], f.category))
 
@@ -1025,7 +1029,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
 
 CATEGORIES = [
     "Typography", "Colour", "Accessibility", "Performance",
-    "Consistency", "Responsive", "Findability",
+    "Consistency", "Responsive", "Findability", "Structure",
 ]
 
 

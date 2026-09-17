@@ -103,6 +103,14 @@ and blending translucent layers), scored against WCAG AA. Each failing pair come
 with a replacement colour that keeps the original hue and saturation and moves
 lightness only until it passes.
 
+**Structure — whether the site is navigable.** Needs `--site`, because none of it
+is visible from one page: navigation that differs between templates, a call to
+action whose label promises one thing and goes somewhere different depending on
+the page, pages published but linked from nowhere, and the pages a visitor
+expects to find (contact, privacy, terms). Page checks match on URL, so they say
+plainly when they may be wrong rather than asserting a page is missing that is
+merely named differently.
+
 **Findability — whether machines can read the site.** The headline check is how
 much of the copy survives without JavaScript: the served HTML is compared against
 the rendered DOM, because a browser runs the scripts and most crawlers and answer

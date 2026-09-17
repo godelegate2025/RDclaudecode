@@ -240,6 +240,58 @@
     return el ? el.getAttribute('content') : null;
   };
 
+  /* ---- structure: navigation, footer, and the actions offered ---- */
+  const linkText = (el) => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+
+  const collectLinks = (selector, cap) => {
+    const out = [];
+    const seen = new Set();
+    for (const container of document.querySelectorAll(selector)) {
+      for (const a of container.querySelectorAll('a[href]')) {
+        if (!/^https?:/.test(a.href)) continue;
+        const text = linkText(a).slice(0, 60);
+        const key = a.href + '|' + text;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ text, href: a.href });
+        if (out.length >= cap) return out;
+      }
+    }
+    return out;
+  };
+
+  const navLinks = collectLinks('nav, header, [role="navigation"]', 60);
+  const footerLinks = collectLinks('footer, [role="contentinfo"]', 80);
+
+  /* A call to action is a link or button styled to be pressed, not read. */
+  const isProminent = (el) => {
+    if (el.tagName === 'BUTTON') return true;
+    const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+    if (/\b(btn|button|cta)\b/.test(cls)) return true;
+    const s = getComputedStyle(el);
+    const bg = s.backgroundColor || '';
+    const opaque = bg && !/rgba?\([^)]*,\s*0(\.0+)?\)/.test(bg) && bg !== 'transparent';
+    const padded = parseFloat(s.paddingLeft) >= 10 && parseFloat(s.paddingTop) >= 6;
+    return opaque && padded;
+  };
+
+  const ctas = [];
+  const ctaSeen = new Set();
+  for (const el of document.querySelectorAll('a[href], button')) {
+    const style = getComputedStyle(el);
+    if (!isVisible(el, style)) continue;
+    const text = linkText(el).slice(0, 60);
+    /* Carousel arrows and icon-only controls are not calls to action. */
+    if (!text || text.length < 3 || text.length > 45 || !/[a-z]/i.test(text)) continue;
+    if (!isProminent(el)) continue;
+    const href = el.tagName === 'A' && /^https?:/.test(el.href) ? el.href : null;
+    const key = text.toLowerCase() + '|' + (href || '');
+    if (ctaSeen.has(key)) continue;
+    ctaSeen.add(key);
+    ctas.push({ text, href });
+    if (ctas.length >= 40) break;
+  }
+
   /* Machine-readable signals: schema blocks, canonical, indexability. */
   const jsonLd = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
     .map((el) => (el.textContent || '').slice(0, 20000))
@@ -271,6 +323,9 @@
     og_title: meta('og:title', 'property'),
     og_image: meta('og:image', 'property'),
     favicon: !!document.querySelector('link[rel~="icon"]'),
+    nav_links: navLinks,
+    footer_links: footerLinks,
+    ctas: ctas,
     json_ld: jsonLd,
     canonical: canonicalEl ? canonicalEl.href : null,
     robots_meta: robotsMeta || null,
