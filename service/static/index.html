@@ -109,14 +109,14 @@ label {
   font-size: 11px; font-weight: 700; letter-spacing: .14em;
   text-transform: uppercase; color: var(--muted);
 }
-input[type=url] {
+input[type=text] {
   width: 100%; padding: 14px 15px; font: inherit; font-size: 15px;
   color: var(--ink); background: #fff;
   border: 1.5px solid var(--line); border-radius: var(--radius);
   transition: border-color .15s ease, box-shadow .15s ease;
 }
-input[type=url]::placeholder { color: #A8A39E; }
-input[type=url]:focus {
+input[type=text]::placeholder { color: #A8A39E; }
+input[type=text]:focus {
   outline: none; border-color: var(--coral);
   box-shadow: 0 0 0 3px rgba(252, 68, 82, .14);
 }
@@ -250,8 +250,8 @@ button:disabled { opacity: .5; cursor: progress; }
 
     <form id="form">
       <label for="url">Page to audit</label>
-      <input id="url" type="url" placeholder="https://example.com" required
-             autocomplete="url" spellcheck="false">
+      <input id="url" type="text" inputmode="url" placeholder="windandwaterhomes.com" required
+             autocomplete="url" spellcheck="false" autocapitalize="off" autocorrect="off">
       <button id="go" type="submit">Audit this page</button>
     </form>
 
@@ -273,9 +273,10 @@ button:disabled { opacity: .5; cursor: progress; }
     </div>
 
     <footer>
-      One page, audited as an anonymous visitor. Load timing is a single cold
-      measurement. Findings are heuristics — a deliberate design decision can
-      legitimately fail one.
+      Every number comes from a real browser render of the page, as an anonymous
+      visitor sees it. One page per run. Load timing is a single cold measurement,
+      and findings are heuristics — a deliberate design choice can legitimately
+      fail one.
     </footer>
   </section>
 
@@ -330,10 +331,20 @@ button:disabled { opacity: .5; cursor: progress; }
 
   const scoreColour = (n) => n >= 80 ? 'var(--good)' : n >= 60 ? 'var(--warn)' : 'var(--coral)';
 
+  // "example.com" and "www.example.com" are what people type; the server accepts
+  // them too, but showing the resolved URL back makes clear what was audited.
+  const normalise = (value) => {
+    const trimmed = value.trim().replace(/\s+/g, '');
+    if (!trimmed) return '';
+    return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : 'https://' + trimmed;
+  };
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const url = document.getElementById('url').value.trim();
+    const field = document.getElementById('url');
+    const url = normalise(field.value);
     if (!url) return;
+    field.value = url;
 
     button.disabled = true;
     summary.removeAttribute('data-show');
