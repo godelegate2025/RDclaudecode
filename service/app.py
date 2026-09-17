@@ -7,6 +7,7 @@ request landing on a different instance than the one that made the report.
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import shutil
@@ -27,6 +28,7 @@ from website_audit.blocking import detect as detect_block
 from website_audit.blocking import explain as explain_block
 from website_audit.browser import browser_session
 from website_audit.collector import collect
+from website_audit.draft import build_draft, draft_from_site
 from website_audit.report import html_to_pdf, render_html, render_site_html, write_json
 from website_audit.site import audit_site
 
@@ -73,6 +75,7 @@ class AuditRequest(BaseModel):
     json_only: bool = False
     mode: str = "site"          # "site" audits every page found; "page" just this one
     limit: int | None = None
+    draft: bool = False         # also build a corrected home page draft; the response becomes JSON
 
 
 def rate_limited(client_ip: str, cost: int = 1) -> bool:
@@ -220,6 +223,28 @@ def audit(payload: AuditRequest, request: Request) -> Response:
 
         suffix = "site-audit" if whole_site else "audit"
         filename = f"{host.replace(':', '-')}-{suffix}.pdf"
+
+        if payload.draft:
+            # One request, two deliverables: the PDF rides along base64-encoded so
+            # the draft never needs a second crawl or anything kept on the server.
+            draft = draft_from_site(audit) if data is None else build_draft(data.final_url, data.probe, results)
+            return JSONResponse({
+                "host": host,
+                "score": scores["overall"],
+                "grade": scores["grade"],
+                "findings": len(findings),
+                "pages": pages,
+                "report": {"filename": filename, "pdf_base64": base64.b64encode(pdf_path.read_bytes()).decode()},
+                "draft": None if draft is None else {
+                    "filename": draft.filename,
+                    "html": draft.html,
+                    "notes": draft.notes,
+                    "unresolved": draft.unresolved,
+                    "palette": draft.palette,
+                    "fonts": draft.fonts,
+                },
+            })
+
         return Response(
             content=pdf_path.read_bytes(),
             media_type="application/pdf",

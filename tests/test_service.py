@@ -132,6 +132,48 @@ class HTTPSurfaceTest(unittest.TestCase):
 
         self.assertEqual(AuditRequest(url="https://example.com").mode, "site")
 
+    def test_draft_is_off_unless_asked_for(self):
+        from service.app import AuditRequest
+
+        self.assertFalse(AuditRequest(url="https://example.com").draft)
+
+    def test_draft_request_returns_report_and_draft_together(self):
+        """With draft=true one request carries the PDF (base64) and the HTML draft."""
+        import base64
+        import service.app as app_module
+        from types import SimpleNamespace
+
+        def fake_audit(target, work_dir):
+            pdf = work_dir / "report.pdf"
+            pdf.write_bytes(b"%PDF-1.4 fake")
+            data = SimpleNamespace(final_url="https://example.com/", probe={
+                "title": "Example Co", "headings": [{"level": 1, "text": "Hello there"}],
+                "body_text": "Example Co Hello there We make examples.", "nav_links": [], "footer_links": [],
+                "ctas": [], "links": [], "lang": "en", "meta_description": None,
+            })
+            results = {
+                "scores": {"overall": 61, "grade": "C", "categories": {}, "counts": {}},
+                "findings": [], "palette": [], "typography": {"families": []},
+            }
+            return pdf, data, results
+
+        original = app_module.run_audit
+        app_module.run_audit = fake_audit
+        try:
+            response = self.client.post("/api/audit", json={"url": "https://example.com", "mode": "page", "draft": True})
+        finally:
+            app_module.run_audit = original
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["score"], 61)
+        self.assertEqual(body["report"]["filename"], "example.com-audit.pdf")
+        self.assertEqual(base64.b64decode(body["report"]["pdf_base64"]), b"%PDF-1.4 fake")
+        self.assertEqual(body["draft"]["filename"], "example.com-home-draft.html")
+        self.assertIn("<h1 id=\"hero-title\">Hello there</h1>", body["draft"]["html"])
+        self.assertIn("We make examples.", body["draft"]["html"])
+        self.assertEqual(body["draft"]["fonts"], {"display": "Fraunces", "body": "DM Sans"})
+
     def test_the_page_limit_is_clamped(self):
         import service.app as app_module
 
