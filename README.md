@@ -222,7 +222,9 @@ local fixture, so no network is needed.
   verification is untouched) and `/dev/shm` usage (64 MB in most containers).
 - `AUDIT_CHROMIUM_EXTRA_ARGS` — append flags instead of replacing them. The
   container image uses this for `--no-sandbox`.
-- `RATE_LIMIT_PER_HOUR` — per-IP limit for the hosted service (default 10).
+- `RATE_LIMIT_PER_HOUR` — per-IP limit for the hosted service (default 30). A page
+  audit costs 1, a site audit costs 5, and an audit that fails to produce a report
+  refunds its units. A 429 says when the next audit fits and sets `Retry-After`.
 - Behind a TLS-inspecting proxy, install its CA into the browser trust store
   (`certutil -A -d sql:$HOME/.pki/nssdb -n proxy-ca -t "C,," -i <ca.crt>`).
 

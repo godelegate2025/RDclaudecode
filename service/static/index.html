@@ -486,6 +486,18 @@ button:disabled { opacity: .5; cursor: progress; }
       if (!response.ok) {
         let detail = 'Something went wrong. Try again in a moment.';
         try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
+        if (response.status === 429) {
+          // The server says how long to wait; turn that into a clock time so
+          // nobody has to do the arithmetic.
+          const wait = Number(response.headers.get('Retry-After'));
+          if (Number.isFinite(wait) && wait > 0) {
+            const at = new Date(Date.now() + wait * 1000)
+              .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            detail += mode === 'site' ? ` Next whole-site audit available at ${at}.` : ` Next audit available at ${at}.`;
+          }
+          problem('Too many audits for now', detail);
+          return;
+        }
         problem(response.status === 422 ? 'Site blocked the audit' : 'Could not audit that page', detail);
         return;
       }

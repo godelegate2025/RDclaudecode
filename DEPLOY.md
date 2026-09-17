@@ -159,8 +159,9 @@ thousandths of a dollar per audit. `--max-instances 3` caps the worst case.
 and checked against private, loopback, link-local and metadata ranges before
 Chromium sees it, and re-checked on each redirect. Do not remove it.
 
-**Rate limiting is per-instance only.** The in-process limiter (10/hour/IP by
-default, `RATE_LIMIT_PER_HOUR`) resets on cold start and is not shared across
+**Rate limiting is per-instance only.** The in-process limiter (30 units/hour/IP
+by default, `RATE_LIMIT_PER_HOUR`; a site audit costs 5, a page audit 1, failed
+audits are refunded) resets on cold start and is not shared across
 instances. For real protection put Cloud Armor in front:
 
 ```bash

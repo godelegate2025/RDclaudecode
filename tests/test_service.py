@@ -205,6 +205,55 @@ class HTTPSurfaceTest(unittest.TestCase):
             self.assertFalse(app_module.rate_limited("1.2.3.4"))
         self.assertTrue(app_module.rate_limited("1.2.3.4"))
 
+    def test_a_failed_audit_refunds_its_units(self):
+        """A run that never produced a report must not eat into the hour's budget."""
+        import service.app as app_module
+
+        app_module._hits.clear()
+        original = app_module.run_audit
+        app_module.run_audit = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("chromium died"))
+        try:
+            for _ in range(app_module.RATE_LIMIT_PER_HOUR + 3):
+                response = self.client.post(
+                    "/api/audit", json={"url": "https://example.com", "mode": "page"}
+                )
+                self.assertEqual(response.status_code, 502)
+        finally:
+            app_module.run_audit = original
+        # Every failed attempt was refunded, so a fresh charge still fits.
+        self.assertEqual(app_module.seconds_until_allowed("testclient", 1), 0)
+
+    def test_rate_limit_says_when_the_next_audit_fits(self):
+        import service.app as app_module
+
+        app_module._hits.clear()
+        # Fill the hour with page audits; a site audit then needs five to age out.
+        for _ in range(app_module.RATE_LIMIT_PER_HOUR):
+            self.assertEqual(app_module.seconds_until_allowed("testclient", 1), 0)
+
+        response = self.client.post("/api/audit", json={"url": "https://example.com"})
+        self.assertEqual(response.status_code, 429)
+        wait = int(response.headers["Retry-After"])
+        self.assertTrue(0 < wait <= 3600)
+        detail = response.json()["detail"]
+        self.assertIn("whole-site audit again in", detail)
+        self.assertIn("single-page audit in", detail)
+
+        # Make room for one page audit but not a site audit: the message should say so.
+        app_module.refund("testclient", 1)
+        response = self.client.post("/api/audit", json={"url": "https://example.com"})
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("single-page audit now", response.json()["detail"])
+        # And a refused request must not have charged anything.
+        self.assertEqual(app_module.retry_wait("testclient", 1), 0)
+
+        # The wait shrinks as the oldest hits age.
+        seen = app_module._hits["testclient"]
+        for i in range(len(seen)):
+            seen[i] -= 3000
+        self.assertLessEqual(app_module.retry_wait("testclient", app_module.SITE_RATE_COST), 601)
+        app_module._hits.clear()
+
     def test_a_blocked_site_returns_422_not_a_report(self):
         """The wiring, not the detector: a BlockedError must not become a PDF."""
         import service.app as app_module

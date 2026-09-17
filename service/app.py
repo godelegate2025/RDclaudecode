@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="Website design audit", docs_url=None, redoc_url=None)
 
 AUDIT_TIMEOUT_MS = int(os.environ.get("AUDIT_TIMEOUT_MS", "45000"))
-RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "10"))
+RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "30"))
 
 # A whole-site audit takes about 6.6s per page, so 25 pages lands near three
 # minutes — inside the request timeout, which is why this needs no job queue.
@@ -78,21 +78,85 @@ class AuditRequest(BaseModel):
     draft: bool = False         # also build a corrected home page draft; the response becomes JSON
 
 
+RATE_WINDOW_SECONDS = 3600
+
+
+def _seconds_until_room(seen: deque[float], cost: int, now: float) -> int:
+    """How long until `cost` more units fit in the window for this visitor.
+
+    The window is rolling, so room opens when the oldest hits age out: with
+    `n` hits recorded, `cost` units fit once the (n - limit + cost)th oldest
+    hit is more than an hour old.
+    """
+    needed = len(seen) + cost - RATE_LIMIT_PER_HOUR
+    if needed <= 0:
+        return 0
+    if cost > RATE_LIMIT_PER_HOUR:
+        return RATE_WINDOW_SECONDS  # never fits; still give the caller a number
+    frees_at = seen[needed - 1] + RATE_WINDOW_SECONDS
+    return max(1, int(frees_at - now + 0.999))
+
+
 def rate_limited(client_ip: str, cost: int = 1) -> bool:
+    """Charge `cost` units to this visitor, or refuse if they would exceed the hour's budget."""
+    return seconds_until_allowed(client_ip, cost) > 0
+
+
+def seconds_until_allowed(client_ip: str, cost: int = 1) -> int:
+    """Charge `cost` units and return 0, or return how many seconds until they would fit."""
     now = time.time()
-    cutoff = now - 3600
+    cutoff = now - RATE_WINDOW_SECONDS
     with _hits_lock:
         seen = _hits.setdefault(client_ip, deque())
         while seen and seen[0] < cutoff:
             seen.popleft()
-        if len(seen) + cost > RATE_LIMIT_PER_HOUR:
-            return True
+        wait = _seconds_until_room(seen, cost, now)
+        if wait:
+            return wait
         for _ in range(cost):
             seen.append(now)
         if len(_hits) > 10_000:  # bound the dict on a long-lived instance
             for key in [k for k, v in _hits.items() if not v or v[-1] < cutoff]:
                 _hits.pop(key, None)
-    return False
+    return 0
+
+
+def retry_wait(client_ip: str, cost: int = 1) -> int:
+    """Seconds until `cost` units would fit, without charging anything."""
+    now = time.time()
+    with _hits_lock:
+        seen = _hits.get(client_ip) or deque()
+        live = deque(t for t in seen if t >= now - RATE_WINDOW_SECONDS)
+        return _seconds_until_room(live, cost, now)
+
+
+def refund(client_ip: str, cost: int) -> None:
+    """Give back units charged for an audit that never produced a report."""
+    with _hits_lock:
+        seen = _hits.get(client_ip)
+        if not seen:
+            return
+        for _ in range(min(cost, len(seen))):
+            seen.pop()
+        if not seen:
+            _hits.pop(client_ip, None)
+
+
+def _minutes(seconds: int) -> str:
+    minutes = max(1, -(-seconds // 60))
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
+
+
+def rate_limit_response(ip: str, whole_site: bool, wait: int) -> HTTPException:
+    """A 429 that says when the next audit can run, and whether a cheaper one fits now."""
+    if whole_site:
+        page_wait = retry_wait(ip, 1)
+        detail = f"Rate limit reached. You can run a whole-site audit again in {_minutes(wait)}"
+        detail += ", or a single-page audit now." if page_wait == 0 else \
+                  f", or a single-page audit in {_minutes(page_wait)}."
+    else:
+        detail = f"Rate limit reached. You can run another audit in {_minutes(wait)}."
+    return HTTPException(429, detail, headers={"Retry-After": str(wait)})
 
 
 def client_ip(request: Request) -> str:
@@ -183,11 +247,15 @@ def audit(payload: AuditRequest, request: Request) -> Response:
     except UnsafeURL as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    if rate_limited(client_ip(request), SITE_RATE_COST if whole_site else 1):
-        raise HTTPException(429, f"Rate limit reached ({RATE_LIMIT_PER_HOUR}/hour). Try again later.")
+    ip = client_ip(request)
+    cost = SITE_RATE_COST if whole_site else 1
+    wait = seconds_until_allowed(ip, cost)
+    if wait:
+        raise rate_limit_response(ip, whole_site, wait)
 
     work_dir = Path(tempfile.mkdtemp(prefix="audit-"))
     started = time.time()
+    delivered = False  # anything short of a report refunds the units charged above
     try:
         # Long enough to queue behind one whole-site audit rather than 503.
         if not _audit_lock.acquire(timeout=360):
@@ -219,6 +287,7 @@ def audit(payload: AuditRequest, request: Request) -> Response:
             if data is None:
                 raise HTTPException(400, "JSON output is only available for a single page.")
             json_path = write_json(data, results, work_dir / "report.json")
+            delivered = True
             return Response(content=json_path.read_bytes(), media_type="application/json")
 
         suffix = "site-audit" if whole_site else "audit"
@@ -228,6 +297,7 @@ def audit(payload: AuditRequest, request: Request) -> Response:
             # One request, two deliverables: the PDF rides along base64-encoded so
             # the draft never needs a second crawl or anything kept on the server.
             draft = draft_from_site(audit) if data is None else build_draft(data.final_url, data.probe, results)
+            delivered = True
             return JSONResponse({
                 "host": host,
                 "score": scores["overall"],
@@ -245,6 +315,7 @@ def audit(payload: AuditRequest, request: Request) -> Response:
                 },
             })
 
+        delivered = True
         return Response(
             content=pdf_path.read_bytes(),
             media_type="application/pdf",
@@ -269,4 +340,6 @@ def audit(payload: AuditRequest, request: Request) -> Response:
         log.exception("audit failed for %s", safe.hostname)
         raise HTTPException(502, f"Could not audit that page: {exc}") from exc
     finally:
+        if not delivered:
+            refund(ip, cost)
         shutil.rmtree(work_dir, ignore_errors=True)
