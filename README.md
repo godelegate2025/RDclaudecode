@@ -40,6 +40,12 @@ and for scheduling recurring audits.
 returns the PDF, and a page that shows the report inline with a download button.
 It is stateless, so it scales to zero.
 
+**Whole-site is the default.** At roughly 6.6 seconds a page, twenty-five pages
+finishes inside three minutes, which fits in one request — so this needs no job
+queue, no storage and no polling. The page cap is `SITE_PAGE_LIMIT` (12) up to
+`SITE_PAGE_MAX` (25), and a site audit costs five times a page audit against the
+rate limit because that is roughly what it costs to serve.
+
 ```bash
 pip install -r requirements.txt -r requirements-service.txt
 uvicorn service.app:app --port 8000     # then open http://127.0.0.1:8000

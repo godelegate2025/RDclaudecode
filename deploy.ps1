@@ -59,7 +59,7 @@ gcloud run deploy $Service `
   --memory 2Gi `
   --cpu 2 `
   --concurrency 1 `
-  --timeout 300 `
+  --timeout 600 `
   --min-instances 0 `
   --max-instances $MaxInstances `
   --cpu-boost `
@@ -113,7 +113,7 @@ else { Fail "  SSRF guard did not return 400 - do not expose this service public
 
 try {
   $response = Invoke-WebRequest -Uri "$url/api/audit" -Method Post -TimeoutSec 300 `
-    -ContentType "application/json" -Body '{"url":"https://example.com"}'
+    -ContentType "application/json" -Body '{"url":"https://example.com","mode":"page"}'
   $score = $response.Headers["X-Audit-Score"]
   if ($score) { Write-Host "  live audit:  ok (example.com scored $score/100)" }
   else { Fail "  audit returned no score header" }

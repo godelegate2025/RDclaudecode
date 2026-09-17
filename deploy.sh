@@ -46,7 +46,7 @@ gcloud run deploy "$SERVICE" \
   --memory 2Gi \
   --cpu 2 \
   --concurrency 1 \
-  --timeout 300 \
+  --timeout 600 \
   --min-instances 0 \
   --max-instances "$MAX_INSTANCES" \
   --cpu-boost \
@@ -91,7 +91,7 @@ CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/audit" \
 printf '  live audit:  '
 HEADERS="$(curl -s -D - -o /dev/null -X POST "$URL/api/audit" \
            -H 'Content-Type: application/json' \
-           -d '{"url":"https://example.com"}')"
+           -d '{"url":"https://example.com","mode":"page"}')"
 SCORE="$(printf '%s' "$HEADERS" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-audit-score"{print $2}')"
 [ -n "$SCORE" ] && echo "ok (example.com scored $SCORE/100)" \
   || { printf '%s\n' "$HEADERS" | head -1

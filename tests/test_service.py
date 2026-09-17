@@ -91,6 +91,9 @@ class RouteGuardTest(unittest.TestCase):
 
 class HTTPSurfaceTest(unittest.TestCase):
     def setUp(self):
+        import service.app as app_module
+
+        app_module._hits.clear()
         self.client = TestClient(app)
 
     def test_index_serves_the_form(self):
@@ -110,6 +113,43 @@ class HTTPSurfaceTest(unittest.TestCase):
     def test_missing_url_is_a_client_error(self):
         self.assertEqual(self.client.post("/api/audit", json={}).status_code, 400)
 
+    def test_whole_site_is_the_default_mode(self):
+        """The tool audits sites; auditing one page is the opt-out."""
+        from service.app import AuditRequest
+
+        self.assertEqual(AuditRequest(url="https://example.com").mode, "site")
+
+    def test_the_page_limit_is_clamped(self):
+        import service.app as app_module
+
+        captured = {}
+
+        def fake_site(target, work_dir, limit):
+            captured["limit"] = limit
+            raise app_module.BlockedError("stop here")
+
+        original = app_module.run_site_audit
+        app_module.run_site_audit = fake_site
+        try:
+            self.client.post("/api/audit", json={"url": "https://example.com", "limit": 9999})
+            self.assertEqual(captured["limit"], app_module.SITE_PAGE_MAX)
+            app_module._hits.clear()
+            self.client.post("/api/audit", json={"url": "https://example.com", "limit": 0})
+            self.assertEqual(captured["limit"], 1)
+        finally:
+            app_module.run_site_audit = original
+
+    def test_a_site_audit_costs_more_rate_budget_than_a_page(self):
+        import service.app as app_module
+
+        app_module._hits.clear()
+        self.assertFalse(app_module.rate_limited("1.2.3.4", app_module.SITE_RATE_COST))
+        # The hourly allowance should now be mostly spent by that one site audit.
+        remaining = app_module.RATE_LIMIT_PER_HOUR - app_module.SITE_RATE_COST
+        for _ in range(remaining):
+            self.assertFalse(app_module.rate_limited("1.2.3.4"))
+        self.assertTrue(app_module.rate_limited("1.2.3.4"))
+
     def test_a_blocked_site_returns_422_not_a_report(self):
         """The wiring, not the detector: a BlockedError must not become a PDF."""
         import service.app as app_module
@@ -119,7 +159,9 @@ class HTTPSurfaceTest(unittest.TestCase):
             app_module.BlockedError("example.com blocked the audit (Cloudflare).")
         )
         try:
-            response = self.client.post("/api/audit", json={"url": "https://example.com"})
+            response = self.client.post(
+                "/api/audit", json={"url": "https://example.com", "mode": "page"}
+            )
         finally:
             app_module.run_audit = original
 

@@ -105,7 +105,7 @@ h1 .accent { color: var(--coral); display: block; }
 
 /* ---------- form ---------- */
 form { display: flex; flex-direction: column; gap: var(--space-3); }
-label {
+form > label {
   font-size: 11px; font-weight: 700; letter-spacing: .14em;
   text-transform: uppercase; color: var(--muted);
 }
@@ -131,6 +131,26 @@ button {
 button:hover:not(:disabled) { background: var(--coral-dark); }
 button:active:not(:disabled) { transform: scale(.985); }
 button:disabled { opacity: .5; cursor: progress; }
+
+/* ---------- scope toggle ---------- */
+.modes { display: grid; gap: 8px; }
+.mode {
+  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+  padding: 11px 13px; border: 1.5px solid var(--line); border-radius: var(--radius);
+  background: #fff; transition: border-color .15s ease;
+}
+.mode:hover { border-color: var(--muted); }
+.mode input { margin: 2px 0 0; accent-color: var(--coral); flex: none; }
+.mode span {
+  font-size: 12.5px; color: var(--muted); line-height: 1.35;
+  text-transform: none; letter-spacing: 0; font-weight: 400;
+}
+.mode strong {
+  display: block; margin-bottom: 1px;
+  font-size: 14px; color: var(--ink); font-weight: 600;
+  text-transform: none; letter-spacing: 0;
+}
+.mode:has(input:checked) { border-color: var(--coral); }
 
 /* ---------- status ---------- */
 .status { display: none; font-size: 14px; }
@@ -243,16 +263,26 @@ button:disabled { opacity: .5; cursor: progress; }
       <h1>Website<span class="accent">Design Audit</span></h1>
     </div>
     <p class="lede">
-      Enter a page and it is rendered in a real browser, then measured: the fonts in use,
-      the colour palette, WCAG contrast, and what can be improved — with each finding
-      labelled by how to automate the fix.
+      Every page is rendered in a real browser and measured — fonts, colour palette,
+      WCAG contrast, structure — then compared against the others, which is the only
+      way cross-page problems show up. Each finding says how to automate the fix.
     </p>
 
     <form id="form">
-      <label for="url">Page to audit</label>
+      <label for="url">Website to audit</label>
       <input id="url" type="text" inputmode="url" placeholder="windandwaterhomes.com" required
              autocomplete="url" spellcheck="false" autocapitalize="off" autocorrect="off">
-      <button id="go" type="submit">Audit this page</button>
+      <div class="modes" role="radiogroup" aria-label="Audit scope">
+        <label class="mode">
+          <input type="radio" name="mode" value="site" checked>
+          <span><strong>Whole site</strong>Every page found, compared against each other</span>
+        </label>
+        <label class="mode">
+          <input type="radio" name="mode" value="page">
+          <span><strong>This page only</strong>Faster, but cross-page problems stay hidden</span>
+        </label>
+      </div>
+      <button id="go" type="submit">Run the audit</button>
     </form>
 
     <div class="status" id="status" role="status" aria-live="polite">
@@ -273,10 +303,10 @@ button:disabled { opacity: .5; cursor: progress; }
     </div>
 
     <footer>
-      Every number comes from a real browser render of the page, as an anonymous
-      visitor sees it. One page per run. Load timing is a single cold measurement,
-      and findings are heuristics — a deliberate design choice can legitimately
-      fail one.
+      Every number comes from a real browser render of each page, as an anonymous
+      visitor sees it. A whole-site run samples the pages it can find and obeys
+      robots.txt. Load timing is a single cold measurement, and findings are
+      heuristics — a deliberate design choice can legitimately fail one.
     </footer>
   </section>
 
@@ -289,8 +319,8 @@ button:disabled { opacity: .5; cursor: progress; }
         <path d="M14 2v6h6M8 13h8M8 17h5"/>
       </svg>
       <div class="title">No report yet</div>
-      <p>Audit a page and the full PDF report appears here — palette, type inventory,
-         contrast table and the automation plan.</p>
+      <p>Run an audit and the full PDF report appears here — palette and typefaces
+         across the site, contrast, findings ranked by how many pages they affect.</p>
     </div>
     <iframe id="frame" title="Audit report"></iframe>
   </section>
@@ -308,20 +338,36 @@ button:disabled { opacity: .5; cursor: progress; }
   let objectUrl  = null;
 
   const clearStatus = () => {
+    clearInterval(ticker);
     status.removeAttribute('data-show');
     status.classList.remove('error');
     head.hidden = true;
     msg.innerHTML = '';
   };
 
+  let ticker = null;
+
   const working = (text) => {
     status.classList.remove('error');
     head.hidden = true;
-    msg.innerHTML = text + '<div class="bar"><i></i></div>';
+    msg.innerHTML = '<span id="workingText">' + text + '</span>' +
+                    '<div class="bar"><i></i></div>';
     status.setAttribute('data-show', '');
+
+    // A whole-site audit runs for minutes; a bar with no elapsed time reads as hung.
+    const started = Date.now();
+    const label = document.getElementById('workingText');
+    clearInterval(ticker);
+    ticker = setInterval(() => {
+      const seconds = Math.round((Date.now() - started) / 1000);
+      const shown = seconds < 60 ? seconds + 's'
+                  : Math.floor(seconds / 60) + 'm ' + String(seconds % 60).padStart(2, '0') + 's';
+      label.textContent = text + '  ·  ' + shown;
+    }, 1000);
   };
 
   const problem = (title, text) => {
+    clearInterval(ticker);
     status.classList.add('error');
     head.hidden = false;
     head.textContent = title;
@@ -346,15 +392,18 @@ button:disabled { opacity: .5; cursor: progress; }
     if (!url) return;
     field.value = url;
 
+    const mode = document.querySelector('input[name="mode"]:checked').value;
     button.disabled = true;
     summary.removeAttribute('data-show');
-    working('Rendering the page and measuring it — 20 to 60 seconds.');
+    working(mode === 'site'
+      ? 'Finding pages, rendering each one, then comparing them — 1 to 3 minutes.'
+      : 'Rendering the page and measuring it — 20 to 60 seconds.');
 
     try {
       const response = await fetch('/api/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, mode }),
       });
 
       if (!response.ok) {
@@ -372,16 +421,20 @@ button:disabled { opacity: .5; cursor: progress; }
       const host     = response.headers.get('X-Audit-Host') || url;
       const grade    = response.headers.get('X-Audit-Grade') || '';
       const findings = response.headers.get('X-Audit-Findings') || '0';
+      const pages = Number(response.headers.get('X-Audit-Pages') || 1);
 
       const scoreEl = document.getElementById('score');
       scoreEl.textContent = Number.isFinite(score) ? score : '—';
       scoreEl.style.color = scoreColour(score);
       document.getElementById('host').textContent = host;
-      document.getElementById('detail').textContent = `Grade ${grade} · ${findings} findings`;
+      document.getElementById('detail').textContent =
+        `Grade ${grade} · ${findings} findings · ` +
+        (pages > 1 ? `${pages} pages audited` : 'this page only');
 
       const download = document.getElementById('download');
       download.href = objectUrl;
-      download.download = `${host.replace(/[^a-z0-9.-]/gi, '-')}-audit.pdf`;
+      download.download =
+        `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
       document.getElementById('open').href = objectUrl;
 
       frame.src = objectUrl;
