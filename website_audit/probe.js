@@ -240,6 +240,15 @@
     return el ? el.getAttribute('content') : null;
   };
 
+  /* Machine-readable signals: schema blocks, canonical, indexability. */
+  const jsonLd = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+    .map((el) => (el.textContent || '').slice(0, 20000))
+    .filter(Boolean)
+    .slice(0, 20);
+
+  const robotsMeta = (meta('robots') || '').toLowerCase();
+  const canonicalEl = document.querySelector('link[rel="canonical"]');
+
   const stylesheets = Array.from(document.querySelectorAll('link[rel~="stylesheet"]')).map((l) => ({
     href: l.href,
     media: l.media || 'all',
@@ -262,6 +271,12 @@
     og_title: meta('og:title', 'property'),
     og_image: meta('og:image', 'property'),
     favicon: !!document.querySelector('link[rel~="icon"]'),
+    json_ld: jsonLd,
+    canonical: canonicalEl ? canonicalEl.href : null,
+    robots_meta: robotsMeta || null,
+    noindex: /\bnoindex\b/.test(robotsMeta),
+    twitter_card: meta('twitter:card'),
+    hreflang_count: document.querySelectorAll('link[rel="alternate"][hreflang]').length,
     theme_color: meta('theme-color'),
     color_scheme_meta: meta('color-scheme'),
     headings,

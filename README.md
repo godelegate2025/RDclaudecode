@@ -103,6 +103,15 @@ and blending translucent layers), scored against WCAG AA. Each failing pair come
 with a replacement colour that keeps the original hue and saturation and moves
 lightness only until it passes.
 
+**Findability — whether machines can read the site.** The headline check is how
+much of the copy survives without JavaScript: the served HTML is compared against
+the rendered DOM, because a browser runs the scripts and most crawlers and answer
+engines do not. A page that renders 2,000 words from 80 words of HTML looks
+perfect to a human and is close to invisible to them. Also: JSON-LD structured
+data and whether it identifies the business, accidental `noindex`, canonical
+tags, robots.txt, sitemap, `llms.txt`, and question-style headings that are not
+marked up as FAQ.
+
 **Everything else that is measurable** — viewport meta and horizontal overflow at
 390px, alt text, heading order, tap-target sizes, font loading, image weight and
 formats, layout-shift risk, render-blocking CSS, page weight, meta and Open Graph

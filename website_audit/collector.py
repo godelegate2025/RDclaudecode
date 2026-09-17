@@ -13,6 +13,7 @@ from playwright.sync_api import Browser
 from playwright.sync_api import Error as PlaywrightError
 
 from .browser import browser_session
+from .findability import site_files
 
 PROBE = (Path(__file__).parent / "probe.js").read_text()
 
@@ -28,6 +29,8 @@ class PageData:
     load_ms: int
     probe: dict[str, Any]
     mobile: dict[str, Any]
+    raw_html: str = ""
+    site_files: Any = None
     resources: list[dict[str, Any]] = field(default_factory=list)
     console_errors: list[str] = field(default_factory=list)
     screenshots: dict[str, str] = field(default_factory=dict)
@@ -99,6 +102,15 @@ def collect(
 
         started = time.time()
         response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+
+        # The document exactly as the server sent it — what a crawler that does
+        # not execute JavaScript has to work with.
+        raw_html = ""
+        if response is not None:
+            try:
+                raw_html = response.text()[:400000]
+            except PlaywrightError:
+                pass
         try:
             page.wait_for_load_state("networkidle", timeout=8000)
         except PlaywrightError:
@@ -138,6 +150,8 @@ def collect(
     return PageData(
         url=url,
         final_url=final_url,
+        raw_html=raw_html,
+        site_files=site_files(final_url),
         status=response.status if response else None,
         load_ms=load_ms,
         probe=probe,

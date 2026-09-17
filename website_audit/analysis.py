@@ -9,6 +9,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
+from .findability import has_identity_schema, js_dependency, structured_data_types
+
 SEVERITY_WEIGHT = {"critical": 28, "high": 16, "medium": 8, "low": 3}
 # CSS keywords and system-stack tokens — not typefaces anyone chose. Named
 # fonts (Roboto, Helvetica, Arial) are deliberately NOT here: a site using one
@@ -787,7 +789,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
     if not probe["meta_description"]:
         add(
             id="seo-description",
-            category="SEO & Meta",
+            category="Findability",
             severity="medium",
             title="No meta description",
             detail="Search engines and link previews fall back to scraping random body text.",
@@ -798,7 +800,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
     elif len(probe["meta_description"]) > 165:
         add(
             id="seo-description-length",
-            category="SEO & Meta",
+            category="Findability",
             severity="low",
             title=f"Meta description is {len(probe['meta_description'])} characters",
             detail="Google truncates around 160 characters, so the tail is wasted.",
@@ -811,7 +813,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
         missing = [name for name, present in (("og:title", probe["og_title"]), ("og:image", probe["og_image"])) if not present]
         add(
             id="seo-open-graph",
-            category="SEO & Meta",
+            category="Findability",
             severity="low",
             title=f"Missing Open Graph tags ({', '.join(missing)})",
             detail="Links shared to Slack, LinkedIn or iMessage render as a bare URL instead of a card.",
@@ -823,7 +825,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
     if not probe["title"]:
         add(
             id="seo-title",
-            category="SEO & Meta",
+            category="Findability",
             severity="high",
             title="Page has no <title>",
             detail="The title is the primary signal for search results, browser tabs and bookmarks.",
@@ -835,7 +837,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
     if not probe["favicon"]:
         add(
             id="seo-favicon",
-            category="SEO & Meta",
+            category="Findability",
             severity="low",
             title="No favicon declared",
             detail="Browsers show a generic placeholder in tabs and bookmarks.",
@@ -843,6 +845,156 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
             fix="Add a favicon and an apple-touch-icon.",
             automation="A favicon generator produces every required size from one source image.",
         )
+
+    # ---- findability: what machines can read
+    probe_files = getattr(data, "site_files", None)
+    json_ld = probe.get("json_ld") or []
+    schema_types = structured_data_types(json_ld)
+
+    if probe.get("noindex"):
+        add(
+            id="find-noindex",
+            category="Findability",
+            severity="critical",
+            title="This page tells search engines not to index it",
+            detail=(
+                "A `noindex` directive is in the page's robots meta tag. If that is left over "
+                "from a staging environment, the page is invisible in search and no amount of "
+                "other optimisation will change that."
+            ),
+            evidence=[f"meta robots: {probe.get('robots_meta')}"],
+            fix="Remove `noindex` unless the page is deliberately hidden.",
+            automation="Assert no noindex on production routes in the deploy smoke test.",
+        )
+
+    dependency = js_dependency(getattr(data, "raw_html", ""), probe.get("body_text") or "")
+    if dependency.measurable and dependency.ratio < 0.6:
+        share = round(100 * (1 - dependency.ratio))
+        add(
+            id="find-js-dependency",
+            category="Findability",
+            severity="high" if dependency.ratio < 0.3 else "medium",
+            title=f"{share}% of the page's text only appears after JavaScript runs",
+            detail=(
+                "A browser runs the scripts; many crawlers and most AI answer engines do not. "
+                "They see the HTML as served. The rendered page looks complete, which is why "
+                "this is invisible to everyone until someone checks."
+            ),
+            evidence=[
+                f"{dependency.raw_words:,} words in the served HTML",
+                f"{dependency.rendered_words:,} words once the page finished rendering",
+            ],
+            fix=(
+                "Server-render or pre-render the main content so it is present in the initial "
+                "HTML response."
+            ),
+            automation=(
+                "Assert a minimum word count in the raw response for key routes — it catches "
+                "the regression the moment a component moves client-side."
+            ),
+        )
+
+    if not schema_types:
+        add(
+            id="find-no-structured-data",
+            category="Findability",
+            severity="medium",
+            title="No structured data on the page",
+            detail=(
+                "Schema.org markup is how a search or answer engine knows what the page is "
+                "about rather than guessing from prose. Without it the page competes on text alone."
+            ),
+            evidence=["No <script type=\"application/ld+json\"> blocks found"],
+            fix="Add JSON-LD describing the organisation, and the page's own type where one fits.",
+            automation="Generate the JSON-LD from the same data the page renders from.",
+        )
+    elif not has_identity_schema(schema_types):
+        add(
+            id="find-no-identity-schema",
+            category="Findability",
+            severity="low",
+            title="Structured data does not identify the business",
+            detail=(
+                "Schema is present but none of it says who this is. An Organization or "
+                "LocalBusiness block is what links the site to a knowledge panel."
+            ),
+            evidence=[f"Types found: {', '.join(schema_types[:8])}"],
+            fix="Add an Organization (or LocalBusiness) block with name, logo, URL and contact details.",
+            automation="One shared JSON-LD partial in the base template covers every page.",
+        )
+
+    question_headings = [h for h in probe.get("headings", []) if "?" in (h.get("text") or "")]
+    if question_headings and not any(t.lower() == "faqpage" for t in schema_types):
+        add(
+            id="find-faq-not-marked-up",
+            category="Findability",
+            severity="low",
+            title=f"{len(question_headings)} question-style heading(s) are not marked up as FAQ",
+            detail=(
+                "The page already answers questions. FAQPage markup is what lets an answer "
+                "engine quote those answers directly."
+            ),
+            evidence=[h["text"][:70] for h in question_headings[:4]],
+            fix="Wrap the question and answer pairs in FAQPage JSON-LD.",
+            automation="Generate the markup from the same content that renders the FAQ.",
+        )
+
+    if not probe.get("canonical"):
+        add(
+            id="find-no-canonical",
+            category="Findability",
+            severity="low",
+            title="No canonical URL declared",
+            detail=(
+                "Without a canonical tag, the same page reached via different URLs "
+                "(trailing slash, tracking parameters, http vs https) can be treated as "
+                "several competing pages."
+            ),
+            evidence=["No <link rel=\"canonical\"> found"],
+            fix="Add a self-referencing canonical to every page.",
+            automation="One line in the base template.",
+        )
+
+    if probe_files is not None:
+        if not probe_files.robots_txt:
+            add(
+                id="find-no-robots",
+                category="Findability",
+                severity="low",
+                title="No robots.txt",
+                detail="Crawlers request it first. Its absence is not fatal, but it is where you point them at the sitemap.",
+                evidence=["/robots.txt did not return a usable file"],
+                fix="Add a robots.txt with a Sitemap: line.",
+                automation="Static file, generated at build time.",
+            )
+        if not probe_files.sitemap:
+            add(
+                id="find-no-sitemap",
+                category="Findability",
+                severity="medium",
+                title="No sitemap found",
+                detail=(
+                    "A sitemap is how a crawler learns about pages that are not well linked. "
+                    "Without one, discovery depends entirely on your internal linking."
+                ),
+                evidence=["Neither robots.txt nor the usual paths produced a sitemap"],
+                fix="Publish sitemap.xml and reference it from robots.txt.",
+                automation="Most site builders generate one; it usually needs enabling, not writing.",
+            )
+        if not probe_files.llms_txt:
+            add(
+                id="find-no-llms-txt",
+                category="Findability",
+                severity="low",
+                title="No llms.txt",
+                detail=(
+                    "An emerging convention: a plain-text file telling AI assistants what the "
+                    "site is and which pages matter. Early, optional, and cheap to add."
+                ),
+                evidence=["/llms.txt not found"],
+                fix="Publish a short llms.txt describing the business and linking key pages.",
+                automation="A static file, updated when the site structure changes.",
+            )
 
     if data.console_errors:
         add(
@@ -871,7 +1023,10 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
     }
 
 
-CATEGORIES = ["Typography", "Colour", "Accessibility", "Performance", "Consistency", "Responsive", "SEO & Meta"]
+CATEGORIES = [
+    "Typography", "Colour", "Accessibility", "Performance",
+    "Consistency", "Responsive", "Findability",
+]
 
 
 def score(findings: list[Finding]) -> dict[str, Any]:

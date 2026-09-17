@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- An empty shell whose copy is injected by script: what a crawler that does
+     not run JavaScript would see is the two words in the noscript block. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Client rendered</title></head>
+<body>
+  <div id="root"></div>
+  <noscript>Enable JavaScript</noscript>
+  <script>
+    const copy = [
+      "We design and build homes across North Texas for families who want space to grow.",
+      "Every home is delivered with a ten year structural warranty and a fixed price contract.",
+      "Our team has completed more than four hundred homes in the last decade.",
+      "Speak to a designer about your plot, your budget and the timeline you have in mind.",
+    ];
+    const root = document.getElementById('root');
+    root.innerHTML = '<h1>Homes built properly</h1>' +
+      copy.map((line) => '<p>' + line + ' ' + line + ' ' + line + '</p>').join('');
+  </script>
+</body>
+</html>

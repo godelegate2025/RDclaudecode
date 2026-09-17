@@ -315,7 +315,7 @@ def site_findings(pages: list[Page]) -> list[Finding]:  # noqa: C901 - a flat ru
         findings.append(
             Finding(
                 id="site-missing-descriptions",
-                category="SEO & Meta",
+                category="Findability",
                 severity="medium",
                 title=f"{len(missing_descriptions)} of {total} pages have no meta description",
                 detail="Search engines fall back to scraping body text, usually badly.",
@@ -328,7 +328,7 @@ def site_findings(pages: list[Page]) -> list[Finding]:  # noqa: C901 - a flat ru
         findings.append(
             Finding(
                 id="site-missing-titles",
-                category="SEO & Meta",
+                category="Findability",
                 severity="high",
                 title=f"{len(missing_titles)} page(s) have no title",
                 detail="An untitled page shows its URL in search results and browser tabs.",
