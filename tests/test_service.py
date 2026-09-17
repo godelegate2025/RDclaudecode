@@ -105,6 +105,19 @@ class HTTPSurfaceTest(unittest.TestCase):
     def test_healthz(self):
         self.assertEqual(self.client.get("/healthz").json(), {"ok": True})
 
+    def test_service_worker_is_served_from_the_root(self):
+        # Its scope must cover /reports/, which only a root-level script can do.
+        response = self.client.get("/sw.js")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("javascript", response.headers["content-type"])
+        self.assertIn("/reports/", response.text)
+        self.assertIn("register('/sw.js')", self.client.get("/").text)
+
+    def test_reports_are_not_kept_on_the_server(self):
+        response = self.client.get("/reports/example.com-site-audit.pdf")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("Run the audit again", response.text)
+
     def test_unsafe_url_is_refused_before_any_browser_starts(self):
         response = self.client.post("/api/audit", json={"url": "http://169.254.169.254/"})
         self.assertEqual(response.status_code, 400)

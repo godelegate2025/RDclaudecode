@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -60,6 +60,7 @@ _audit_lock = threading.Lock()
 
 STATIC = Path(__file__).parent / "static"
 INDEX = STATIC / "index.html"
+SERVICE_WORKER = STATIC / "sw.js"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -138,6 +139,27 @@ def run_audit(target: str, work_dir: Path):
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     return HTMLResponse(INDEX.read_text(encoding="utf-8"))
+
+
+@app.get("/sw.js")
+def service_worker() -> Response:
+    # Served from the root so its scope covers /reports/. A worker's scope can
+    # never be wider than the path it was loaded from, so /static/sw.js would not do.
+    return Response(
+        content=SERVICE_WORKER.read_bytes(),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/reports/{name}")
+def report(name: str) -> PlainTextResponse:
+    # Reports live only in the browser that ran the audit (see sw.js); the
+    # server keeps nothing. This answers a link opened elsewhere honestly.
+    return PlainTextResponse(
+        "Reports are not stored on the server. Run the audit again to get a fresh copy.",
+        status_code=404,
+    )
 
 
 @app.get("/healthz")

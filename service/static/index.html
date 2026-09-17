@@ -337,6 +337,36 @@ button:disabled { opacity: .5; cursor: progress; }
   const empty    = document.getElementById('empty');
   let objectUrl  = null;
 
+  // The report is shown at /reports/<name>.pdf, served by a service worker from
+  // Cache Storage. Chrome's PDF viewer names its download after that URL; a
+  // blob: URL would give it a random id instead. Without a worker (private
+  // mode, http://, old browser) the blob URL is the fallback.
+  const REPORTS = 'audit-reports';
+  const workerReady = 'serviceWorker' in navigator
+    ? navigator.serviceWorker.register('/sw.js')
+        .then(() => navigator.serviceWorker.ready)
+        .then(() => !!navigator.serviceWorker.controller)
+        .catch(() => false)
+    : Promise.resolve(false);
+
+  const publish = async (blob, filename) => {
+    if (!(await workerReady) || !('caches' in window)) return null;
+    try {
+      const path = '/reports/' + filename;
+      const cache = await caches.open(REPORTS);
+      for (const stale of await cache.keys()) await cache.delete(stale);
+      await cache.put(path, new Response(blob, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="${filename}"`,
+        },
+      }));
+      return path;
+    } catch (e) {
+      return null;
+    }
+  };
+
   const clearStatus = () => {
     clearInterval(ticker);
     status.removeAttribute('data-show');
@@ -431,13 +461,15 @@ button:disabled { opacity: .5; cursor: progress; }
         `Grade ${grade} · ${findings} findings · ` +
         (pages > 1 ? `${pages} pages audited` : 'this page only');
 
-      const download = document.getElementById('download');
-      download.href = objectUrl;
-      download.download =
-        `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
-      document.getElementById('open').href = objectUrl;
+      const filename = `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
+      const reportUrl = (await publish(blob, filename)) || objectUrl;
 
-      frame.src = objectUrl;
+      const download = document.getElementById('download');
+      download.href = reportUrl;
+      download.download = filename;
+      document.getElementById('open').href = reportUrl;
+
+      frame.src = reportUrl;
       frame.setAttribute('data-show', '');
       empty.style.display = 'none';
 

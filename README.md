@@ -176,7 +176,8 @@ website_audit/
 service/
   app.py          FastAPI: one request runs one audit and returns the PDF
   security.py     SSRF guard — required for any public deployment
-  static/         the form and report viewer
+  static/         the form, the report viewer, and the service worker that gives
+                  the PDF a real URL so the browser names the download after the site
 tests/            offline end-to-end run against a deliberately flawed fixture
 ```
 
