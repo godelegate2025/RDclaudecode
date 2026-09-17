@@ -249,6 +249,13 @@
   return {
     title: document.title || null,
     body_text_sample: (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1500),
+    /* Full visible text, for the content checks. Capped so one enormous page
+       cannot blow up memory on a whole-site crawl. */
+    body_text: (document.body.innerText || '').replace(/[ \t]+/g, ' ').trim().slice(0, 120000),
+    links: Array.from(document.querySelectorAll('a[href]'))
+      .map((a) => a.href)
+      .filter((h) => /^https?:/.test(h))
+      .slice(0, 800),
     lang: document.documentElement.getAttribute('lang'),
     meta_description: meta('description'),
     viewport_meta: meta('viewport'),

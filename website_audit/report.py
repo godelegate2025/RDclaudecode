@@ -68,14 +68,31 @@ def _data_uri(path: str) -> str:
     return "data:image/png;base64," + base64.b64encode(Path(path).read_bytes()).decode()
 
 
-def render_html(data, results: dict[str, Any]) -> str:
-    # Everything in this report is untrusted text scraped from the audited page,
+# The report is branded from the same logo the web header uses; absent, the
+# wordmark stands alone rather than leaving a gap.
+LOGO = Path(__file__).resolve().parent.parent / "service" / "static" / "logo.png"
+
+
+def brand_logo() -> str | None:
+    try:
+        return _data_uri(str(LOGO)) if LOGO.exists() else None
+    except OSError:
+        return None
+
+
+def _env() -> Environment:
+    # Everything in these reports is untrusted text scraped from audited pages,
     # so escaping is unconditional.
     env = Environment(
         loader=FileSystemLoader(Path(__file__).parent / "templates"),
         autoescape=True,
     )
     env.filters["code"] = inline_code
+    return env
+
+
+def render_html(data, results: dict[str, Any]) -> str:
+    env = _env()
     template = env.get_template("report.html.j2")
     resource_rows = sorted(
         results["resource_summary"].items(), key=lambda kv: kv[1]["bytes"], reverse=True
@@ -96,11 +113,31 @@ def render_html(data, results: dict[str, Any]) -> str:
         resource_rows=resource_rows,
         total_bytes=results["total_bytes"],
         shots={name: _data_uri(path) for name, path in data.screenshots.items()},
+        logo=brand_logo(),
         severity_colour=SEVERITY_COLOUR,
         score_colour=score_colour,
         size_role=size_role,
         fmt_bytes=fmt_bytes,
         primary_family=primary_family,
+    )
+
+
+def render_site_html(audit) -> str:
+    """The whole-site report: page ranking, merged palette, cross-page findings."""
+    env = _env()
+    template = env.get_template("site_report.html.j2")
+    audited = audit.audited
+    total_chars = sum(chars for _name, chars in audit.families) or 1
+    return template.render(
+        audit=audit,
+        generated_at=datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC"),
+        ranked_pages=sorted(audited, key=lambda p: (p.score, p.url)),
+        accents=[s for s in audit.palette if s.structural_role is None],
+        total_chars=total_chars,
+        logo=brand_logo(),
+        severity_colour=SEVERITY_COLOUR,
+        score_colour=score_colour,
+        page_path=lambda url: urlparse(url).path or "/",
     )
 
 
@@ -126,7 +163,7 @@ def html_to_pdf(
             footer_template=(
                 '<div style="width:100%;font:8px system-ui;color:#898781;padding:0 13mm;'
                 'display:flex;justify-content:space-between;">'
-                "<span>Website design audit</span>"
+                "<span>REDEFINE &middot; Website Design Audit</span>"
                 '<span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>'
             ),
             margin={"top": "14mm", "bottom": "16mm", "left": "13mm", "right": "13mm"},

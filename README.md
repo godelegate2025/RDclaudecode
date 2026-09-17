@@ -11,6 +11,9 @@ python3 -m playwright install chromium     # skip if Chromium is already install
 
 python3 -m website_audit example.com
 python3 -m website_audit https://example.com/pricing -o reports/pricing.pdf --json
+
+# Whole site: discover pages from the sitemap, measure each, compare them
+python3 -m website_audit example.com --site --limit 25
 ```
 
 The PDF path goes to stdout; a one-line summary goes to stderr:
@@ -70,6 +73,20 @@ will happily render a cloud metadata endpoint or an internal admin panel and
 hand back a screenshot. Every URL is resolved and checked against private,
 loopback, link-local and metadata ranges before Chromium sees it, and re-checked
 on each redirect.
+
+## Whole-site mode
+
+`--site` discovers pages (robots.txt → sitemap → homepage links), renders each in
+Chromium, and adds a cross-page layer that a single-page audit cannot see:
+typefaces and colours across the whole site, contradicting statistics, US/UK
+spelling drift, duplicate titles, copy pasted between pages, placeholder text
+still live, and every finding ranked by how many pages it affects.
+
+All of it is measured or compared — no model, no tokens, same answer every run.
+Judgement calls (is this copy persuasive?) are deliberately absent.
+
+`robots.txt` is honoured unless `--ignore-robots` is passed, which is only
+appropriate on a site you control.
 
 ## What it measures
 

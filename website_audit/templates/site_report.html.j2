@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Site audit — {{ audit.host }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* REDEFINE palette. Coral is brand chrome only, never a data colour. */
+  :root {
+    --surface: #ffffff; --plane: #F4F3F0; --ink: #191616; --ink-2: #2C2828;
+    --muted: #7C7773; --grid: #E3E1DC; --rule: #C9C6C0;
+    --brand: #FC4452; --brand-dim: #FBD9DC;
+    --good: #0f8a3d; --warning: #b57500; --serious: #d1741f; --critical: #A8201A;
+  }
+  @page { size: A4; margin: 14mm 13mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface); color: var(--ink);
+    font: 10pt/1.5 Archivo, system-ui, sans-serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  h1, h2 {
+    margin: 0; font-family: Anton, 'Arial Narrow', sans-serif; font-weight: 400;
+    text-transform: uppercase; letter-spacing: .01em;
+  }
+  h1 { font-size: 30pt; line-height: 1.02; }
+  h2 { font-size: 15pt; line-height: 1.1; }
+  h3 { margin: 0; font-size: 10.5pt; font-weight: 600; }
+  p { margin: 0 0 6pt; }
+  small { font-size: 8pt; color: var(--muted); }
+  .page-break { break-before: page; }
+  section { margin-bottom: 16pt; }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10pt;
+    border-bottom: 1px solid var(--rule); padding-bottom: 5pt; margin-bottom: 10pt;
+  }
+  .eyebrow { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+
+  .cover-head { border-bottom: 2.5pt solid var(--brand); padding-bottom: 10pt; margin-bottom: 14pt; }
+  .brandbar { display: flex; align-items: center; gap: 7pt; margin-bottom: 10pt; }
+  .brandbar img { height: 18pt; width: auto; display: block; }
+  .brandbar .wordmark {
+    font-family: Anton, 'Arial Narrow', sans-serif; font-size: 13pt;
+    text-transform: uppercase; letter-spacing: .02em;
+  }
+  .cover-head .kicker {
+    font-size: 8pt; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--brand); font-weight: 600; margin-bottom: 8pt;
+  }
+
+  .hero { display: grid; grid-template-columns: 118pt 1fr; gap: 18pt; align-items: start; }
+  .grade { border: 1px solid var(--grid); border-radius: 8pt; padding: 12pt 10pt; text-align: center; background: var(--plane); }
+  .grade .value { font-family: Anton, 'Arial Narrow', sans-serif; font-size: 46pt; line-height: .9; }
+  .grade .out-of { font-size: 9pt; color: var(--muted); margin-top: 3pt; }
+  .grade .letter { margin-top: 8pt; padding-top: 8pt; border-top: 1px solid var(--grid); font-size: 8pt; color: var(--ink-2); }
+
+  .meters { display: grid; gap: 7pt; }
+  .meter { display: grid; grid-template-columns: 86pt 1fr 26pt; align-items: center; gap: 8pt; }
+  .meter .label { font-size: 8.5pt; color: var(--ink-2); }
+  .meter .track { height: 8pt; background: var(--grid); border-radius: 4pt; overflow: hidden; }
+  .meter .fill { height: 100%; border-radius: 4pt; }
+  .meter .value { font-size: 8.5pt; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .tally { display: flex; gap: 6pt; flex-wrap: wrap; margin-top: 12pt; }
+  .chip { display: flex; align-items: center; gap: 5pt; border: 1px solid var(--grid); border-radius: 20pt; padding: 3pt 9pt; font-size: 8.5pt; }
+  .dot { width: 7pt; height: 7pt; border-radius: 50%; flex: none; }
+
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8pt; margin-top: 14pt; }
+  .fact { border-left: 2pt solid var(--brand-dim); padding-left: 7pt; }
+  .fact .n { font-family: Anton, 'Arial Narrow', sans-serif; font-size: 16pt; line-height: 1.1; }
+  .fact .k { font-size: 7.5pt; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  th { text-align: left; font-weight: 600; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); border-bottom: 1px solid var(--rule); padding: 0 6pt 4pt 0; }
+  td { padding: 5pt 6pt 5pt 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  tr { break-inside: avoid; }
+  .mono, code { font-family: ui-monospace, Menlo, monospace; font-size: 8pt; }
+  code { background: var(--plane); border: 1px solid var(--grid); border-radius: 2pt; padding: 0 2pt; }
+
+  .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6pt; }
+  .swatch { border: 1px solid var(--grid); border-radius: 5pt; overflow: hidden; break-inside: avoid; }
+  .swatch .chipface { height: 30pt; display: flex; align-items: flex-end; padding: 4pt; }
+  .swatch .chipface span { font-size: 7pt; font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+  .swatch .meta { padding: 4pt; font-size: 7pt; color: var(--ink-2); }
+
+  .finding { break-inside: avoid; border-top: 1px solid var(--grid); padding: 9pt 0; }
+  .finding-head { display: flex; gap: 7pt; align-items: baseline; margin-bottom: 4pt; }
+  .badge { display: inline-flex; align-items: center; gap: 4pt; flex: none; font-size: 7pt; font-weight: 600;
+           text-transform: uppercase; letter-spacing: .06em; border: 1px solid var(--grid);
+           border-radius: 3pt; padding: 1.5pt 5pt; color: var(--ink-2); }
+  .detail { color: var(--ink-2); font-size: 9pt; }
+  .evidence { margin: 6pt 0; padding: 6pt 8pt; background: var(--plane); border-left: 2pt solid var(--grid); border-radius: 0 4pt 4pt 0; }
+  .evidence ul { margin: 0; padding-left: 12pt; }
+  .evidence li { font-size: 8pt; color: var(--ink-2); margin-bottom: 2pt; word-break: break-word; }
+  .fix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8pt; margin-top: 5pt; }
+  .fix-grid div { font-size: 8.5pt; }
+  .fix-grid .k { font-size: 7pt; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); display: block; margin-bottom: 2pt; }
+  footer { margin-top: 16pt; padding-top: 7pt; border-top: 1px solid var(--grid); font-size: 7.5pt; color: var(--muted); }
+  footer strong { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="cover-head">
+  <div class="brandbar">
+    {% if logo %}<img src="{{ logo }}" alt="">{% endif %}
+    <span class="wordmark">Redefine</span>
+  </div>
+  <div class="kicker">Whole-site design audit</div>
+  <h1>{{ audit.host }}</h1>
+  <div style="font-size: 9.5pt; color: var(--ink-2);">{{ audit.start_url }}</div>
+  <small>
+    Generated {{ generated_at }} · {{ audit.audited|length }} of {{ audit.pages|length }} pages audited
+    · discovered via {{ audit.discovery_source }} · {{ '%.0f'|format(audit.elapsed_s) }}s
+  </small>
+</div>
+
+<div class="hero">
+  <div class="grade">
+    <div class="value" style="color: {{ score_colour(audit.scores.overall) }}">{{ audit.scores.overall }}</div>
+    <div class="out-of">out of 100</div>
+    <div class="letter">Grade <strong>{{ audit.scores.grade }}</strong> · {{ audit.findings|length }} findings</div>
+  </div>
+  <div>
+    <div class="meters">
+      {% for name, value in audit.scores.categories.items() %}
+      <div class="meter">
+        <div class="label">{{ name }}</div>
+        <div class="track"><div class="fill" style="width: {{ value }}%; background: {{ score_colour(value) }}"></div></div>
+        <div class="value">{{ value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="tally">
+      {% for severity in ['critical', 'high', 'medium', 'low'] %}
+      <div class="chip">
+        <span class="dot" style="background: {{ severity_colour[severity] }}"></span>
+        <strong>{{ audit.scores.counts.get(severity, 0) }}</strong> {{ severity }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="facts">
+  <div class="fact"><div class="n">{{ audit.audited|length }}</div><div class="k">Pages audited</div></div>
+  <div class="fact"><div class="n">{{ audit.families|length }}</div><div class="k">Typefaces site-wide</div></div>
+  <div class="fact"><div class="n">{{ audit.palette|length }}</div><div class="k">Colour clusters</div></div>
+  <div class="fact"><div class="n">{{ accents|length }}</div><div class="k">Distinct accents</div></div>
+</div>
+
+{% if audit.discovery_notes %}
+<p style="margin-top: 12pt;"><small>{{ audit.discovery_notes|join(' ') }}</small></p>
+{% endif %}
+
+<!-- ======================= PAGE SCORES ======================= -->
+<section class="page-break">
+  <div class="section-head">
+    <h2>Page by page</h2>
+    <span class="eyebrow">Weakest first</span>
+  </div>
+  <table>
+    <thead><tr><th style="width: 38%">Page</th><th>Title</th><th>Score</th><th>Grade</th><th>Findings</th></tr></thead>
+    <tbody>
+      {% for page in ranked_pages %}
+      <tr>
+        <td class="mono">{{ page_path(page.url) }}</td>
+        <td>{{ (page.title or '— untitled —')[:52] }}</td>
+        <td class="mono" style="color: {{ score_colour(page.score) }}"><strong>{{ page.score }}</strong></td>
+        <td class="mono">{{ page.grade_letter }}</td>
+        <td class="mono">{{ page.findings }}</td>
+      </tr>
+      {% endfor %}
+      {% for page in audit.pages if not page.ok %}
+      <tr>
+        <td class="mono">{{ page_path(page.url) }}</td>
+        <td colspan="4"><small>Not audited — {{ page.error[:110] }}</small></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<!-- ======================= SITE PALETTE ======================= -->
+<section>
+  <div class="section-head">
+    <h2>Palette across the site</h2>
+    <span class="eyebrow">Every page merged, near-identical shades collapsed</span>
+  </div>
+  <div class="swatches">
+    {% for swatch in audit.palette[:18] %}
+    <div class="swatch">
+      <div class="chipface" style="background: {{ swatch.hex }}; color: {{ swatch.readable_on }}">
+        <span>{{ swatch.hex|upper }}</span>
+      </div>
+      <div class="meta">{{ swatch.role }}{% if swatch.members|length > 1 %}<br>+{{ swatch.members|length - 1 }} near-dupes{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <p style="margin-top: 9pt; font-size: 9pt; color: var(--ink-2);">
+    {{ accents|length }} distinct accent colour(s) across {{ audit.audited|length }} pages.
+    A coherent system uses one brand colour, one or two accents, and a neutral ramp —
+    anything beyond that is usually drift between components rather than a decision.
+  </p>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Typefaces across the site</h2>
+    <span class="eyebrow">Weighted by text volume</span>
+  </div>
+  <table>
+    <thead><tr><th>Family</th><th>Characters</th><th>Share</th></tr></thead>
+    <tbody>
+      {% for name, chars in audit.families[:10] %}
+      <tr>
+        <td><strong>{{ name }}</strong></td>
+        <td class="mono">{{ '{:,}'.format(chars) }}</td>
+        <td class="mono">{{ (100 * chars / total_chars)|round(1) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<!-- ======================= FINDINGS ======================= -->
+<div class="page-break"></div>
+<section>
+  <div class="section-head">
+    <h2>Findings</h2>
+    <span class="eyebrow">Severity, then reach</span>
+  </div>
+  {% for finding in audit.findings %}
+  <div class="finding">
+    <div class="finding-head">
+      <span class="badge"><span class="dot" style="background: {{ severity_colour[finding.severity] }}"></span>{{ finding.severity }}</span>
+      <h3>{{ finding.title }}</h3>
+    </div>
+    <div class="detail">{{ finding.detail|code }}</div>
+    {% if finding.evidence %}
+    <div class="evidence"><ul>
+      {% for item in finding.evidence %}<li>{{ item|code }}</li>{% endfor %}
+    </ul></div>
+    {% endif %}
+    <div class="fix-grid">
+      <div><span class="k">Fix</span>{{ finding.fix|code }}</div>
+      <div><span class="k">Automate it</span>{{ finding.automation|code }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<footer>
+  <strong>Redefine</strong> · whole-site audit of {{ audit.start_url }} · generated {{ generated_at }}.
+  Every measurement comes from a real Chromium render of each page as an anonymous visitor.
+  Pages were discovered via {{ audit.discovery_source }} and capped for politeness — this is a
+  sample of the site, not necessarily all of it. Findings are heuristics; a deliberate design
+  decision can legitimately fail one.
+</footer>
+
+</body>
+</html>

@@ -14,7 +14,8 @@ from .blocking import detect as detect_block
 from .blocking import explain as explain_block
 from .browser import browser_session
 from .collector import collect
-from .report import html_to_pdf, render_html, write_json
+from .report import html_to_pdf, render_html, render_site_html, write_json
+from .site import audit_site
 
 
 def slug(url: str) -> str:
@@ -34,6 +35,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-html", action="store_true", help="Keep the intermediate HTML report")
     parser.add_argument("--timeout", type=int, default=45000, help="Navigation timeout in ms (default 45000)")
     parser.add_argument("--quiet", action="store_true", help="Only print the output path")
+    parser.add_argument("--site", action="store_true",
+                        help="Audit the whole site: discover pages, measure each, compare them")
+    parser.add_argument("--limit", type=int, default=25,
+                        help="Max pages for --site (default 25)")
+    parser.add_argument("--ignore-robots", action="store_true",
+                        help="Crawl pages robots.txt disallows (only on sites you control)")
     return parser
 
 
@@ -42,7 +49,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from datetime import date
 
-    name = f"{slug(args.url)}-audit-{date.today():%Y-%m-%d}"
+    kind = "site-audit" if args.site else "audit"
+    name = f"{slug(args.url)}-{kind}-{date.today():%Y-%m-%d}"
     pdf_path = Path(args.output) if args.output else Path("reports") / f"{name}.pdf"
     if pdf_path.is_dir():
         pdf_path = pdf_path / f"{name}.pdf"
@@ -52,6 +60,31 @@ def main(argv: list[str] | None = None) -> int:
     def log(message: str) -> None:
         if not args.quiet:
             print(message, file=sys.stderr)
+
+    if args.site:
+        try:
+            audit = audit_site(
+                args.url,
+                work_dir,
+                limit=args.limit,
+                timeout_ms=args.timeout,
+                obey_robots=not args.ignore_robots,
+                progress=log,
+            )
+        except Exception as exc:  # noqa: BLE001 - surfaced as a clean message
+            print(f"Site audit failed: {exc}", file=sys.stderr)
+            return 1
+
+        log("→ Rendering PDF…")
+        html_to_pdf(render_site_html(audit), pdf_path, work_dir)
+        scores = audit.scores
+        log(
+            f"→ {len(audit.audited)}/{len(audit.pages)} pages · score {scores['overall']}/100 "
+            f"(grade {scores['grade']}) · {len(audit.findings)} findings · "
+            + ", ".join(f"{count} {sev}" for sev, count in scores["counts"].most_common())
+        )
+        print(pdf_path)
+        return 0
 
     log(f"→ Loading {args.url} in Chromium…")
     try:

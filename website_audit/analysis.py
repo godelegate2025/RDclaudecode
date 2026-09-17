@@ -10,12 +10,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 SEVERITY_WEIGHT = {"critical": 28, "high": 16, "medium": 8, "low": 3}
-GENERIC_FAMILIES = {
+# CSS keywords and system-stack tokens — not typefaces anyone chose. Named
+# fonts (Roboto, Helvetica, Arial) are deliberately NOT here: a site using one
+# has made a real choice and it should be counted.
+SYSTEM_TOKENS = {
     "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
     "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded", "-apple-system",
-    "blinkmacsystemfont", "segoe ui", "roboto", "helvetica neue", "helvetica",
-    "arial", "noto sans", "apple color emoji", "segoe ui emoji", "segoe ui symbol",
-    "noto color emoji", "emoji", "math", "inherit", "initial",
+    "blinkmacsystemfont", "apple color emoji", "segoe ui emoji",
+    "segoe ui symbol", "noto color emoji", "emoji", "math",
+    "inherit", "initial", "unset", "revert",
 }
 ICON_FAMILIES = ("fontawesome", "font awesome", "material icons", "material symbols",
                  "glyphicons", "icomoon", "ionicons", "feather")
@@ -202,6 +205,7 @@ class FamilyUsage:
     tags: Counter = field(default_factory=Counter)
     has_fallback: bool = False
     is_icon_font: bool = False
+    is_system: bool = False
 
     @property
     def sample_tag(self) -> str:
@@ -235,6 +239,7 @@ def build_typography(text_runs: list[dict[str, Any]]) -> dict[str, Any]:
         usage.tags[run["tag"]] += run["chars"]
         usage.has_fallback = usage.has_fallback or len(family_stack(run["font_family"])) > 1
         usage.is_icon_font = usage.is_icon_font or any(i in key for i in ICON_FAMILIES)
+        usage.is_system = key in SYSTEM_TOKENS
 
         sizes[round(run["font_size"])] += run["chars"]
         weights[run["font_weight"]] += run["chars"]
@@ -245,7 +250,9 @@ def build_typography(text_runs: list[dict[str, Any]]) -> dict[str, Any]:
     body_size = max(dominant, key=lambda kv: kv[1])[0] if dominant else None
 
     ranked = sorted(families.values(), key=lambda f: f.chars, reverse=True)
-    content_families = [f for f in ranked if not f.is_icon_font]
+    # A system stack and an icon font are not typefaces a designer picked, and
+    # counting them inflates every "how many typefaces" number in the report.
+    content_families = [f for f in ranked if not f.is_icon_font and not f.is_system]
 
     body = None
     if body_runs:
