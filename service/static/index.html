@@ -199,19 +199,6 @@ button:disabled { opacity: .5; cursor: progress; }
 .actions a:hover { background: var(--coral-dark); border-color: var(--coral-dark); }
 .actions a.ghost { color: var(--ink); background: transparent; border-color: var(--line); }
 .actions a.ghost:hover { background: var(--paper-2); }
-.views { display: flex; margin-top: var(--space-4); border: 1px solid #383433; border-radius: var(--radius); overflow: hidden; }
-.views button {
-  flex: 1; min-height: 40px; margin: 0; border: 0; border-radius: 0; background: transparent;
-  color: var(--paper); font-family: var(--font-body); font-size: 13px; font-weight: 600;
-  letter-spacing: .04em; text-transform: uppercase; cursor: pointer;
-}
-.views button[aria-pressed="true"] { background: var(--paper); color: var(--ink); }
-.views button:hover:not([aria-pressed="true"]):not(:disabled) { background: #383433; }
-.views button:disabled { opacity: .4; cursor: default; }
-.draft-meta { display: none; margin-top: var(--space-3); font-size: 13px; color: #9E9894; line-height: 1.5; }
-.draft-meta[data-show] { display: block; }
-.draft-meta .swatches { display: flex; gap: 6px; margin-top: 6px; }
-.draft-meta .swatches i { width: 22px; height: 22px; border-radius: 4px; border: 1px solid #383433; display: block; }
 
 .panel footer {
   margin-top: auto; padding-top: var(--space-5); border-top: 1px solid var(--line);
@@ -283,8 +270,7 @@ button:disabled { opacity: .5; cursor: progress; }
       Enter a website and every page is rendered in a real browser and measured:
       fonts, colour palette, WCAG contrast, structure and findability. Pages are
       compared with each other, which is the only way cross-page problems show up.
-      You get a scored PDF report with a fix for every finding, plus a home page
-      draft built from the site's own words with those fixes already applied.
+      You get a scored PDF report with a fix for every finding.
     </p>
 
     <form id="form">
@@ -314,15 +300,9 @@ button:disabled { opacity: .5; cursor: progress; }
         <div class="host" id="host">—</div>
         <div class="value"><strong id="score">—</strong><span>out of 100</span></div>
         <div class="meta" id="detail"></div>
-        <div class="views" role="group" aria-label="What to show">
-          <button type="button" id="viewReport" aria-pressed="true">Report</button>
-          <button type="button" id="viewDraft" aria-pressed="false">Home page draft</button>
-        </div>
-        <div class="draft-meta" id="draftMeta"></div>
       </div>
       <div class="actions">
         <a id="download" download>Download PDF</a>
-        <a id="downloadDraft" class="ghost" download>Download draft</a>
         <a id="open" class="ghost" target="_blank" rel="noopener">New tab</a>
       </div>
     </div>
@@ -345,8 +325,7 @@ button:disabled { opacity: .5; cursor: progress; }
       </svg>
       <div class="title">No report yet</div>
       <p>Run an audit and the full PDF report appears here — palette and typefaces
-         across the site, contrast, findings ranked by how many pages they affect —
-         plus a corrected home page draft built from the site's own words.</p>
+         across the site, contrast, findings ranked by how many pages they affect.</p>
     </div>
     <iframe id="frame" title="Audit report"></iframe>
   </section>
@@ -375,17 +354,15 @@ button:disabled { opacity: .5; cursor: progress; }
         .catch(() => false)
     : Promise.resolve(false);
 
-  const publish = async (blob, filename, type, keep = []) => {
+  const publish = async (blob, filename) => {
     if (!(await workerReady) || !('caches' in window)) return null;
     try {
       const path = '/reports/' + filename;
       const cache = await caches.open(REPORTS);
-      for (const stale of await cache.keys()) {
-        if (!keep.includes(new URL(stale.url).pathname)) await cache.delete(stale);
-      }
+      for (const stale of await cache.keys()) await cache.delete(stale);
       await cache.put(path, new Response(blob, {
         headers: {
-          'Content-Type': type,
+          'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="${filename}"`,
         },
       }));
@@ -394,25 +371,6 @@ button:disabled { opacity: .5; cursor: progress; }
       return null;
     }
   };
-
-  const fromBase64 = (text, type) => {
-    const raw = atob(text);
-    const bytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-    return new Blob([bytes], { type });
-  };
-
-  // Report and draft share the frame; the switch swaps which one it shows.
-  const views = { report: null, draft: null };
-  const showView = (which) => {
-    if (!views[which]) return;
-    frame.src = views[which];
-    document.getElementById('open').href = views[which];
-    document.getElementById('viewReport').setAttribute('aria-pressed', String(which === 'report'));
-    document.getElementById('viewDraft').setAttribute('aria-pressed', String(which === 'draft'));
-  };
-  document.getElementById('viewReport').addEventListener('click', () => showView('report'));
-  document.getElementById('viewDraft').addEventListener('click', () => showView('draft'));
 
   const clearStatus = () => {
     clearInterval(ticker);
@@ -480,7 +438,7 @@ button:disabled { opacity: .5; cursor: progress; }
       const response = await fetch('/api/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, mode, draft: true }),
+        body: JSON.stringify({ url, mode }),
       });
 
       if (!response.ok) {
@@ -502,16 +460,15 @@ button:disabled { opacity: .5; cursor: progress; }
         return;
       }
 
-      const result = await response.json();
-      const blob = fromBase64(result.report.pdf_base64, 'application/pdf');
+      const blob = await response.blob();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       objectUrl = URL.createObjectURL(blob);
 
-      const score    = Number(result.score);
-      const host     = result.host || url;
-      const grade    = result.grade || '';
-      const findings = String(result.findings ?? 0);
-      const pages    = Number(result.pages || 1);
+      const score    = Number(response.headers.get('X-Audit-Score'));
+      const host     = response.headers.get('X-Audit-Host') || url;
+      const grade    = response.headers.get('X-Audit-Grade') || '';
+      const findings = response.headers.get('X-Audit-Findings') || '0';
+      const pages = Number(response.headers.get('X-Audit-Pages') || 1);
 
       const scoreEl = document.getElementById('score');
       scoreEl.textContent = Number.isFinite(score) ? score : '—';
@@ -521,43 +478,15 @@ button:disabled { opacity: .5; cursor: progress; }
         `Grade ${grade} · ${findings} findings · ` +
         (pages > 1 ? `${pages} pages audited` : 'this page only');
 
-      const filename = result.report.filename ||
-        `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
-      views.report = (await publish(blob, filename, 'application/pdf')) || objectUrl;
+      const filename = `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
+      const reportUrl = (await publish(blob, filename)) || objectUrl;
 
       const download = document.getElementById('download');
-      download.href = views.report;
+      download.href = reportUrl;
       download.download = filename;
+      document.getElementById('open').href = reportUrl;
 
-      const draftLink = document.getElementById('downloadDraft');
-      const draftButton = document.getElementById('viewDraft');
-      const draftMeta = document.getElementById('draftMeta');
-      views.draft = null;
-      if (result.draft) {
-        const draftBlob = new Blob([result.draft.html], { type: 'text/html' });
-        views.draft = (await publish(draftBlob, result.draft.filename, 'text/html; charset=utf-8', ['/reports/' + filename]))
-          || URL.createObjectURL(draftBlob);
-        draftLink.href = views.draft;
-        draftLink.download = result.draft.filename;
-        draftLink.style.display = '';
-        draftButton.disabled = false;
-        // Font names come from the audited site's own CSS, so they are untrusted text.
-        const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        const p = result.draft.palette || {};
-        const swatches = ['surface', 'ink', 'brand', 'muted'].filter((k) => /^#[0-9a-f]{6}$/i.test(p[k] || ''))
-          .map((k) => `<i style="background:${p[k]}" title="${k} ${p[k]}"></i>`).join('');
-        draftMeta.innerHTML =
-          `Draft uses <strong>${esc(result.draft.fonts.display)}</strong> for headings, ` +
-          `<strong>${esc(result.draft.fonts.body)}</strong> for text.` +
-          `<div class="swatches">${swatches}</div>`;
-        draftMeta.setAttribute('data-show', '');
-      } else {
-        draftLink.style.display = 'none';
-        draftButton.disabled = true;
-        draftMeta.removeAttribute('data-show');
-      }
-
-      showView('report');
+      frame.src = reportUrl;
       frame.setAttribute('data-show', '');
       empty.style.display = 'none';
 

@@ -80,35 +80,6 @@ hand back a screenshot. Every URL is resolved and checked against private,
 loopback, link-local and metadata ranges before Chromium sees it, and re-checked
 on each redirect.
 
-## Home page draft
-
-Every audit already holds what a redesign starts from: the palette with each
-colour's role, the typefaces and how much text each carries, the headings and
-copy, the navigation, the calls to action, and a passing replacement for every
-contrast failure. `--draft` (or `draft: true` on the API, which the web page
-always sends) turns that into a single-file home page draft with the audit's
-fixes applied by construction:
-
-- the site's own headline, opening copy, section headings, navigation and the
-  most-used call to action, with one label throughout;
-- two typefaces, the ones the site already sets largest and most, with
-  fallback stacks and `font-display: swap`;
-- six colour tokens from the measured palette, each text pair pushed to WCAG
-  AA before rendering, with a dark scheme;
-- correct heading order, 44px targets, viewport meta, JSON-LD identity,
-  Open Graph, canonical, and every word in the HTML rather than in script.
-
-Photos, address, phone and any page the site does not link (privacy, terms)
-are rendered as labelled placeholders. Nothing is invented and no model is
-involved, so the same audit always yields the same draft. The draft ends with
-a note of which findings it resolves and which a page draft cannot (sitemap,
-robots.txt, hosting). `tests/test_draft.py` audits the draft with the same
-engine and requires it to beat its source.
-
-```bash
-python3 -m website_audit example.com --site --draft     # writes example-com-home-draft.html beside the PDF
-```
-
 ## Whole-site mode
 
 `--site` discovers pages (robots.txt → sitemap → homepage links), renders each in
@@ -201,7 +172,6 @@ website_audit/
   probe.js        runs in the page — computed styles, colours, structure
   analysis.py     palette clustering, WCAG maths, the findings rules, scoring
   report.py       Jinja → HTML → Chromium print-to-PDF
-  draft.py        the corrected home page draft, built from the audit's data
   templates/      the report layout
 service/
   app.py          FastAPI: one request runs one audit and returns the PDF

@@ -14,7 +14,6 @@ from .blocking import detect as detect_block
 from .blocking import explain as explain_block
 from .browser import browser_session
 from .collector import collect
-from .draft import build_draft, draft_from_site, write_draft
 from .report import html_to_pdf, render_html, render_site_html, write_json
 from .site import audit_site
 
@@ -42,8 +41,6 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Max pages for --site (default 25)")
     parser.add_argument("--ignore-robots", action="store_true",
                         help="Crawl pages robots.txt disallows (only on sites you control)")
-    parser.add_argument("--draft", action="store_true",
-                        help="Also write a corrected home page draft (HTML) next to the PDF")
     return parser
 
 
@@ -80,10 +77,6 @@ def main(argv: list[str] | None = None) -> int:
 
         log("→ Rendering PDF…")
         html_to_pdf(render_site_html(audit), pdf_path, work_dir)
-        if args.draft:
-            draft = draft_from_site(audit)
-            if draft:
-                log(f"  Draft: {write_draft(draft, pdf_path.with_name(draft.filename))}")
         scores = audit.scores
         log(
             f"→ {len(audit.audited)}/{len(audit.pages)} pages · score {scores['overall']}/100 "
@@ -123,10 +116,6 @@ def main(argv: list[str] | None = None) -> int:
         json_path = pdf_path.with_suffix(".json") if args.json_path == "auto" else Path(args.json_path)
         write_json(data, results, json_path)
         log(f"  JSON: {json_path}")
-
-    if args.draft:
-        draft = build_draft(data.final_url, data.probe, results)
-        log(f"  Draft: {write_draft(draft, pdf_path.with_name(draft.filename))}")
 
     scores = results["scores"]
     log(
