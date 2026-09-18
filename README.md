@@ -80,6 +80,24 @@ hand back a screenshot. Every URL is resolved and checked against private,
 loopback, link-local and metadata ranges before Chromium sees it, and re-checked
 on each redirect.
 
+## Website build brief
+
+A whole-site audit can also produce the document you paste into a site
+builder (Lovable, v0, Bolt, Framer AI, Webflow AI) to rebuild the site. The
+web page offers it as **Build brief** next to the PDF; the CLI writes it with
+`--site --brief`; the API returns it with `brief: true`, in which case the
+response is JSON carrying the PDF (base64) and the Markdown together, so one
+crawl serves both.
+
+Everything the audit can measure is filled in: the palette with each colour's
+role and use, the typefaces with their share of text and a Google Fonts link,
+the body size and line-height, the site map as discovered, the navigation and
+the most-used call to action, and every page's headings with the copy under
+each. The findings become numbered hard rules for the rebuild. Everything only
+the business knows — mission, audience, voice, pricing, logo, signature
+devices — is a labelled `[FILL IN]`, never invented. No model is involved, so
+the same audit always gives the same brief.
+
 ## Whole-site mode
 
 `--site` discovers pages (robots.txt → sitemap → homepage links), renders each in
@@ -172,6 +190,7 @@ website_audit/
   probe.js        runs in the page — computed styles, colours, structure
   analysis.py     palette clustering, WCAG maths, the findings rules, scoring
   report.py       Jinja → HTML → Chromium print-to-PDF
+  brief.py        the website build brief (Markdown) from a whole-site audit
   templates/      the report layout
 service/
   app.py          FastAPI: one request runs one audit and returns the PDF

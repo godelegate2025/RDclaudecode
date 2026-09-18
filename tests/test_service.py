@@ -132,6 +132,57 @@ class HTTPSurfaceTest(unittest.TestCase):
 
         self.assertEqual(AuditRequest(url="https://example.com").mode, "site")
 
+    def test_brief_is_off_unless_asked_for(self):
+        from service.app import AuditRequest
+
+        self.assertFalse(AuditRequest(url="https://example.com").brief)
+
+    def test_site_audit_with_brief_returns_report_and_brief_together(self):
+        """With brief=true a whole-site run answers with JSON: the PDF (base64) and the Markdown."""
+        import base64
+        import service.app as app_module
+        from tests.test_brief import fake_audit
+
+        def fake_site(target, work_dir, limit):
+            pdf = work_dir / "report.pdf"
+            pdf.write_bytes(b"%PDF-1.4 fake")
+            return pdf, fake_audit()
+
+        original = app_module.run_site_audit
+        app_module.run_site_audit = fake_site
+        try:
+            response = self.client.post("/api/audit", json={"url": "https://example.com", "brief": True})
+        finally:
+            app_module.run_site_audit = original
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["score"], 68)
+        self.assertEqual(body["pages"], 2)
+        self.assertEqual(body["report"]["filename"], "acme.example-site-audit.pdf")
+        self.assertEqual(base64.b64decode(body["report"]["pdf_base64"]), b"%PDF-1.4 fake")
+        self.assertEqual(body["brief"]["filename"], "acme.example-site-brief.md")
+        self.assertIn("# Acme Homes · Website Build Prompt", body["brief"]["markdown"])
+
+    def test_brief_is_ignored_for_a_single_page(self):
+        """A page audit has no site to brief; the PDF comes back as usual."""
+        import service.app as app_module
+
+        def fake_audit(target, work_dir):
+            pdf = work_dir / "report.pdf"
+            pdf.write_bytes(b"%PDF-1.4 fake")
+            from types import SimpleNamespace
+            return pdf, SimpleNamespace(final_url="https://example.com/"), {"scores": {"overall": 1, "grade": "F"}, "findings": []}
+
+        original = app_module.run_audit
+        app_module.run_audit = fake_audit
+        try:
+            response = self.client.post("/api/audit", json={"url": "https://example.com", "mode": "page", "brief": True})
+        finally:
+            app_module.run_audit = original
+        self.assertEqual(response.headers["content-type"], "application/pdf")
+        self.assertEqual(response.content, b"%PDF-1.4 fake")
+
     def test_the_page_limit_is_clamped(self):
         import service.app as app_module
 

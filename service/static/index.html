@@ -270,7 +270,8 @@ button:disabled { opacity: .5; cursor: progress; }
       Enter a website and every page is rendered in a real browser and measured:
       fonts, colour palette, WCAG contrast, structure and findability. Pages are
       compared with each other, which is the only way cross-page problems show up.
-      You get a scored PDF report with a fix for every finding.
+      You get a scored PDF report with a fix for every finding, and for a whole
+      site a build brief you can paste into any site builder.
     </p>
 
     <form id="form">
@@ -303,6 +304,7 @@ button:disabled { opacity: .5; cursor: progress; }
       </div>
       <div class="actions">
         <a id="download" download>Download PDF</a>
+        <a id="downloadBrief" class="ghost" download title="A Markdown build brief for a site builder: brand system as measured, site map, every page's copy, and the rules the findings call for">Build brief</a>
         <a id="open" class="ghost" target="_blank" rel="noopener">New tab</a>
       </div>
     </div>
@@ -325,7 +327,8 @@ button:disabled { opacity: .5; cursor: progress; }
       </svg>
       <div class="title">No report yet</div>
       <p>Run an audit and the full PDF report appears here — palette and typefaces
-         across the site, contrast, findings ranked by how many pages they affect.</p>
+         across the site, contrast, findings ranked by how many pages they affect —
+         with a build brief for a whole site.</p>
     </div>
     <iframe id="frame" title="Audit report"></iframe>
   </section>
@@ -347,22 +350,29 @@ button:disabled { opacity: .5; cursor: progress; }
   // blob: URL would give it a random id instead. Without a worker (private
   // mode, http://, old browser) the blob URL is the fallback.
   const REPORTS = 'audit-reports';
+  // On the very first visit the worker activates a moment after `ready`
+  // resolves, so give it a few seconds to take control before falling back.
   const workerReady = 'serviceWorker' in navigator
     ? navigator.serviceWorker.register('/sw.js')
         .then(() => navigator.serviceWorker.ready)
-        .then(() => !!navigator.serviceWorker.controller)
+        .then(() => navigator.serviceWorker.controller ? true : new Promise((resolve) => {
+          const timer = setTimeout(() => resolve(!!navigator.serviceWorker.controller), 4000);
+          navigator.serviceWorker.addEventListener('controllerchange', () => { clearTimeout(timer); resolve(true); }, { once: true });
+        }))
         .catch(() => false)
     : Promise.resolve(false);
 
-  const publish = async (blob, filename) => {
+  const publish = async (blob, filename, type = 'application/pdf', keep = []) => {
     if (!(await workerReady) || !('caches' in window)) return null;
     try {
       const path = '/reports/' + filename;
       const cache = await caches.open(REPORTS);
-      for (const stale of await cache.keys()) await cache.delete(stale);
+      for (const stale of await cache.keys()) {
+        if (!keep.includes(new URL(stale.url).pathname)) await cache.delete(stale);
+      }
       await cache.put(path, new Response(blob, {
         headers: {
-          'Content-Type': 'application/pdf',
+          'Content-Type': type,
           'Content-Disposition': `inline; filename="${filename}"`,
         },
       }));
@@ -370,6 +380,13 @@ button:disabled { opacity: .5; cursor: progress; }
     } catch (e) {
       return null;
     }
+  };
+
+  const fromBase64 = (text, type) => {
+    const raw = atob(text);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return new Blob([bytes], { type });
   };
 
   const clearStatus = () => {
@@ -438,7 +455,7 @@ button:disabled { opacity: .5; cursor: progress; }
       const response = await fetch('/api/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, mode }),
+        body: JSON.stringify({ url, mode, brief: mode === 'site' }),
       });
 
       if (!response.ok) {
@@ -460,15 +477,19 @@ button:disabled { opacity: .5; cursor: progress; }
         return;
       }
 
-      const blob = await response.blob();
+      // A whole-site run answers with JSON carrying the PDF and the brief; a
+      // single page answers with the PDF itself and its summary in headers.
+      const isJson = (response.headers.get('content-type') || '').includes('application/json');
+      const result = isJson ? await response.json() : null;
+      const blob = result ? fromBase64(result.report.pdf_base64, 'application/pdf') : await response.blob();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       objectUrl = URL.createObjectURL(blob);
 
-      const score    = Number(response.headers.get('X-Audit-Score'));
-      const host     = response.headers.get('X-Audit-Host') || url;
-      const grade    = response.headers.get('X-Audit-Grade') || '';
-      const findings = response.headers.get('X-Audit-Findings') || '0';
-      const pages = Number(response.headers.get('X-Audit-Pages') || 1);
+      const score    = Number(result ? result.score : response.headers.get('X-Audit-Score'));
+      const host     = (result ? result.host : response.headers.get('X-Audit-Host')) || url;
+      const grade    = (result ? result.grade : response.headers.get('X-Audit-Grade')) || '';
+      const findings = String(result ? result.findings : (response.headers.get('X-Audit-Findings') || '0'));
+      const pages    = Number(result ? result.pages : (response.headers.get('X-Audit-Pages') || 1));
 
       const scoreEl = document.getElementById('score');
       scoreEl.textContent = Number.isFinite(score) ? score : '—';
@@ -478,13 +499,25 @@ button:disabled { opacity: .5; cursor: progress; }
         `Grade ${grade} · ${findings} findings · ` +
         (pages > 1 ? `${pages} pages audited` : 'this page only');
 
-      const filename = `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
+      const filename = (result && result.report.filename) ||
+        `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
       const reportUrl = (await publish(blob, filename)) || objectUrl;
 
       const download = document.getElementById('download');
       download.href = reportUrl;
       download.download = filename;
       document.getElementById('open').href = reportUrl;
+
+      const briefLink = document.getElementById('downloadBrief');
+      if (result && result.brief) {
+        const briefBlob = new Blob([result.brief.markdown], { type: 'text/markdown' });
+        briefLink.href = (await publish(briefBlob, result.brief.filename, 'text/markdown; charset=utf-8', ['/reports/' + filename]))
+          || URL.createObjectURL(briefBlob);
+        briefLink.download = result.brief.filename;
+        briefLink.style.display = '';
+      } else {
+        briefLink.style.display = 'none';
+      }
 
       frame.src = reportUrl;
       frame.setAttribute('data-show', '');

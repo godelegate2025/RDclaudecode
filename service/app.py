@@ -7,6 +7,7 @@ request landing on a different instance than the one that made the report.
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import shutil
@@ -26,6 +27,7 @@ from website_audit.analysis import analyse
 from website_audit.blocking import detect as detect_block
 from website_audit.blocking import explain as explain_block
 from website_audit.browser import browser_session
+from website_audit.brief import build_brief
 from website_audit.collector import collect
 from website_audit.report import html_to_pdf, render_html, render_site_html, write_json
 from website_audit.site import audit_site
@@ -73,6 +75,7 @@ class AuditRequest(BaseModel):
     json_only: bool = False
     mode: str = "site"          # "site" audits every page found; "page" just this one
     limit: int | None = None
+    brief: bool = False         # site mode only: also return the build brief; the response becomes JSON
 
 
 RATE_WINDOW_SECONDS = 3600
@@ -289,6 +292,21 @@ def audit(payload: AuditRequest, request: Request) -> Response:
 
         suffix = "site-audit" if whole_site else "audit"
         filename = f"{host.replace(':', '-')}-{suffix}.pdf"
+
+        if payload.brief and whole_site:
+            # One crawl, two deliverables: the PDF rides along base64-encoded next
+            # to the Markdown brief, so nothing is kept on the server.
+            brief = build_brief(audit)
+            return JSONResponse({
+                "host": host,
+                "score": scores["overall"],
+                "grade": scores["grade"],
+                "findings": len(findings),
+                "pages": pages,
+                "report": {"filename": filename, "pdf_base64": base64.b64encode(pdf_path.read_bytes()).decode()},
+                "brief": {"filename": brief.filename, "markdown": brief.markdown},
+            })
+
 
         delivered = True
         return Response(

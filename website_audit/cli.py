@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from .analysis import analyse
 from .blocking import detect as detect_block
 from .blocking import explain as explain_block
+from .brief import build_brief
 from .browser import browser_session
 from .collector import collect
 from .report import html_to_pdf, render_html, render_site_html, write_json
@@ -41,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Max pages for --site (default 25)")
     parser.add_argument("--ignore-robots", action="store_true",
                         help="Crawl pages robots.txt disallows (only on sites you control)")
+    parser.add_argument("--brief", action="store_true",
+                        help="With --site: also write a website build brief (Markdown) next to the PDF")
     return parser
 
 
@@ -77,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
 
         log("→ Rendering PDF…")
         html_to_pdf(render_site_html(audit), pdf_path, work_dir)
+        if args.brief:
+            brief = build_brief(audit)
+            brief_path = pdf_path.with_name(brief.filename)
+            brief_path.write_text(brief.markdown, encoding="utf-8")
+            log(f"  Brief: {brief_path}")
         scores = audit.scores
         log(
             f"→ {len(audit.audited)}/{len(audit.pages)} pages · score {scores['overall']}/100 "
