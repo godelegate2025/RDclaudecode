@@ -344,6 +344,7 @@ button:disabled { opacity: .5; cursor: progress; }
   const frame    = document.getElementById('frame');
   const empty    = document.getElementById('empty');
   let objectUrl  = null;
+  let briefUrl   = null;
 
   // The report is shown at /reports/<name>.pdf, served by a service worker from
   // Cache Storage. Chrome's PDF viewer names its download after that URL; a
@@ -362,17 +363,15 @@ button:disabled { opacity: .5; cursor: progress; }
         .catch(() => false)
     : Promise.resolve(false);
 
-  const publish = async (blob, filename, type = 'application/pdf', keep = []) => {
+  const publish = async (blob, filename) => {
     if (!(await workerReady) || !('caches' in window)) return null;
     try {
       const path = '/reports/' + filename;
       const cache = await caches.open(REPORTS);
-      for (const stale of await cache.keys()) {
-        if (!keep.includes(new URL(stale.url).pathname)) await cache.delete(stale);
-      }
+      for (const stale of await cache.keys()) await cache.delete(stale);
       await cache.put(path, new Response(blob, {
         headers: {
-          'Content-Type': type,
+          'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="${filename}"`,
         },
       }));
@@ -501,18 +500,23 @@ button:disabled { opacity: .5; cursor: progress; }
 
       const filename = (result && result.report.filename) ||
         `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
+      // The worker-served URL is for viewing: the frame and "New tab" load it,
+      // so the PDF viewer's own save button gets the site's name. The download
+      // links use blob URLs instead, because a browser fetches a download link
+      // straight from the network, bypassing the worker, and would get a 404.
       const reportUrl = (await publish(blob, filename)) || objectUrl;
 
       const download = document.getElementById('download');
-      download.href = reportUrl;
+      download.href = objectUrl;
       download.download = filename;
       document.getElementById('open').href = reportUrl;
 
       const briefLink = document.getElementById('downloadBrief');
+      if (briefUrl) URL.revokeObjectURL(briefUrl);
+      briefUrl = null;
       if (result && result.brief) {
-        const briefBlob = new Blob([result.brief.markdown], { type: 'text/markdown' });
-        briefLink.href = (await publish(briefBlob, result.brief.filename, 'text/markdown; charset=utf-8', ['/reports/' + filename]))
-          || URL.createObjectURL(briefBlob);
+        briefUrl = URL.createObjectURL(new Blob([result.brief.markdown], { type: 'text/markdown' }));
+        briefLink.href = briefUrl;
         briefLink.download = result.brief.filename;
         briefLink.style.display = '';
       } else {
