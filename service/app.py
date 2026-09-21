@@ -32,6 +32,7 @@ from website_audit.collector import collect
 from website_audit.report import html_to_pdf, render_html, render_site_html, write_json
 from website_audit.site import audit_site
 
+from .brief_view import render_brief_html
 from .security import UnsafeURL, guard_route, validate
 
 log = logging.getLogger("website-audit")
@@ -304,7 +305,12 @@ def audit(payload: AuditRequest, request: Request) -> Response:
                 "findings": len(findings),
                 "pages": pages,
                 "report": {"filename": filename, "pdf_base64": base64.b64encode(pdf_path.read_bytes()).decode()},
-                "brief": {"filename": brief.filename, "markdown": brief.markdown},
+                "brief": {
+                    "filename": brief.filename,
+                    "markdown": brief.markdown,
+                    # The preview shown in the page; the Markdown is the deliverable.
+                    "html": render_brief_html(brief.markdown, f"Build brief — {host}"),
+                },
             })
 
 

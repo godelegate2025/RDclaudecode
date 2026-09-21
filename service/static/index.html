@@ -189,16 +189,30 @@ button:disabled { opacity: .5; cursor: progress; }
 }
 .score-card .value span { font-family: var(--font-body); font-size: 13px; color: #9E9894; font-weight: 500; }
 .score-card .meta { margin-top: 12px; padding-top: 12px; border-top: 1px solid #383433; font-size: 13px; }
-.actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
-.actions a {
+.float { position: absolute; right: 20px; bottom: 20px; z-index: 3; display: none; gap: var(--space-2); }
+.float[data-show] { display: flex; }
+.float a {
   flex: 1; text-align: center; padding: 11px 14px; border-radius: var(--radius);
   font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   text-decoration: none; color: #fff; background: var(--coral); border: 1.5px solid var(--coral);
   transition: background .15s ease;
 }
-.actions a:hover { background: var(--coral-dark); border-color: var(--coral-dark); }
-.actions a.ghost { color: var(--ink); background: transparent; border-color: var(--line); }
-.actions a.ghost:hover { background: var(--paper-2); }
+.float a:hover { background: var(--coral-dark); border-color: var(--coral-dark); }
+.float a.ghost { color: var(--ink); background: var(--paper); border-color: var(--line); }
+.float a.ghost:hover { background: var(--paper-2); }
+.float a { box-shadow: 0 10px 24px -10px rgba(25, 22, 22, .55); white-space: nowrap; }
+.topbar {
+  display: none; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: 48px; padding: 0 var(--space-4); background: var(--ink); border-bottom: 1px solid #383433;
+}
+.topbar[data-show] { display: flex; }
+.topbar button {
+  min-height: 32px; margin: 0; padding: 0 var(--space-4); border: 1px solid #383433; border-radius: 999px;
+  background: transparent; color: var(--paper); font-family: var(--font-body); font-size: 12.5px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; cursor: pointer; width: auto;
+}
+.topbar button[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+.topbar button:hover:not([aria-pressed="true"]) { background: #383433; }
 
 .panel footer {
   margin-top: auto; padding-top: var(--space-5); border-top: 1px solid var(--line);
@@ -206,8 +220,8 @@ button:disabled { opacity: .5; cursor: progress; }
 }
 
 /* ---------- report pane ---------- */
-.report { background: var(--paper-2); position: relative; overflow: hidden; }
-.report iframe { width: 100%; height: 100%; border: 0; display: none; background: #fff; }
+.report { background: var(--paper-2); position: relative; overflow: hidden; display: flex; flex-direction: column; }
+.report iframe { width: 100%; flex: 1; min-height: 0; border: 0; display: none; background: #fff; }
 .report iframe[data-show] { display: block; }
 .empty {
   height: 100%; display: flex; flex-direction: column;
@@ -226,7 +240,8 @@ button:disabled { opacity: .5; cursor: progress; }
   main { height: auto; grid-template-columns: 1fr; }
   .panel { border-right: 0; border-bottom: 1px solid var(--line); padding: var(--space-6) var(--space-5); }
   .report { min-height: 70vh; }
-  .report iframe { height: 70vh; }
+  .report iframe { height: 70vh; flex: none; }
+  .float { right: 12px; bottom: 12px; }
   header { padding: 0 var(--space-5); }
   header .tagline { display: none; }
   button { width: 100%; }
@@ -302,11 +317,6 @@ button:disabled { opacity: .5; cursor: progress; }
         <div class="value"><strong id="score">—</strong><span>out of 100</span></div>
         <div class="meta" id="detail"></div>
       </div>
-      <div class="actions">
-        <a id="download" download>Download PDF</a>
-        <a id="downloadBrief" class="ghost" download title="A Markdown build brief for a site builder: brand system as measured, site map, every page's copy, and the rules the findings call for">Build brief</a>
-        <a id="open" class="ghost" target="_blank" rel="noopener">New tab</a>
-      </div>
     </div>
 
     <footer>
@@ -319,6 +329,10 @@ button:disabled { opacity: .5; cursor: progress; }
 
   <!-- RIGHT: the report -->
   <section class="report" aria-label="Audit report">
+    <div class="topbar" id="topbar" role="group" aria-label="What to show">
+      <button type="button" id="viewReport" aria-pressed="true">Report</button>
+      <button type="button" id="viewBrief" aria-pressed="false" title="A build brief for a site builder: brand system as measured, site map, every page's copy, and the rules the findings call for">Build brief</button>
+    </div>
     <div class="empty" id="empty">
       <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#2C2828"
            stroke-width="1.2" aria-hidden="true">
@@ -331,6 +345,10 @@ button:disabled { opacity: .5; cursor: progress; }
          with a build brief for a whole site.</p>
     </div>
     <iframe id="frame" title="Audit report"></iframe>
+    <div class="float" id="float">
+      <a id="open" class="ghost" target="_blank" rel="noopener">New tab</a>
+      <a id="download" download>Download PDF</a>
+    </div>
   </section>
 </main>
 
@@ -344,7 +362,7 @@ button:disabled { opacity: .5; cursor: progress; }
   const frame    = document.getElementById('frame');
   const empty    = document.getElementById('empty');
   let objectUrl  = null;
-  let briefUrl   = null;
+  let briefUrls  = [];
 
   // The report is shown at /reports/<name>.pdf, served by a service worker from
   // Cache Storage. Chrome's PDF viewer names its download after that URL; a
@@ -363,15 +381,17 @@ button:disabled { opacity: .5; cursor: progress; }
         .catch(() => false)
     : Promise.resolve(false);
 
-  const publish = async (blob, filename) => {
+  const publish = async (blob, filename, type = 'application/pdf', keep = []) => {
     if (!(await workerReady) || !('caches' in window)) return null;
     try {
       const path = '/reports/' + filename;
       const cache = await caches.open(REPORTS);
-      for (const stale of await cache.keys()) await cache.delete(stale);
+      for (const stale of await cache.keys()) {
+        if (!keep.includes(new URL(stale.url).pathname)) await cache.delete(stale);
+      }
       await cache.put(path, new Response(blob, {
         headers: {
-          'Content-Type': 'application/pdf',
+          'Content-Type': type,
           'Content-Disposition': `inline; filename="${filename}"`,
         },
       }));
@@ -380,6 +400,30 @@ button:disabled { opacity: .5; cursor: progress; }
       return null;
     }
   };
+
+  // The report and the brief share the frame and the floating button; the
+  // toggle picks which one both show. Each view keeps a worker-served URL for
+  // viewing (so "New tab" opens it under the site's name) and a blob URL for
+  // the download, because a download link bypasses the worker.
+  const views = { report: null, brief: null };
+  const showView = (which) => {
+    const view = views[which];
+    if (!view) return;
+    // The brief is scraped text rendered to HTML: escaped on the server, and
+    // shown without scripts here. The PDF viewer cannot run in a sandbox.
+    if (which === 'brief') frame.setAttribute('sandbox', 'allow-same-origin');
+    else frame.removeAttribute('sandbox');
+    frame.src = view.viewUrl;
+    document.getElementById('open').href = view.viewUrl;
+    const download = document.getElementById('download');
+    download.href = view.downloadUrl;
+    download.download = view.filename;
+    download.textContent = view.label;
+    document.getElementById('viewReport').setAttribute('aria-pressed', String(which === 'report'));
+    document.getElementById('viewBrief').setAttribute('aria-pressed', String(which === 'brief'));
+  };
+  document.getElementById('viewReport').addEventListener('click', () => showView('report'));
+  document.getElementById('viewBrief').addEventListener('click', () => showView('brief'));
 
   const fromBase64 = (text, type) => {
     const raw = atob(text);
@@ -500,31 +544,35 @@ button:disabled { opacity: .5; cursor: progress; }
 
       const filename = (result && result.report.filename) ||
         `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
-      // The worker-served URL is for viewing: the frame and "New tab" load it,
-      // so the PDF viewer's own save button gets the site's name. The download
-      // links use blob URLs instead, because a browser fetches a download link
-      // straight from the network, bypassing the worker, and would get a 404.
-      const reportUrl = (await publish(blob, filename)) || objectUrl;
+      views.report = {
+        viewUrl: (await publish(blob, filename)) || objectUrl,
+        downloadUrl: objectUrl,
+        filename,
+        label: 'Download PDF',
+      };
 
-      const download = document.getElementById('download');
-      download.href = objectUrl;
-      download.download = filename;
-      document.getElementById('open').href = reportUrl;
-
-      const briefLink = document.getElementById('downloadBrief');
-      if (briefUrl) URL.revokeObjectURL(briefUrl);
-      briefUrl = null;
+      for (const url of briefUrls) URL.revokeObjectURL(url);
+      briefUrls = [];
+      views.brief = null;
       if (result && result.brief) {
-        briefUrl = URL.createObjectURL(new Blob([result.brief.markdown], { type: 'text/markdown' }));
-        briefLink.href = briefUrl;
-        briefLink.download = result.brief.filename;
-        briefLink.style.display = '';
-      } else {
-        briefLink.style.display = 'none';
+        const previewName = result.brief.filename.replace(/\.md$/, '.html');
+        const previewBlob = new Blob([result.brief.html], { type: 'text/html' });
+        const markdownUrl = URL.createObjectURL(new Blob([result.brief.markdown], { type: 'text/markdown' }));
+        const previewFallback = URL.createObjectURL(previewBlob);
+        briefUrls = [markdownUrl, previewFallback];
+        views.brief = {
+          viewUrl: (await publish(previewBlob, previewName, 'text/html; charset=utf-8', ['/reports/' + filename])) || previewFallback,
+          downloadUrl: markdownUrl,
+          filename: result.brief.filename,
+          label: 'Download MD',
+        };
       }
 
-      frame.src = reportUrl;
+      const topbar = document.getElementById('topbar');
+      if (views.brief) topbar.setAttribute('data-show', ''); else topbar.removeAttribute('data-show');
+      showView('report');
       frame.setAttribute('data-show', '');
+      document.getElementById('float').setAttribute('data-show', '');
       empty.style.display = 'none';
 
       clearStatus();

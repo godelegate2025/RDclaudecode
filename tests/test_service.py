@@ -163,6 +163,21 @@ class HTTPSurfaceTest(unittest.TestCase):
         self.assertEqual(base64.b64decode(body["report"]["pdf_base64"]), b"%PDF-1.4 fake")
         self.assertEqual(body["brief"]["filename"], "acme.example-site-brief.md")
         self.assertIn("# Acme Homes · Website Build Prompt", body["brief"]["markdown"])
+        html = body["brief"]["html"]
+        self.assertIn("<h1>Acme Homes · Website Build Prompt</h1>", html)
+        self.assertIn("<table>", html)                                  # the page table rendered
+        self.assertIn('<span class="fill">FILL IN</span>', html)        # fill-ins highlighted
+        self.assertNotIn("[FILL IN]", html)
+        self.assertIn("fields to fill in before building", html)
+
+    def test_brief_preview_escapes_scraped_markup(self):
+        from service.brief_view import render_brief_html
+
+        html = render_brief_html("# <script>alert(1)</script> Acme\n\n<img src=x onerror=alert(1)> [FILL IN]", "t")
+        self.assertNotIn("<script>", html)
+        self.assertNotIn("<img", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn('<span class="fill">FILL IN</span>', html)
 
     def test_brief_is_ignored_for_a_single_page(self):
         """A page audit has no site to brief; the PDF comes back as usual."""

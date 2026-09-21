@@ -283,6 +283,7 @@ def build_brief(audit) -> Brief:
     add(f"Rebuild the complete website for **{name}** ({base}) so that it keeps what works, fixes every finding in section 9, and scores 90 or higher in every audit category.")
     add("")
     add("The site's jobs, in order:")
+    add("")
     add(f"1. {FILL} — the one thing a visitor should do")
     add(f"2. {FILL}")
     add(f"3. {FILL}")
