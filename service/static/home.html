@@ -94,7 +94,11 @@ a.tool {
 a.tool p { color: #fff; }
 a.tool:hover { background: var(--coral-dark); border-color: var(--coral-dark); transform: translateY(-2px); }
 
-.tool.soon .cta { color: var(--ink); }
+/* The second tool keeps the outlined look from the mockup; hover fills it. */
+a.tool.alt { background: #fff; border-color: var(--ink); color: var(--ink); }
+a.tool.alt p { color: var(--charcoal); }
+a.tool.alt:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+a.tool.alt:hover p { color: #fff; }
 
 @media (max-width: 640px) {
   .tools { grid-template-columns: 1fr; }
@@ -118,11 +122,11 @@ a.tool:hover { background: var(--coral-dark); border-color: var(--coral-dark); t
       <span class="cta">Open →</span>
     </a>
 
-    <div class="tool soon" aria-disabled="true">
+    <a class="tool alt" href="/post-audit">
       <h2>Post Auditor</h2>
       <p>Audit social media posts that are already live.</p>
-      <span class="cta">Coming soon</span>
-    </div>
+      <span class="cta">Open →</span>
+    </a>
   </div>
 </main>
 </body>

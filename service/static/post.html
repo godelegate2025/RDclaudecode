@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redefine Post Auditor</title>
+<meta name="description" content="Audit a live social media post: the hook, the video, and why it performed.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Same system as the website auditor: paper ground, heavy uppercase display,
+   one coral accent carrying every action. */
+:root {
+  --coral: #FC4452;
+  --coral-dark: #d92f3c;
+  --ink: #191616;
+  --charcoal: #2C2828;
+  --paper: #F4F3F0;
+  --paper-2: #EAE8E3;
+  --line: #D8D5CE;
+  --muted: #7C7773;
+
+  --good: #0f8a3d;
+  --warn: #b57500;
+  --bad: #C3281C;
+
+  --font-display: 'Anton', 'Arial Narrow', sans-serif;
+  --font-body: 'Archivo', system-ui, -apple-system, sans-serif;
+
+  --space-2: .5rem;  --space-3: .75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem;
+
+  --radius: 10px;
+  --header-h: 60px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; border-radius: 3px; }
+
+.skip-link {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  background: var(--ink); color: var(--paper); padding: var(--space-3) var(--space-4);
+}
+.skip-link:focus { left: 0; }
+
+/* ---------- header ---------- */
+header {
+  height: var(--header-h);
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: 0 var(--space-6);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: var(--space-3); min-width: 0; color: inherit; text-decoration: none; }
+.brand img, .brand svg { height: 32px; width: auto; display: block; flex: none; }
+.brand .word {
+  font-family: var(--font-display);
+  font-size: 22px; letter-spacing: .02em; text-transform: uppercase;
+  color: var(--ink); line-height: 1;
+}
+.brand .divider { width: 1px; height: 24px; background: var(--line); }
+.brand .tool {
+  font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap;
+}
+header .spacer { flex: 1; }
+header .tagline {
+  font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+}
+
+/* ---------- two-column shell ---------- */
+main {
+  height: calc(100vh - var(--header-h));
+  display: grid;
+  grid-template-columns: 420px minmax(0, 1fr);
+}
+.panel {
+  padding: var(--space-8) var(--space-6);
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: var(--space-5);
+}
+h1 {
+  font-family: var(--font-display); font-weight: 400;
+  font-size: clamp(30px, 3.4vw, 44px);
+  line-height: .98; letter-spacing: .005em; text-transform: uppercase;
+  margin: 0; color: var(--ink);
+}
+h1 .accent { color: var(--coral); display: block; }
+.lede { margin: 0; color: var(--charcoal); font-size: 14.5px; max-width: 52ch; }
+
+form { display: flex; flex-direction: column; gap: var(--space-3); }
+form > label {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted);
+}
+input[type=text] {
+  width: 100%; padding: 14px 15px; font: inherit; font-size: 15px;
+  color: var(--ink); background: #fff;
+  border: 1.5px solid var(--line); border-radius: var(--radius);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+input[type=text]::placeholder { color: #A8A39E; }
+input[type=text]:focus { outline: none; border-color: var(--coral); box-shadow: 0 0 0 3px rgba(252, 68, 82, .14); }
+button {
+  padding: 14px 20px; min-height: 48px;
+  font: inherit; font-weight: 700; font-size: 13px;
+  letter-spacing: .12em; text-transform: uppercase; cursor: pointer;
+  color: #fff; background: var(--coral);
+  border: 0; border-radius: var(--radius);
+  transition: background .15s ease, transform .08s ease;
+}
+button:hover:not(:disabled) { background: var(--coral-dark); }
+button:active:not(:disabled) { transform: scale(.985); }
+button:disabled { opacity: .5; cursor: progress; }
+
+.platforms { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.platforms li {
+  font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--charcoal); background: #fff;
+}
+
+/* ---------- status ---------- */
+.status { display: none; font-size: 14px; }
+.status[data-show] { display: block; }
+.status .msg { color: var(--charcoal); }
+.status.error {
+  display: none; padding: var(--space-4);
+  background: #fff; border: 1.5px solid var(--bad); border-left-width: 4px;
+  border-radius: var(--radius);
+}
+.status.error[data-show] { display: block; }
+.status.error .head {
+  font-weight: 700; color: var(--bad); text-transform: uppercase;
+  letter-spacing: .1em; font-size: 11px; margin-bottom: 6px;
+}
+.status.error .msg { font-size: 13.5px; }
+.bar { height: 3px; background: var(--paper-2); border-radius: 2px; overflow: hidden; margin-top: 10px; }
+.bar i { display: block; height: 100%; width: 35%; background: var(--coral); border-radius: 2px;
+         animation: slide 1.5s ease-in-out infinite; }
+@keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
+.panel footer {
+  margin-top: auto; padding-top: var(--space-5); border-top: 1px solid var(--line);
+  font-size: 11.5px; color: var(--muted);
+}
+
+/* ---------- report pane ---------- */
+.report { background: var(--paper-2); overflow-y: auto; position: relative; }
+.empty {
+  min-height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: var(--space-4);
+  padding: var(--space-8); text-align: center; color: var(--muted);
+}
+.empty svg { opacity: .32; }
+.empty .title {
+  font-family: var(--font-display); font-size: 20px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--charcoal);
+}
+.empty p { margin: 0; max-width: 36ch; font-size: 13.5px; }
+
+#result { display: none; max-width: 920px; margin: 0 auto; padding: var(--space-8) var(--space-6) 96px; }
+#result[data-show] { display: block; }
+
+.card {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--space-5) var(--space-6); margin-bottom: var(--space-4);
+}
+.card h2 {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display); font-weight: 400; font-size: 22px;
+  letter-spacing: .02em; text-transform: uppercase; color: var(--ink);
+}
+.card p { margin: 0 0 var(--space-3); }
+.card p:last-child { margin-bottom: 0; }
+.label {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+  margin: var(--space-4) 0 4px;
+}
+.label:first-child { margin-top: 0; }
+
+.post-head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.chip {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; background: var(--ink); color: var(--paper);
+}
+.chip.soft { background: var(--paper-2); color: var(--charcoal); }
+.post-head .who { font-weight: 700; }
+.post-head .when { color: var(--muted); font-size: 13px; }
+.post-head a { margin-left: auto; color: var(--coral-dark); font-weight: 600; font-size: 13px; }
+.caption { white-space: pre-wrap; color: var(--charcoal); font-size: 14px; max-height: 9.5em; overflow: hidden; position: relative; }
+.caption[data-long]::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2.5em;
+  background: linear-gradient(transparent, #fff);
+}
+.caption[data-open] { max-height: none; }
+.caption[data-open]::after { display: none; }
+.more { background: none; color: var(--coral-dark); padding: 4px 0; min-height: 0; font-size: 12px; letter-spacing: .08em; }
+.more:hover:not(:disabled) { background: none; text-decoration: underline; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; margin-bottom: var(--space-4); }
+.tile { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.tile .v { font-family: var(--font-display); font-size: 26px; line-height: 1.05; }
+.tile .k { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+
+.verdict {
+  background: var(--ink); color: var(--paper); border: 0;
+}
+.verdict .label { color: #9E9894; }
+.verdict p { font-size: 18px; line-height: 1.45; }
+
+.hook-top { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.score { font-family: var(--font-display); font-size: 40px; line-height: 1; }
+.score small { font-family: var(--font-body); font-size: 13px; color: var(--muted); font-weight: 600; }
+
+.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin: var(--space-3) 0; }
+.strip figure { margin: 0; flex: none; width: 104px; }
+.strip img { width: 104px; height: auto; border-radius: 6px; display: block; background: var(--paper-2); }
+.strip figcaption { font-size: 11px; color: var(--muted); text-align: center; margin-top: 3px; }
+
+.beats { list-style: none; margin: 0; padding: 0; }
+.beats li { display: grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.beats li:first-child { border-top: 0; padding-top: 0; }
+.beats .beat { font-weight: 700; }
+.beats .timing { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
+
+ul.points { margin: 0; padding-left: 1.1em; }
+ul.points li { margin-bottom: 6px; }
+
+.apply { border: 2px solid var(--coral); }
+.apply ol { margin: 0; padding: 0; list-style: none; counter-reset: t; }
+.apply li { counter-increment: t; position: relative; padding: 12px 0 12px 44px; border-top: 1px solid var(--line); }
+.apply li:first-child { border-top: 0; padding-top: 0; }
+.apply li::before {
+  content: counter(t); position: absolute; left: 0; top: 10px;
+  width: 30px; height: 30px; border-radius: 50%; background: var(--coral); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+}
+.apply li:first-child::before { top: -2px; }
+.apply strong { display: block; margin-bottom: 2px; }
+
+.limits { background: transparent; border-style: dashed; color: var(--charcoal); font-size: 13.5px; }
+
+.actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 4px; }
+.actions button { min-height: 40px; padding: 10px 16px; font-size: 12px; box-shadow: 0 10px 24px -10px rgba(25, 22, 22, .55); }
+.actions .ghost { background: var(--paper); color: var(--ink); border: 1.5px solid var(--line); }
+.actions .ghost:hover:not(:disabled) { background: #fff; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+  main { height: auto; grid-template-columns: minmax(0, 1fr); }
+  .panel { border-right: 0; border-bottom: 1px solid var(--line); padding: var(--space-6) var(--space-5); }
+  .report { min-height: 60vh; overflow: visible; }
+  #result { padding: var(--space-5) var(--space-4) 80px; }
+  header { padding: 0 var(--space-5); }
+  header .tagline { display: none; }
+  form button { width: 100%; }
+  .card { padding: var(--space-4) var(--space-5); }
+  .beats li { grid-template-columns: 1fr; gap: 2px; }
+  .actions { position: static; }
+  .actions button { flex: 1; }
+}
+@media (max-width: 480px) {
+  .brand .tool { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+@media print {
+  header, .panel, .actions, .more, .skip-link { display: none !important; }
+  main { display: block; height: auto; }
+  .report { background: #fff; overflow: visible; }
+  #result { padding: 0; max-width: none; }
+  .card { break-inside: avoid; }
+  .caption { max-height: none; }
+  .caption::after { display: none; }
+  .verdict { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<header role="banner">
+  <a class="brand" href="/" title="Back to Redefine App">
+    <img src="/static/logo.png" alt="Redefine" onerror="this.remove();document.getElementById('mark').hidden=false">
+    <svg id="mark" hidden width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="Redefine">
+      <rect width="32" height="32" rx="6" fill="#FC4452"/>
+      <text x="16" y="24" text-anchor="middle" fill="#F4F3F0"
+            font-family="Anton, Arial Narrow, sans-serif" font-size="21">R</text>
+    </svg>
+    <span class="word">Redefine</span>
+    <span class="divider" aria-hidden="true"></span>
+    <span class="tool">Post Auditor</span>
+  </a>
+  <div class="spacer"></div>
+  <div class="tagline">Build. Realize. Redefine</div>
+</header>
+
+<main id="main-content">
+  <section class="panel" aria-label="Audit a post">
+    <div>
+      <h1>Post<span class="accent">Auditor</span></h1>
+    </div>
+    <p class="lede">
+      Paste a post that is performing well. The post, its numbers and its video are
+      pulled in, the first three seconds are broken down frame by frame, and you get
+      why it works and exactly how to use the same moves in your own posts.
+    </p>
+
+    <form id="form">
+      <label for="url">Post link</label>
+      <input id="url" type="text" inputmode="url" required
+             placeholder="https://www.tiktok.com/@account/video/…"
+             autocomplete="url" spellcheck="false" autocapitalize="off" autocorrect="off">
+      <button id="go" type="submit">Audit the post</button>
+    </form>
+    <ul class="platforms" aria-label="Supported platforms">
+      <li>TikTok</li><li>Instagram</li><li>Facebook</li><li>LinkedIn</li>
+    </ul>
+
+    <div class="status" id="status" role="status" aria-live="polite">
+      <div class="head" id="statusHead" hidden></div>
+      <div class="msg" id="statusMsg"></div>
+    </div>
+
+    <footer>
+      Numbers are the platform's public counts at the moment of the audit. Claude
+      sees still frames and the transcript, not the moving video, so editing and
+      motion are read from the frames and the cut count. Facebook and LinkedIn often
+      give thumbnails rather than the video file, which limits the read.
+    </footer>
+  </section>
+
+  <section class="report" aria-label="Post audit report">
+    <div class="empty" id="empty">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#2C2828" stroke-width="1.2" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <path d="M10 8.5v7l6-3.5z"/>
+      </svg>
+      <div class="title">No post audited yet</div>
+      <p>Paste a post link and the breakdown appears here: the hook, the structure,
+         the numbers, why it works, and how to apply it.</p>
+    </div>
+    <div id="result" aria-live="polite"></div>
+  </section>
+</main>
+
+<script>
+  const form   = document.getElementById('form');
+  const button = document.getElementById('go');
+  const status = document.getElementById('status');
+  const head   = document.getElementById('statusHead');
+  const msg    = document.getElementById('statusMsg');
+  const result = document.getElementById('result');
+  const empty  = document.getElementById('empty');
+  let ticker = null;
+
+  // Everything shown comes from the scraped post or the model, so it is only
+  // ever inserted as text, never as HTML.
+  const el = (tag, cls, text) => {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  };
+  const add = (parent, ...children) => { children.filter(Boolean).forEach((c) => parent.appendChild(c)); return parent; };
+
+  const clearStatus = () => {
+    clearInterval(ticker);
+    status.removeAttribute('data-show');
+    status.classList.remove('error');
+    head.hidden = true;
+    msg.textContent = '';
+  };
+
+  // The server does not stream progress, so the steps are paced to how long each
+  // usually takes; the elapsed clock stops a slow run from reading as hung.
+  const STEPS = [
+    [0, 'Fetching the post and its numbers'],
+    [25, 'Downloading the video and cutting frames'],
+    [45, 'Claude is reading the hook, the frames and the transcript'],
+    [110, 'Still analysing — longer videos take a little more time'],
+  ];
+  const working = () => {
+    status.classList.remove('error');
+    head.hidden = true;
+    msg.textContent = '';
+    const label = el('span');
+    add(msg, label, add(el('div', 'bar'), el('i')));
+    status.setAttribute('data-show', '');
+    const started = Date.now();
+    const tick = () => {
+      const seconds = Math.round((Date.now() - started) / 1000);
+      const step = STEPS.filter(([at]) => seconds >= at).pop()[1];
+      label.textContent = `${step}  ·  ${seconds}s`;
+    };
+    tick();
+    clearInterval(ticker);
+    ticker = setInterval(tick, 1000);
+  };
+
+  const problem = (title, text) => {
+    clearInterval(ticker);
+    status.classList.add('error');
+    head.hidden = false;
+    head.textContent = title;
+    msg.textContent = text;
+    status.setAttribute('data-show', '');
+  };
+
+  const compact = (n) => {
+    if (n === null || n === undefined) return null;
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  };
+  const pct = (n) => (n === null || n === undefined) ? null : `${n}%`;
+  const HOOK_NAMES = {
+    question: 'Question', bold_claim: 'Bold claim', curiosity_gap: 'Curiosity gap',
+    pattern_interrupt: 'Pattern interrupt', relatable_pain: 'Relatable pain', story_open: 'Story opener',
+    how_to: 'How-to', list: 'List', contrarian: 'Contrarian', visual_surprise: 'Visual surprise',
+    social_proof: 'Social proof', other: 'Other',
+  };
+  const scoreColour = (n) => n >= 8 ? 'var(--good)' : n >= 5 ? 'var(--warn)' : 'var(--coral)';
+
+  const card = (title, cls) => {
+    const node = el('section', 'card' + (cls ? ' ' + cls : ''));
+    if (title) node.appendChild(el('h2', null, title));
+    return node;
+  };
+  const labelled = (parent, label, text) => {
+    if (!text) return;
+    add(parent, el('div', 'label', label), el('p', null, text));
+  };
+  const points = (items) => add(el('ul', 'points'), ...(items || []).map((t) => el('li', null, t)));
+  const strip = (frames) => add(el('div', 'strip'), ...frames.map((f) => {
+    const img = el('img');
+    img.src = f.src;
+    img.alt = f.seconds === null ? f.label : `Frame at ${f.seconds.toFixed(1)} seconds`;
+    return add(el('figure'), img, el('figcaption', null, f.seconds === null ? f.label : `${f.seconds.toFixed(1)}s`));
+  }));
+
+  const render = (data) => {
+    const { post, metrics: m, analysis: a, frames, notes } = data;
+    result.textContent = '';
+
+    // The post itself
+    const top = card();
+    const when = post.posted_at ? new Date(post.posted_at) : null;
+    const link = el('a', null, 'Open post ↗');
+    link.href = post.url; link.target = '_blank'; link.rel = 'noopener';
+    add(top, add(el('div', 'post-head'),
+      el('span', 'chip', data.platform_label),
+      el('span', 'who', post.author || post.author_handle || 'Unknown account'),
+      post.author_handle && post.author && post.author_handle !== post.author ? el('span', 'when', '@' + post.author_handle) : null,
+      when && !isNaN(when) ? el('span', 'when', when.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })) : null,
+      link));
+    if (post.caption) {
+      const caption = el('div', 'caption', post.caption);
+      top.appendChild(caption);
+      if (post.caption.length > 280 || post.caption.split('\n').length > 5) {
+        caption.setAttribute('data-long', '');
+        const more = el('button', 'more', 'Show full caption');
+        more.type = 'button';
+        more.addEventListener('click', () => { caption.setAttribute('data-open', ''); more.remove(); });
+        top.appendChild(more);
+      }
+    }
+
+    // Numbers
+    const tiles = [
+      ['Views', compact(post.views)], ['Likes', compact(post.likes)], ['Comments', compact(post.comments)],
+      ['Shares', compact(post.shares)], ['Saves', compact(post.saves)],
+      ['Engagement', pct(m.engagement_rate_by_views)], ['Save rate', pct(m.save_rate)],
+      ['Share rate', pct(m.share_rate)], ['Followers', compact(post.author_followers)],
+      ['Length', post.duration_seconds ? `${Math.round(post.duration_seconds)}s` : null],
+      ['Cuts / 10s', m.cuts_per_10s],
+    ].filter(([, v]) => v !== null && v !== undefined);
+    const tileRow = add(el('div', 'tiles'), ...tiles.map(([k, v]) => add(el('div', 'tile'), el('div', 'v', v), el('div', 'k', k))));
+
+    // Verdict
+    const verdict = add(card(null, 'verdict'), el('div', 'label', 'Why it performed'), el('p', null, a.verdict));
+
+    // Hook
+    const hook = card('The hook');
+    const score = el('div', 'score');
+    score.style.color = scoreColour(a.hook.score);
+    add(score, document.createTextNode(String(a.hook.score)), el('small', null, ' / 10'));
+    add(hook, add(el('div', 'hook-top'), score, el('span', 'chip soft', HOOK_NAMES[a.hook.type] || a.hook.type)));
+    const hookFrames = frames.filter((f) => f.label === 'hook');
+    if (hookFrames.length) hook.appendChild(strip(hookFrames));
+    labelled(hook, 'First 3 seconds', a.hook.opening);
+    labelled(hook, 'Why it grabs', a.hook.why_it_grabs);
+    labelled(hook, 'Score', a.hook.score_reason);
+
+    // Structure
+    const structure = card('Structure');
+    add(structure, add(el('ol', 'beats'), ...a.structure.map((b) =>
+      add(el('li'), add(el('div', 'beat', b.beat), b.timing ? el('span', 'timing', b.timing) : null), el('div', null, b.what_happens)))));
+    const rest = frames.filter((f) => f.label !== 'hook');
+    if (rest.length) structure.appendChild(strip(rest));
+
+    // Pacing, caption, performance
+    const pacing = card('Editing & pacing');
+    labelled(pacing, 'Editing', a.pacing.editing);
+    labelled(pacing, 'On-screen text', a.pacing.on_screen_text);
+    labelled(pacing, 'Audio', a.pacing.audio);
+    if (post.sound) labelled(pacing, 'Sound', post.sound);
+
+    const caption = card('Caption & call to action');
+    labelled(caption, 'Caption', a.caption.assessment);
+    labelled(caption, `Call to action · ${a.caption.cta_strength}`, a.caption.cta || 'None.');
+
+    const performance = card('What the numbers say');
+    add(performance, el('p', null, a.performance.read));
+    if (a.performance.signals.length) performance.appendChild(points(a.performance.signals));
+
+    const why = add(card('Why it works'), points(a.why_it_works));
+
+    const apply = card('How to apply it to our posts', 'apply');
+    add(apply, add(el('ol'), ...a.takeaways.map((t) => add(el('li'), el('strong', null, t.title), el('span', null, t.how_to_apply)))));
+
+    const avoid = a.avoid.length ? add(card("Don't copy"), points(a.avoid)) : null;
+
+    const limitText = [a.limits, ...(notes || [])].filter(Boolean);
+    const limits = limitText.length ? add(card(null, 'limits'), el('div', 'label', 'Limits of this read'), points(limitText)) : null;
+
+    const copy = el('button', 'ghost', 'Copy takeaways');
+    copy.type = 'button';
+    copy.addEventListener('click', async () => {
+      const text = `${data.platform_label} post by ${post.author || post.author_handle} — ${post.url}\n\n` +
+        `${a.verdict}\n\nHow to apply it:\n` +
+        a.takeaways.map((t, i) => `${i + 1}. ${t.title} — ${t.how_to_apply}`).join('\n');
+      try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied'; }
+      catch (e) { copy.textContent = 'Copy failed'; }
+      setTimeout(() => { copy.textContent = 'Copy takeaways'; }, 2000);
+    });
+    const print = el('button', null, 'Save as PDF');
+    print.type = 'button';
+    print.addEventListener('click', () => window.print());
+
+    add(result, top, tileRow, verdict, hook, apply, why, structure, pacing, caption, performance, avoid, limits,
+        add(el('div', 'actions'), copy, print));
+    empty.style.display = 'none';
+    result.setAttribute('data-show', '');
+    result.closest('.report').scrollTop = 0;
+    document.title = `${data.platform_label} post audit — ${post.author || post.author_handle || 'Redefine'}`;
+  };
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const field = document.getElementById('url');
+    const url = field.value.trim();
+    if (!url) return;
+
+    button.disabled = true;
+    working();
+    try {
+      const response = await fetch('/api/post-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!response.ok) {
+        let detail = 'Something went wrong. Try again in a moment.';
+        try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
+        const titles = { 400: 'Check the link', 429: 'Too many audits for now', 503: 'Not available right now' };
+        problem(titles[response.status] || 'Could not audit that post', detail);
+        return;
+      }
+      render(await response.json());
+      clearStatus();
+    } catch (error) {
+      problem('Connection failed', 'Could not reach the auditor. Check your connection and try again.');
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

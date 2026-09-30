@@ -81,6 +81,34 @@ hand back a screenshot. Every URL is resolved and checked against private,
 loopback, link-local and metadata ranges before Chromium sees it, and re-checked
 on each redirect.
 
+## Post Auditor
+
+`/post-audit` audits a live TikTok, Instagram, Facebook or LinkedIn post: why it
+performed and how to reuse what works. `post_audit/` does the work and shares
+nothing with `website_audit/`, so it can move to its own service later.
+
+1. **Fetch** — the post goes to an [Apify](https://apify.com) scraper for the
+   caption, public counts, top comments and media (`post_audit/apify.py`). The
+   actor per network can be swapped with `APIFY_ACTOR_TIKTOK`,
+   `APIFY_ACTOR_INSTAGRAM`, `APIFY_ACTOR_FACEBOOK` or `APIFY_ACTOR_LINKEDIN`.
+2. **Media** — ffmpeg cuts frames, six across the first three seconds (the
+   hook) and six across the rest, and counts hard cuts as a pacing signal.
+   Photo and carousel posts send their images instead.
+3. **Transcript** — TikTok subtitles or Facebook captions when the network has
+   them, otherwise faster-whisper on the server (`WHISPER_MODEL`, default `base`).
+4. **Analysis** — engagement rates are computed in code, then Claude
+   (`POST_AUDIT_MODEL`, default `claude-opus-5-5`) reads the frames, transcript
+   and numbers and returns a fixed JSON structure: hook, structure, pacing,
+   caption and CTA, why it works, and takeaways to apply.
+
+It needs `APIFY_TOKEN` and `ANTHROPIC_API_KEY` on the server (see DEPLOY.md);
+without them the page loads and the API answers 503 saying which is missing.
+Each audit costs roughly $0.01 on Apify and $0.05–0.20 on the Claude API, and
+counts as 3 against the hourly rate limit (`POST_RATE_COST`).
+
+Facebook and LinkedIn scrapers usually return thumbnails rather than the video
+file, so those audits read stills and captions only; the report says so.
+
 ## Website build brief
 
 A whole-site audit can also produce the document you paste into a site
@@ -196,8 +224,17 @@ website_audit/
 service/
   app.py          FastAPI: one request runs one audit and returns the PDF
   security.py     SSRF guard — required for any public deployment
-  static/         the home page, the form, the report viewer, and the service worker that gives
-                  the PDF a real URL so the browser names the download after the site
+  static/         the home page, the website audit form and report viewer, the post
+                  auditor page, and the service worker that gives the PDF a real URL
+                  so the browser names the download after the site
+post_audit/
+  platforms.py    which network a URL belongs to
+  apify.py        one Apify actor per network, normalised into one Post shape
+  media.py        guarded downloads, ffmpeg frames, cut count, audio
+  transcribe.py   optional faster-whisper speech to text
+  metrics.py      engagement rates
+  analysis.py     the Claude request, prompt and output schema
+  pipeline.py     URL in, report dict out
 tests/            offline end-to-end run against a deliberately flawed fixture
 ```
 

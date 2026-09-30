@@ -23,6 +23,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from post_audit.analysis import AnalysisError
+from post_audit.apify import ScrapeError
+from post_audit.media import MediaError
+from post_audit.pipeline import audit_post
+from post_audit.platforms import UnsupportedURL
 from website_audit.analysis import analyse
 from website_audit.blocking import detect as detect_block
 from website_audit.blocking import explain as explain_block
@@ -56,6 +61,11 @@ SITE_RATE_COST = 5
 _hits: dict[str, deque[float]] = {}
 _hits_lock = threading.Lock()
 
+# A post audit spends money on Apify and Claude, so it costs more of the hourly
+# budget than a single page. Keys come from the environment, never the repo.
+POST_RATE_COST = int(os.environ.get("POST_RATE_COST", "3"))
+_post_lock = threading.Lock()
+
 # Chromium is not thread-safe and each instance is sized for one audit at a
 # time; Cloud Run's --concurrency 1 enforces this too, and the lock makes it
 # true regardless of how the service is run.
@@ -64,12 +74,17 @@ _audit_lock = threading.Lock()
 STATIC = Path(__file__).parent / "static"
 HOME = STATIC / "home.html"
 INDEX = STATIC / "index.html"
+POST_PAGE = STATIC / "post.html"
 SERVICE_WORKER = STATIC / "sw.js"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 class BlockedError(RuntimeError):
     """The page we reached was a bot wall, not the site."""
+
+
+class PostAuditRequest(BaseModel):
+    url: str = ""
 
 
 class AuditRequest(BaseModel):
@@ -215,6 +230,11 @@ def index() -> HTMLResponse:
     return HTMLResponse(INDEX.read_text(encoding="utf-8"))
 
 
+@app.get("/post-audit", response_class=HTMLResponse)
+def post_page() -> HTMLResponse:
+    return HTMLResponse(POST_PAGE.read_text(encoding="utf-8"))
+
+
 @app.get("/sw.js")
 def service_worker() -> Response:
     # Served from the root so its scope covers /reports/. A worker's scope can
@@ -347,4 +367,52 @@ def audit(payload: AuditRequest, request: Request) -> Response:
     finally:
         if not delivered:
             refund(ip, cost)
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _missing_post_config() -> list[str]:
+    return [name for name in ("APIFY_TOKEN", "ANTHROPIC_API_KEY") if not os.environ.get(name)]
+
+
+@app.post("/api/post-audit")
+def post_audit(payload: PostAuditRequest, request: Request) -> JSONResponse:
+    missing = _missing_post_config()
+    if missing:
+        raise HTTPException(503, f"The Post Auditor is not set up yet: {', '.join(missing)} missing on the server.")
+
+    ip = client_ip(request)
+    wait = seconds_until_allowed(ip, POST_RATE_COST)
+    if wait:
+        raise HTTPException(429, f"Rate limit reached. You can audit another post in {_minutes(wait)}.",
+                            headers={"Retry-After": str(wait)})
+
+    work_dir = Path(tempfile.mkdtemp(prefix="post-audit-"))
+    delivered = False  # anything short of a report refunds the units charged above
+    try:
+        if not _post_lock.acquire(timeout=300):
+            raise HTTPException(503, "The auditor is busy with another post. Try again shortly.")
+        try:
+            report = audit_post(
+                payload.url,
+                work_dir,
+                apify_token=os.environ["APIFY_TOKEN"],
+                check=validate,
+            )
+        finally:
+            _post_lock.release()
+        delivered = True
+        return JSONResponse(report)
+    except HTTPException:
+        raise
+    except UnsupportedURL as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except (ScrapeError, MediaError, AnalysisError) as exc:
+        log.info("post audit failed: %s", exc)
+        raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - one bad post must not kill the instance
+        log.exception("post audit failed")
+        raise HTTPException(502, "Could not audit that post. Try again, or try another post.") from exc
+    finally:
+        if not delivered:
+            refund(ip, POST_RATE_COST)
         shutil.rmtree(work_dir, ignore_errors=True)

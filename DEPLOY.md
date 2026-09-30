@@ -143,6 +143,38 @@ curl -s -X POST "$SERVICE/api/audit" \
 Then open `$SERVICE` in a browser, choose Website Auditor, and audit a page through
 the form (it lives at `$SERVICE/website-audit`).
 
+### Turn on the Post Auditor
+
+The Post Auditor needs two keys. Keep them in Secret Manager rather than plain
+environment variables, which anyone with viewer access to the project can read.
+
+- **Apify:** console.apify.com → Settings → API & Integrations → Personal API token.
+- **Claude:** console.anthropic.com → API keys. Billed per use, separately from
+  any Claude.ai subscription.
+
+```bash
+gcloud services enable secretmanager.googleapis.com
+printf %s "YOUR_APIFY_TOKEN"   | gcloud secrets create apify-token --data-file=-
+printf %s "YOUR_ANTHROPIC_KEY" | gcloud secrets create anthropic-api-key --data-file=-
+
+# Let the service's runtime account read them.
+NUMBER=$(gcloud projects describe "$(gcloud config get-value project)" --format='value(projectNumber)')
+for SECRET in apify-token anthropic-api-key; do
+  gcloud secrets add-iam-policy-binding "$SECRET" \
+    --member="serviceAccount:${NUMBER}-compute@developer.gserviceaccount.com" \
+    --role=roles/secretmanager.secretAccessor
+done
+
+gcloud run services update website-audit --region us-central1 \
+  --update-secrets APIFY_TOKEN=apify-token:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest
+```
+
+This is a one-off: later `deploy.sh` / `deploy.ps1` runs keep the secrets. To
+rotate a key, add a new version (`gcloud secrets versions add apify-token
+--data-file=-`) and run the `services update` line again.
+
+Then open `$SERVICE/post-audit` and audit a public TikTok or Instagram post.
+
 ## 4. Costs
 
 Cloud Run's monthly free tier is, at the time of writing, 2M requests, 180,000

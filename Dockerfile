@@ -7,12 +7,25 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+# ffmpeg cuts the Post Auditor's frames and audio.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY requirements.txt requirements-service.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-service.txt
 
+# The speech-to-text model is baked into the image so a cold start never waits
+# on a download. "base" is about 150 MB and fast enough on Cloud Run's CPUs.
+ENV WHISPER_MODEL=base \
+    WHISPER_MODEL_DIR=/opt/whisper
+RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8', download_root='/opt/whisper')" \
+ && chmod -R a+rX /opt/whisper
+
 COPY website_audit/ ./website_audit/
+COPY post_audit/ ./post_audit/
 COPY service/ ./service/
 
 # Chromium's own sandbox needs privileges a managed container platform does not
