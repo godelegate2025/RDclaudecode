@@ -38,7 +38,8 @@ and for scheduling recurring audits.
 
 `service/` wraps the same engine in a web app: a form, an audit endpoint that
 returns the PDF, and a page that shows the report inline with a download button.
-It is stateless, so it scales to zero.
+It is stateless, so it scales to zero. The root (`/`) is the Redefine App home
+page linking to each tool; the website auditor lives at `/website-audit`.
 
 **Whole-site is the default.** At roughly 6.6 seconds a page, twenty-five pages
 finishes inside three minutes, which fits in one request — so this needs no job
@@ -195,7 +196,7 @@ website_audit/
 service/
   app.py          FastAPI: one request runs one audit and returns the PDF
   security.py     SSRF guard — required for any public deployment
-  static/         the form, the report viewer, and the service worker that gives
+  static/         the home page, the form, the report viewer, and the service worker that gives
                   the PDF a real URL so the browser names the download after the site
 tests/            offline end-to-end run against a deliberately flawed fixture
 ```

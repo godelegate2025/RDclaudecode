@@ -140,7 +140,8 @@ curl -s -X POST "$SERVICE/api/audit" \
   -d '{"url":"http://169.254.169.254/"}'
 ```
 
-Then open `$SERVICE` in a browser and audit a page through the form.
+Then open `$SERVICE` in a browser, choose Website Auditor, and audit a page through
+the form (it lives at `$SERVICE/website-audit`).
 
 ## 4. Costs
 

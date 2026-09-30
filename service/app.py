@@ -62,6 +62,7 @@ _hits_lock = threading.Lock()
 _audit_lock = threading.Lock()
 
 STATIC = Path(__file__).parent / "static"
+HOME = STATIC / "home.html"
 INDEX = STATIC / "index.html"
 SERVICE_WORKER = STATIC / "sw.js"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -205,6 +206,11 @@ def run_audit(target: str, work_dir: Path):
 
 
 @app.get("/", response_class=HTMLResponse)
+def home() -> HTMLResponse:
+    return HTMLResponse(HOME.read_text(encoding="utf-8"))
+
+
+@app.get("/website-audit", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     return HTMLResponse(INDEX.read_text(encoding="utf-8"))
 

@@ -96,8 +96,15 @@ class HTTPSurfaceTest(unittest.TestCase):
         app_module._hits.clear()
         self.client = TestClient(app)
 
-    def test_index_serves_the_form(self):
+    def test_home_links_to_the_tools(self):
         response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Redefine App", response.text)
+        self.assertIn('href="/website-audit"', response.text)
+        self.assertIn("Post Auditor", response.text)
+
+    def test_index_serves_the_form(self):
+        response = self.client.get("/website-audit")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Redefine Website Design Audit", response.text)
         self.assertIn('id="form"', response.text)
@@ -111,7 +118,7 @@ class HTTPSurfaceTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("javascript", response.headers["content-type"])
         self.assertIn("/reports/", response.text)
-        self.assertIn("register('/sw.js')", self.client.get("/").text)
+        self.assertIn("register('/sw.js')", self.client.get("/website-audit").text)
 
     def test_reports_are_not_kept_on_the_server(self):
         response = self.client.get("/reports/example.com-site-audit.pdf")

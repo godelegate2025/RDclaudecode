@@ -62,7 +62,7 @@ header {
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.brand { display: flex; align-items: center; gap: var(--space-3); min-width: 0; color: inherit; text-decoration: none; }
 .brand img, .brand svg { height: 32px; width: auto; display: block; flex: none; }
 .brand .word {
   font-family: var(--font-display);
@@ -259,7 +259,7 @@ button:disabled { opacity: .5; cursor: progress; }
 <a class="skip-link" href="#main-content">Skip to main content</a>
 
 <header role="banner">
-  <div class="brand">
+  <a class="brand" href="/" title="Back to Redefine App">
     <!-- Drop your own file at service/static/logo.png to replace the fallback mark. -->
     <img src="/static/logo.png" alt="Redefine" onerror="this.remove();document.getElementById('mark').hidden=false">
     <svg id="mark" hidden width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="Redefine">
@@ -270,7 +270,7 @@ button:disabled { opacity: .5; cursor: progress; }
     <span class="word">Redefine</span>
     <span class="divider" aria-hidden="true"></span>
     <span class="tool">Website Design Audit</span>
-  </div>
+  </a>
   <div class="spacer"></div>
   <div class="tagline">Build. Realize. Redefine</div>
 </header>

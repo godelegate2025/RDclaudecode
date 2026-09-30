@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redefine App</title>
+<meta name="description" content="Redefine Agency tools: website auditor and post auditor.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Same tokens as the website auditor page, so the two read as one product. */
+:root {
+  --coral: #FC4452;
+  --coral-dark: #d92f3c;
+  --ink: #191616;
+  --charcoal: #2C2828;
+  --paper: #F4F3F0;
+  --line: #D8D5CE;
+  --muted: #7C7773;
+
+  --font-display: 'Anton', 'Arial Narrow', sans-serif;
+  --font-body: 'Archivo', system-ui, -apple-system, sans-serif;
+
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 48px 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; border-radius: 3px; }
+
+main { width: 100%; max-width: 704px; text-align: center; }
+
+.eyebrow {
+  margin: 0 0 12px;
+  font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 0 0 40px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(48px, 12vw, 112px);
+  line-height: 1; letter-spacing: .005em; text-transform: uppercase;
+  color: var(--ink);
+}
+h1 .accent { color: var(--coral); }
+
+.tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  text-align: left;
+}
+
+.tool {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 24px 26px;
+  border-radius: var(--radius);
+  border: 2px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+  text-decoration: none;
+}
+.tool h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 32px; line-height: 1.05; text-transform: uppercase;
+}
+.tool p { margin: 0 0 8px; color: var(--charcoal); }
+.tool .cta {
+  margin-top: auto;
+  font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+
+a.tool {
+  background: var(--coral); border-color: var(--coral); color: #fff;
+  transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+}
+a.tool p { color: #fff; }
+a.tool:hover { background: var(--coral-dark); border-color: var(--coral-dark); transform: translateY(-2px); }
+
+.tool.soon .cta { color: var(--ink); }
+
+@media (max-width: 640px) {
+  .tools { grid-template-columns: 1fr; }
+  h1 { margin-bottom: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  a.tool { transition: none; }
+  a.tool:hover { transform: none; }
+}
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Redefine Agency · Tools</p>
+  <h1><span class="accent">Re</span>define<span class="accent">.</span> App</h1>
+
+  <div class="tools">
+    <a class="tool" href="/website-audit">
+      <h2>Website Auditor</h2>
+      <p>Typography, colour, accessibility and performance, delivered as a PDF report.</p>
+      <span class="cta">Open →</span>
+    </a>
+
+    <div class="tool soon" aria-disabled="true">
+      <h2>Post Auditor</h2>
+      <p>Audit social media posts that are already live.</p>
+      <span class="cta">Coming soon</span>
+    </div>
+  </div>
+</main>
+</body>
+</html>
