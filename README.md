@@ -90,7 +90,10 @@ nothing with `website_audit/`, so it can move to its own service later.
 1. **Fetch** — the post goes to an [Apify](https://apify.com) scraper for the
    caption, public counts, top comments and media (`post_audit/apify.py`). The
    actor per network can be swapped with `APIFY_ACTOR_TIKTOK`,
-   `APIFY_ACTOR_INSTAGRAM`, `APIFY_ACTOR_FACEBOOK` or `APIFY_ACTOR_LINKEDIN`.
+   `APIFY_ACTOR_INSTAGRAM`, `APIFY_ACTOR_FACEBOOK`, `APIFY_ACTOR_FACEBOOK_VIDEO`
+   or `APIFY_ACTOR_LINKEDIN`. Facebook reels and videos go to a scraper built for
+   single video links, which returns the MP4 and captions; Facebook's own
+   scrapers take page links and return only the counts for a single post.
 2. **Media** — ffmpeg cuts frames, six across the first three seconds (the
    hook) and six across the rest, and counts hard cuts as a pacing signal.
    Photo and carousel posts send their images instead.
@@ -106,8 +109,9 @@ without them the page loads and the API answers 503 saying which is missing.
 Each audit costs roughly $0.01 on Apify and $0.05–0.20 on the Claude API, and
 counts as 3 against the hourly rate limit (`POST_RATE_COST`).
 
-Facebook and LinkedIn scrapers usually return thumbnails rather than the video
-file, so those audits read stills and captions only; the report says so.
+Facebook photo posts and LinkedIn posts usually come back as thumbnails and
+text rather than video, so those audits read stills and captions only; the
+report says so.
 
 ## Website build brief
 

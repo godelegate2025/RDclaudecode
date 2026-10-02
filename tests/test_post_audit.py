@@ -366,6 +366,52 @@ class PostAuditHTTPTest(unittest.TestCase):
 
 
 
+FACEBOOK_VIDEO_ITEM = {
+    "success": True, "videoId": "1807693670071567", "videoUrl": "https://www.facebook.com/reel/1807693670071567/",
+    "caption": "Wait for the end #pets", "creatorName": "ahmedesam32", "creatorFollowers": 120000,
+    "publishedAt": "2026-09-20T10:00:00Z", "durationSeconds": 28.4, "viewCount": 4100000,
+    "reactionCount": 300763, "commentCount": 2061, "shareCount": 5400,
+    "videoMp4HdUrl": "https://video.xx.fbcdn.net/hd.mp4", "videoMp4SdUrl": "https://video.xx.fbcdn.net/sd.mp4",
+    "thumbnailUrl": "https://scontent.xx.fbcdn.net/thumb.jpg", "transcript": "Wait for it.",
+}
+
+
+class FacebookVideoTest(unittest.TestCase):
+    def test_reel_links_go_to_the_video_scraper(self):
+        for url in ("https://www.facebook.com/reel/1807693670071567", "https://www.facebook.com/watch/?v=1",
+                    "https://fb.watch/abc/", "https://www.facebook.com/page/videos/123/"):
+            self.assertEqual(apify.source_for("facebook", url), "facebook_video", url)
+        self.assertEqual(apify.source_for("facebook", "https://www.facebook.com/page/posts/pfbid0x"), "facebook")
+        self.assertEqual(apify.source_for("instagram", "https://www.instagram.com/reel/x/"), "instagram")
+        self.assertEqual(apify.actor_input("facebook_video", "u")["startUrls"], ["u"])
+
+    def test_video_item_normalises_with_the_sd_file_and_captions(self):
+        post, _ = apify.normalize("facebook_video", FACEBOOK_VIDEO_ITEM, "u")
+        self.assertEqual(post.platform, "facebook")
+        self.assertEqual((post.views, post.likes, post.comments, post.shares), (4100000, 300763, 2061, 5400))
+        self.assertEqual(post.video_url, "https://video.xx.fbcdn.net/sd.mp4")
+        self.assertEqual((post.transcript, post.author_followers), ("Wait for it.", 120000))
+        self.assertEqual(post.hashtags, ["pets"])
+
+    def test_failed_video_item_is_an_error(self):
+        with mock.patch.object(apify, "fetch_items", return_value=[{"success": False, "videoStatus": "private"}]):
+            with self.assertRaisesRegex(apify.ScrapeError, "private"):
+                apify.fetch_post("facebook", "https://www.facebook.com/reel/1/", "t")
+
+    def test_reel_link_uses_one_call_to_the_video_scraper(self):
+        with mock.patch.object(apify, "fetch_items", return_value=[FACEBOOK_VIDEO_ITEM]) as fetch:
+            post, _ = apify.fetch_post("facebook", "https://www.facebook.com/reel/1807693670071567", "t")
+        self.assertEqual([c.args[0] for c in fetch.call_args_list], ["facebook_video"])
+        self.assertTrue(post.video_url)
+
+    def test_post_link_hiding_a_video_retries_with_the_video_scraper(self):
+        counts_only = {"url": "https://www.facebook.com/page/posts/1", "likes": 300763, "isVideo": True}
+        with mock.patch.object(apify, "fetch_items", side_effect=[[counts_only], [FACEBOOK_VIDEO_ITEM]]) as fetch:
+            post, _ = apify.fetch_post("facebook", "https://www.facebook.com/page/posts/1", "t")
+        self.assertEqual([c.args[0] for c in fetch.call_args_list], ["facebook", "facebook_video"])
+        self.assertEqual(post.caption, "Wait for the end #pets")
+
+
 class FacebookShareLinkTest(unittest.TestCase):
     def _redirects(self, *locations):
         responses = [mock.Mock(is_redirect=True, headers={"location": loc}) for loc in locations]

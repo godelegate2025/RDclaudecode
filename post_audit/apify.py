@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -20,13 +21,29 @@ API = "https://api.apify.com/v2"
 DEFAULT_ACTORS = {
     "tiktok": "clockworks~tiktok-scraper",
     "instagram": "apify~instagram-scraper",
+    # Facebook's official scrapers take page links: given one post they return
+    # its counts and nothing else. Reels and videos go to a scraper built for
+    # single video links, which also returns the MP4 and captions.
     "facebook": "apify~facebook-posts-scraper",
+    "facebook_video": "apivault_labs~facebook-reels-video-scraper",
     "linkedin": "supreme_coder~linkedin-post",
 }
 
 
 class ScrapeError(RuntimeError):
     """The scraper could not return the post; the message is safe to show."""
+
+
+def is_facebook_video(url: str) -> bool:
+    parsed = urlparse(url)
+    path = parsed.path.lower()
+    return (parsed.hostname or "").endswith("fb.watch") or path.startswith(("/reel/", "/watch", "/share/r/", "/share/v/")) \
+        or "/videos/" in path
+
+
+def source_for(platform: str, url: str) -> str:
+    """Which scraper reads this link: the platform's, or Facebook's video one."""
+    return "facebook_video" if platform == "facebook" and is_facebook_video(url) else platform
 
 
 def actor_for(platform: str) -> str:
@@ -50,6 +67,17 @@ def actor_input(platform: str, url: str) -> dict:
         return {"directUrls": [url], "resultsType": "posts", "resultsLimit": 1, "addParentData": False}
     if platform == "facebook":
         return {"startUrls": [{"url": url}], "resultsLimit": 1, "captionText": True}
+    if platform == "facebook_video":
+        return {
+            "workflow": "videoUrls",
+            "startUrls": [url],
+            "maxResults": 1,
+            "outputPreset": "full",
+            "downloadMp4": True,
+            "includeTranscript": True,
+            "enrichDetailPage": True,
+            "transcribeWithAsr": False,  # we transcribe on our own server when captions are missing
+        }
     if platform == "linkedin":
         return {"urls": [url], "limitPerSource": 1, "deepScrape": True, "numComments": 10, "numLikes": 0}
     raise ValueError(platform)
@@ -89,9 +117,8 @@ def fetch_items(platform: str, url: str, token: str, timeout_s: int = 240) -> li
     return [item for item in items if isinstance(item, dict)]
 
 
-def fetch_post(platform: str, url: str, token: str, timeout_s: int = 240) -> tuple[Post, dict]:
-    """Return the normalised post plus extras a platform provides (e.g. subtitle links)."""
-    items = fetch_items(platform, url, token, timeout_s)
+def _fetch_one(source: str, url: str, token: str, timeout_s: int) -> tuple[Post, dict]:
+    items = fetch_items(source, url, token, timeout_s)
     usable = [item for item in items if not _item_error(item)]
     if not usable:
         reason = next((_item_error(item) for item in items if _item_error(item)), "")
@@ -99,10 +126,28 @@ def fetch_post(platform: str, url: str, token: str, timeout_s: int = 240) -> tup
             "The scraper found no post at that link. Check it is public and not deleted."
             + (f" ({reason})" if reason else "")
         )
-    return normalize(platform, usable[0], url)
+    return normalize(source, usable[0], url)
+
+
+def fetch_post(platform: str, url: str, token: str, timeout_s: int = 240) -> tuple[Post, dict]:
+    """Return the normalised post plus extras a platform provides (e.g. subtitle links)."""
+    source = source_for(platform, url)
+    post, extras = _fetch_one(source, url, token, timeout_s)
+    # A Facebook post link can hide a video the posts scraper cannot open; one
+    # more cheap call to the video scraper gets the file and captions.
+    if source == "facebook" and post.media_type == "video" and not post.video_url:
+        try:
+            video_post, video_extras = _fetch_one("facebook_video", post.url or url, token, timeout_s)
+        except ScrapeError:
+            return post, extras
+        if video_post.video_url or video_post.caption or video_post.transcript:
+            return video_post, video_extras
+    return post, extras
 
 
 def _item_error(item: dict) -> str:
+    if item.get("success") is False:
+        return str(item.get("videoStatus") or item.get("error") or "the scraper could not read it")[:200]
     error = item.get("error") or item.get("errorDescription") or item.get("errorCode")
     return str(error)[:200] if error else ""
 
@@ -169,6 +214,7 @@ def normalize(platform: str, item: dict, url: str) -> tuple[Post, dict]:
         "tiktok": _tiktok,
         "instagram": _instagram,
         "facebook": _facebook,
+        "facebook_video": _facebook_video,
         "linkedin": _linkedin,
     }[platform](item, url)
 
@@ -261,6 +307,33 @@ def _facebook(item: dict, url: str) -> tuple[Post, dict]:
     )
     if not post.transcript:
         post.transcript_source = ""
+    return post, {}
+
+
+def _facebook_video(item: dict, url: str) -> tuple[Post, dict]:
+    caption = _get(item, "caption", "title") or ""
+    transcript = item.get("transcript") or ""
+    post = Post(
+        platform="facebook",
+        url=_get(item, "videoUrl") or url,
+        author=item.get("creatorName") or "",
+        author_handle=item.get("creatorName") or "",
+        author_followers=_int(item.get("creatorFollowers")),
+        caption=caption,
+        hashtags=_hashtags(caption, item.get("hashtags")),
+        posted_at=item.get("publishedAt") or "",
+        media_type="video",
+        duration_seconds=_float(item.get("durationSeconds")),
+        views=_int(item.get("viewCount")),
+        likes=_int(item.get("reactionCount")),
+        comments=_int(item.get("commentCount")),
+        shares=_int(item.get("shareCount")),
+        # SD first: plenty for 512px frames, and a fraction of the download.
+        video_url=_get(item, "videoMp4SdUrl", "videoMp4Url", "videoMp4HdUrl") or "",
+        image_urls=[u for u in [item.get("thumbnailUrl")] if u],
+        transcript=transcript,
+        transcript_source="Facebook captions (via Apify)" if transcript else "",
+    )
     return post, {}
 
 
