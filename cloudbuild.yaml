@@ -1,0 +1,68 @@
+# Automatic deploys: a Cloud Build trigger on the default branch runs this on
+# every push. Build the image, run the test suite inside it, and only then roll
+# it out to Cloud Run — a push that breaks a test never goes live.
+#
+# Set up once in the console; DEPLOY.md, "Automatic deploys", has the steps.
+# deploy.sh / deploy.ps1 still work for a manual deploy.
+
+substitutions:
+  _SERVICE: website-audit
+  _REGION: us-central1
+  _MAX_INSTANCES: "3"
+  # The repository `gcloud run deploy --source` already created on the first deploy.
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE}
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE}:${SHORT_SHA}", "-t", "${_IMAGE}:latest", "."]
+
+  # The image leaves tests/ out, so mount them in. Same container, same
+  # Chromium, same ffmpeg and speech model as production.
+  - id: test
+    name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      - --network=cloudbuild
+      - -v
+      - /workspace/tests:/app/tests:ro
+      - ${_IMAGE}:${SHORT_SHA}
+      - sh
+      - -c
+      - cd /app && python3 -m unittest discover -s tests -t .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "--all-tags", "${_IMAGE}"]
+
+  # Same sizing as deploy.sh. Environment variables and secrets (the Post
+  # Auditor's keys) carry over from the running revision, and so does public
+  # access, so this step needs no IAM-changing permission.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_IMAGE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --memory=2Gi
+      - --cpu=2
+      - --concurrency=1
+      - --timeout=600
+      - --min-instances=0
+      - --max-instances=${_MAX_INSTANCES}
+      - --cpu-boost
+      - --quiet
+
+options:
+  # _IMAGE is built from other substitutions, which needs this on.
+  dynamicSubstitutions: true
+  # Required when the trigger runs as a user-chosen service account.
+  logging: CLOUD_LOGGING_ONLY
+  # The default machine is inside Cloud Build's free monthly minutes. For
+  # builds about twice as fast at a few cents each, add: machineType: E2_HIGHCPU_8
+
+timeout: 1800s

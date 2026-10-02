@@ -175,6 +175,45 @@ rotate a key, add a new version (`gcloud secrets versions add apify-token
 
 Then open `$SERVICE/post-audit` and audit a public TikTok or Instagram post.
 
+## Automatic deploys
+
+`cloudbuild.yaml` deploys on every push: it builds the image, runs the whole
+test suite inside it, and only then rolls it out to Cloud Run. A push that
+fails a test stops at the test step and the live site is untouched.
+Environment variables and secrets carry over from the running revision.
+
+Set it up once:
+
+1. **Grant the build permissions.** Cloud Build runs as the Compute Engine
+   default service account; let it deploy and push images:
+
+   ```bash
+   PROJECT=$(gcloud config get-value project)
+   NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
+   SA="${NUMBER}-compute@developer.gserviceaccount.com"
+   for ROLE in roles/run.developer roles/iam.serviceAccountUser \
+               roles/artifactregistry.writer roles/logging.logWriter; do
+     gcloud projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$SA" --role="$ROLE"
+   done
+   ```
+
+2. **Connect GitHub.** Console → Cloud Build → Triggers → region
+   `us-central1` → **Connect repository** → GitHub (Cloud Build GitHub App) →
+   authorise, then pick `godelegate2025/RDclaudecode`.
+
+3. **Create the trigger.** Same page → **Create trigger**:
+   - Event: **Push to a branch**
+   - Repository: `godelegate2025/RDclaudecode`
+   - Branch: `^claude/keen-clarke-euqbmv$` (the default branch)
+   - Configuration: **Cloud Build configuration file**, location `/cloudbuild.yaml`
+   - Service account: the Compute Engine default service account from step 1
+
+4. **Test it.** On the trigger, click **Run**. Watch Cloud Build → History: the
+   steps are build (~8–12 min the first time), test, push, deploy.
+
+A build takes roughly 10 minutes and fits in Cloud Build's free monthly
+minutes. `deploy.sh` / `deploy.ps1` still work for a manual deploy.
+
 ## 4. Costs
 
 Cloud Run's monthly free tier is, at the time of writing, 2M requests, 180,000
