@@ -4,6 +4,7 @@ Media tests generate a short video with ffmpeg; they skip when no ffmpeg is
 available (neither on PATH nor from the imageio-ffmpeg package).
 """
 
+import base64
 import json
 import os
 import shutil
@@ -361,6 +362,97 @@ class PostAuditHTTPTest(unittest.TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()["detail"], "Apify is out of credit.")
         self.assertEqual(self.app_module._hits, {})
+
+
+
+
+class FacebookShareLinkTest(unittest.TestCase):
+    def _redirects(self, *locations):
+        responses = [mock.Mock(is_redirect=True, headers={"location": loc}) for loc in locations]
+        responses.append(mock.Mock(is_redirect=False, headers={}))
+        return mock.patch.object(pipeline.requests, "get", side_effect=responses)
+
+    def test_share_link_resolves_to_the_reel(self):
+        with self._redirects("https://www.facebook.com/reel/895509256298494/?mibextid=abc"):
+            url = pipeline.resolve_share_link("facebook", "https://www.facebook.com/share/r/1DyZ/", lambda u: None)
+        self.assertEqual(url, "https://www.facebook.com/reel/895509256298494/")
+
+    def test_login_wall_and_other_sites_keep_the_original(self):
+        original = "https://www.facebook.com/share/r/1DyZ/"
+        for target in ("https://www.facebook.com/login/?next=x", "https://evil.example/reel/1"):
+            with self._redirects(target):
+                self.assertEqual(pipeline.resolve_share_link("facebook", original, lambda u: None), original)
+
+    def test_other_links_are_not_touched(self):
+        with mock.patch.object(pipeline.requests, "get") as get:
+            for platform, url in (("facebook", "https://www.facebook.com/reel/1/"),
+                                  ("tiktok", "https://www.tiktok.com/@a/video/1")):
+                self.assertEqual(pipeline.resolve_share_link(platform, url, lambda u: None), url)
+        get.assert_not_called()
+
+
+class NotEnoughToAuditTest(unittest.TestCase):
+    def test_counts_only_post_never_reaches_claude(self):
+        post, _ = apify.normalize("facebook", {"likes": 300763, "comments": 2061, "user": {"name": "a"}}, "u")
+        client = fake_client()
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(apify, "fetch_post", return_value=(post, {})):
+            with self.assertRaisesRegex(pipeline.NotEnoughToAudit, "no caption, video or images"):
+                pipeline.audit_post("https://www.facebook.com/reel/1/", Path(tmp),
+                                    apify_token="t", check=validate, client=client)
+        client.beta.messages.create.assert_not_called()
+
+    def test_api_answers_422(self):
+        import service.app as app_module
+
+        app_module._hits.clear()
+        with mock.patch.dict(os.environ, {"APIFY_TOKEN": "t", "ANTHROPIC_API_KEY": "k"}), \
+             mock.patch.object(app_module, "audit_post", side_effect=pipeline.NotEnoughToAudit("nothing")):
+            response = TestClient(app).post("/api/post-audit", json={"url": "https://www.facebook.com/reel/1/"})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(app_module._hits, {})
+
+
+class PostPdfTest(unittest.TestCase):
+    REPORT = {
+        "platform": "tiktok", "platform_label": "TikTok",
+        "post": {"url": "https://www.tiktok.com/@a/video/1", "author": "Greta Lynn", "author_handle": "greta",
+                 "caption": "ootd", "views": 1000, "likes": 100},
+        "metrics": {"engagement_rate_by_views": 10.0},
+        "analysis": ANALYSIS,
+        # A remote image must never be fetched by the server's browser.
+        "frames": [{"seconds": 0.0, "label": "hook", "src": "https://example.com/tracker.jpg"}],
+        "notes": [],
+    }
+
+    def test_prints_a_pdf_without_fetching_anything_else(self):
+        from service import post_pdf
+
+        seen = []
+        original = post_pdf._route
+
+        def spy(route, request):
+            seen.append(request.url)
+            original(route, request)
+
+        with mock.patch.object(post_pdf, "_route", new=spy):  # a plain function: Playwright reads its arity
+            report = post_pdf.attach_pdf(json.loads(json.dumps(self.REPORT)))
+        pdf = base64.b64decode(report["pdf"]["base64"])
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertGreater(len(pdf), 5000)
+        self.assertEqual(report["pdf"]["filename"], "tiktok-greta-audit.pdf")
+        self.assertIn("https://example.com/tracker.jpg", seen)  # requested, and refused by the route
+
+    def test_pdf_failure_still_returns_the_report(self):
+        import service.app as app_module
+
+        app_module._hits.clear()
+        with mock.patch.dict(os.environ, {"APIFY_TOKEN": "t", "ANTHROPIC_API_KEY": "k"}), \
+             mock.patch.object(app_module, "audit_post", return_value={"platform": "tiktok"}), \
+             mock.patch("service.post_pdf.render_pdf", side_effect=RuntimeError("no chromium")):
+            response = TestClient(app).post("/api/post-audit", json={"url": "https://www.tiktok.com/@a/video/1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("pdf", response.json())
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from post_audit.analysis import AnalysisError
 from post_audit.apify import ScrapeError
 from post_audit.media import MediaError
-from post_audit.pipeline import audit_post
+from post_audit.pipeline import NotEnoughToAudit, audit_post
 from post_audit.platforms import UnsupportedURL
 from website_audit.analysis import analyse
 from website_audit.blocking import detect as detect_block
@@ -38,6 +38,7 @@ from website_audit.report import html_to_pdf, render_html, render_site_html, wri
 from website_audit.site import audit_site
 
 from .brief_view import render_brief_html
+from .post_pdf import attach_pdf
 from .security import UnsafeURL, guard_route, validate
 
 log = logging.getLogger("website-audit")
@@ -398,6 +399,10 @@ def post_audit(payload: PostAuditRequest, request: Request) -> JSONResponse:
                 apify_token=os.environ["APIFY_TOKEN"],
                 check=validate,
             )
+            try:
+                attach_pdf(report)
+            except Exception:  # noqa: BLE001 - the report on screen matters more than the file
+                log.exception("post audit PDF failed; the page falls back to printing")
         finally:
             _post_lock.release()
         delivered = True
@@ -406,6 +411,8 @@ def post_audit(payload: PostAuditRequest, request: Request) -> JSONResponse:
         raise
     except UnsupportedURL as exc:
         raise HTTPException(400, str(exc)) from exc
+    except NotEnoughToAudit as exc:
+        raise HTTPException(422, str(exc)) from exc
     except (ScrapeError, MediaError, AnalysisError) as exc:
         log.info("post audit failed: %s", exc)
         raise HTTPException(502, str(exc)) from exc

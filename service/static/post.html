@@ -250,6 +250,10 @@ ul.points li { margin-bottom: 6px; }
 .apply li:first-child::before { top: -2px; }
 .apply strong { display: block; margin-bottom: 2px; }
 
+.print-title { display: none; margin: 0 0 var(--space-4); }
+.print-title .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.print-title h1 { font-size: 34px; margin-top: 4px; }
+
 .limits { background: transparent; border-style: dashed; color: var(--charcoal); font-size: 13.5px; }
 
 .actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 4px; }
@@ -282,7 +286,11 @@ ul.points li { margin-bottom: 6px; }
   main { display: block; height: auto; }
   .report { background: #fff; overflow: visible; }
   #result { padding: 0; max-width: none; }
-  .card { break-inside: avoid; }
+  /* Cards may span pages; the pieces inside them may not. */
+  .card { break-inside: auto; }
+  .card h2, .label { break-after: avoid; }
+  .verdict, .tile, .strip, .beats li, .apply li, .post-head { break-inside: avoid; }
+  .print-title { display: block; }
   .caption { max-height: none; }
   .caption::after { display: none; }
   .verdict { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
@@ -547,12 +555,32 @@ ul.points li { margin-bottom: 6px; }
       catch (e) { copy.textContent = 'Copy failed'; }
       setTimeout(() => { copy.textContent = 'Copy takeaways'; }, 2000);
     });
-    const print = el('button', null, 'Save as PDF');
-    print.type = 'button';
-    print.addEventListener('click', () => window.print());
+    // The server prints a real PDF alongside the report; printing from the
+    // browser is only the fallback when that failed.
+    const save = el('button', null, data.pdf ? 'Download PDF' : 'Print / Save PDF');
+    save.type = 'button';
+    save.addEventListener('click', () => {
+      if (!data.pdf) { window.print(); return; }
+      const raw = atob(data.pdf.base64);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      link.download = data.pdf.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    });
 
-    add(result, top, tileRow, verdict, hook, apply, why, structure, pacing, caption, performance, avoid, limits,
-        add(el('div', 'actions'), copy, print));
+    // Only shown in the PDF, where the page header and the form are hidden.
+    const printed = new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+    const title = add(el('div', 'print-title'),
+      el('div', 'eyebrow', `Redefine · Post audit · ${printed}`),
+      el('h1', null, `${data.platform_label} post — ${post.author || post.author_handle || 'unknown account'}`));
+
+    add(result, title, top, tileRow, verdict, hook, apply, why, structure, pacing, caption, performance, avoid, limits,
+        add(el('div', 'actions'), copy, save));
     empty.style.display = 'none';
     result.setAttribute('data-show', '');
     result.closest('.report').scrollTop = 0;
@@ -576,7 +604,7 @@ ul.points li { margin-bottom: 6px; }
       if (!response.ok) {
         let detail = 'Something went wrong. Try again in a moment.';
         try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
-        const titles = { 400: 'Check the link', 429: 'Too many audits for now', 503: 'Not available right now' };
+        const titles = { 400: 'Check the link', 422: 'Nothing to analyse in that post', 429: 'Too many audits for now', 503: 'Not available right now' };
         problem(titles[response.status] || 'Could not audit that post', detail);
         return;
       }
