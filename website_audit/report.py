@@ -70,12 +70,13 @@ def _data_uri(path: str) -> str:
 
 # The report is branded from the same logo the web header uses; absent, the
 # wordmark stands alone rather than leaving a gap.
-LOGO = Path(__file__).resolve().parent.parent / "service" / "static" / "logo.png"
+LOGO = Path(__file__).resolve().parent.parent / "service" / "static" / "logo.svg"
 
 
 def brand_logo() -> str | None:
+    # Vector, so the mark stays sharp at any print size.
     try:
-        return _data_uri(str(LOGO)) if LOGO.exists() else None
+        return "data:image/svg+xml;base64," + base64.b64encode(LOGO.read_bytes()).decode() if LOGO.exists() else None
     except OSError:
         return None
 

@@ -236,6 +236,16 @@ def post_page() -> HTMLResponse:
     return HTMLResponse(POST_PAGE.read_text(encoding="utf-8"))
 
 
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    # Browsers ask for this at the root whatever the page's <link> says.
+    return Response(
+        content=(STATIC / "favicon.ico").read_bytes(),
+        media_type="image/x-icon",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/sw.js")
 def service_worker() -> Response:
     # Served from the root so its scope covers /reports/. A worker's scope can

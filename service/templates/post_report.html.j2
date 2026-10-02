@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Post audit — {{ who }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* The Post Audit's print design: same REDEFINE system as the website audit
+     PDF (coral rule, Anton heads, paper planes), laid out for A4 rather than
+     reusing the screen page. Page 1 stands alone as the summary. */
+  :root {
+    --plane: #F4F3F0; --ink: #191616; --ink2: #2C2828; --muted: #7C7773;
+    --grid: #E3E1DC; --rule: #C9C6C0; --brand: #FC4452; --brand-dim: #FBD9DC;
+    --good: #0f8a3d; --warn: #b57500; --bad: #A8201A;
+  }
+  @page { size: A4; margin: 14mm 13mm 16mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); font: 9.6pt/1.5 Archivo, system-ui, sans-serif;
+         -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h1, h2 { font-family: Anton, 'Arial Narrow', sans-serif; font-weight: 400; text-transform: uppercase;
+           letter-spacing: .01em; margin: 0; }
+  h3 { margin: 0 0 2pt; font-size: 10.5pt; font-weight: 700; }
+  p { margin: 0 0 5pt; }
+  .pb { break-before: page; }
+  .eyebrow { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  .eyebrow.c { color: var(--brand); }
+  .lab { font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: 3pt; }
+
+  /* header */
+  .top { display: flex; justify-content: space-between; align-items: center;
+         border-bottom: 2.5pt solid var(--brand); padding-bottom: 9pt; margin-bottom: 16pt; }
+  .mark { display: flex; align-items: center; gap: 8pt; }
+  .mark img { height: 24pt; width: auto; display: block; }
+  .mark b { font: 400 15pt Anton, sans-serif; letter-spacing: .02em; text-transform: uppercase; }
+  .top .meta { text-align: right; font-size: 7.5pt; color: var(--muted); line-height: 1.4; }
+  .top .meta strong { color: var(--ink); letter-spacing: .14em; text-transform: uppercase; }
+
+  /* cover */
+  .title { margin-bottom: 14pt; }
+  .title h1 { font-size: 38pt; line-height: .95; margin: 4pt 0 6pt; word-break: break-word; }
+  .title .sub { font-size: 9pt; color: var(--ink2); }
+  .title .sub a { color: var(--brand); text-decoration: none; word-break: break-all; }
+  .hero { display: grid; grid-template-columns: 150pt 1fr; gap: 18pt; margin-bottom: 16pt; }
+  .hero.solo { grid-template-columns: 1fr; }
+  .phone { margin: 0; border-radius: 10pt; overflow: hidden; border: 1px solid var(--grid); background: var(--plane); }
+  .phone img { display: block; width: 100%; }
+  .phone figcaption { font-size: 7pt; color: var(--muted); padding: 4pt 7pt; border-top: 1px solid var(--grid); }
+  .verdict { background: var(--ink); color: #fff; border-radius: 8pt; padding: 13pt 15pt; margin-bottom: 10pt; }
+  .verdict .eyebrow { color: #9E9894; }
+  .verdict p { font-size: 11.5pt; line-height: 1.45; margin: 5pt 0 0; }
+  .scores { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 8pt; }
+  .sc { border: 1px solid var(--grid); border-radius: 8pt; padding: 9pt 11pt; }
+  .sc .v { font: 400 30pt/1 Anton, sans-serif; }
+  .sc .v small { font: 600 9pt Archivo, sans-serif; color: var(--muted); }
+  .sc .t { font: 400 15pt/1.1 Anton, sans-serif; text-transform: uppercase; margin-top: 5pt; }
+  .sc .t.none { color: var(--brand); }
+  .pips { display: flex; gap: 2.5pt; margin-top: 6pt; }
+  .pip { flex: 1; height: 5pt; border-radius: 2pt; background: var(--grid); }
+  .kpis { display: grid; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin-bottom: 6pt; }
+  .kpi { padding: 8pt 0 8pt 9pt; border-left: 2pt solid var(--brand-dim); }
+  .kpi .n { font: 400 20pt/1.05 Anton, sans-serif; }
+  .kpi .k { font-size: 7pt; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .na { font-size: 7.5pt; color: var(--muted); margin-bottom: 16pt; }
+  .glance { border: 2pt solid var(--brand); border-radius: 8pt; padding: 12pt 15pt; }
+  .glance ol { list-style: none; margin: 6pt 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12pt; }
+  .glance li { font-weight: 700; font-size: 10pt; line-height: 1.3; }
+  .glance li span { display: block; font: 400 22pt/1 Anton, sans-serif; color: var(--brand); margin-bottom: 3pt; }
+
+  /* sections */
+  section { margin-bottom: 18pt; }
+  .sh { display: flex; align-items: baseline; gap: 9pt; border-bottom: 1px solid var(--rule);
+        padding-bottom: 5pt; margin: 0 0 10pt; break-after: avoid; }
+  .sh .no { font: 400 13pt Anton, sans-serif; color: var(--brand); }
+  .sh h2 { font-size: 17pt; }
+  .sh .right { margin-left: auto; }
+  .film { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6pt; margin-bottom: 10pt; break-inside: avoid; }
+  .film figure { margin: 0; }
+  .film img { width: 100%; display: block; border-radius: 5pt; border: 1px solid var(--grid); }
+  .film figcaption { font-size: 7pt; color: var(--muted); text-align: center; margin-top: 2pt; font-variant-numeric: tabular-nums; }
+  .cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12pt; }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14pt; }
+  .timeline { position: relative; height: 20pt; background: var(--plane); border-radius: 4pt; margin: 2pt 0 3pt; }
+  .seg { position: absolute; top: 0; bottom: 0; border-radius: 4pt; display: flex; align-items: center;
+         justify-content: center; color: #fff; font-weight: 700; font-size: 8pt; }
+  .s0 { background: var(--brand); } .s1 { background: var(--ink); } .s2 { background: #5C5653; }
+  .s3 { background: #A8A39E; } .s4 { background: #C9C6C0; } .s5 { background: #E3E1DC; color: var(--ink); }
+  .ticks { display: flex; justify-content: space-between; font-size: 7pt; color: var(--muted); margin-bottom: 9pt;
+           font-variant-numeric: tabular-nums; }
+  .beats { display: grid; grid-template-columns: 1fr 1fr; gap: 8pt 14pt; margin-bottom: 10pt; }
+  .beat { display: grid; grid-template-columns: 16pt 1fr; gap: 7pt; break-inside: avoid; }
+  .bn { width: 16pt; height: 16pt; border-radius: 3pt; color: #fff; font-weight: 700; font-size: 8pt;
+        display: flex; align-items: center; justify-content: center; }
+  .bt { font-weight: 700; } .bt span { font-weight: 500; color: var(--muted); font-size: 8pt; margin-left: 3pt; }
+  .beat p { font-size: 8.8pt; color: var(--ink2); }
+  .play { list-style: none; margin: 0; padding: 0; }
+  .play li { display: grid; grid-template-columns: 34pt 1fr; gap: 10pt; padding: 10pt 0;
+             border-top: 1px solid var(--grid); break-inside: avoid; }
+  .play li:first-child { border-top: 0; padding-top: 2pt; }
+  .play .num { font: 400 22pt/1 Anton, sans-serif; color: var(--brand); }
+  .play p { color: var(--ink2); }
+  .box { border: 1px solid var(--grid); border-radius: 8pt; padding: 11pt 13pt; break-inside: avoid; }
+  .box.bad { border-color: #E8C9C6; background: #FCF5F4; }
+  .box ul { margin: 4pt 0 0; padding-left: 12pt; } .box li { margin-bottom: 5pt; }
+  .box h3 { display: flex; align-items: center; gap: 6pt; }
+  .tick { color: var(--good); } .cross { color: var(--bad); }
+  .rows .r { display: grid; grid-template-columns: 96pt 1fr; gap: 12pt; padding: 7pt 0;
+             border-top: 1px solid var(--grid); break-inside: avoid; }
+  .rows .r:first-child { border-top: 0; }
+  .quote { border-left: 2.5pt solid var(--brand); background: var(--plane); padding: 8pt 11pt; font-size: 10.5pt;
+           font-style: italic; border-radius: 0 6pt 6pt 0; margin-bottom: 8pt; white-space: pre-line; }
+  .chip { display: inline-block; font-size: 7pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+          padding: 2pt 7pt; border-radius: 10pt; background: var(--plane); color: var(--ink2); }
+  .chip.none { background: var(--brand-dim); color: var(--bad); }
+  .rates { width: 100%; border-collapse: collapse; font-size: 8.8pt; margin-top: 6pt; }
+  .rates td { padding: 5pt 0; border-bottom: 1px solid var(--grid); }
+  .rates td:nth-child(2) { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; width: 60pt; }
+  .rates td:last-child { color: var(--muted); padding-left: 12pt; }
+  .signals { margin: 8pt 0 0; padding-left: 12pt; } .signals li { margin-bottom: 3pt; }
+  .limits { background: var(--plane); border-radius: 8pt; padding: 11pt 13pt; font-size: 8.5pt; color: var(--ink2); break-inside: avoid; }
+  .limits ul { margin: 0; padding-left: 12pt; }
+  .method { font-size: 7.5pt; color: var(--muted); margin-top: 8pt; }
+</style>
+</head>
+<body>
+
+<!-- ============================ PAGE 1 · SUMMARY ============================ -->
+<div class="top">
+  <div class="mark">{% if logo %}<img src="{{ logo }}" alt="">{% endif %}<b>Redefine</b></div>
+  <div class="meta"><strong>Post audit</strong><br>{{ generated }}</div>
+</div>
+
+<div class="title">
+  <div class="eyebrow c">{{ platform }} {{ media }} · Content audit</div>
+  <h1>{{ who }}</h1>
+  <div class="sub">
+    {% if handle %}@{{ handle }} · {% endif %}{% if posted %}Posted {{ posted }} · {% endif %}{% if post.duration_seconds %}{{ post.duration_seconds|round|int }} seconds · {% endif %}<a href="{{ post.url }}">{{ short_url }} ↗</a>
+  </div>
+</div>
+
+<div class="hero{% if not cover %} solo{% endif %}">
+  {% if cover %}
+  <figure class="phone"><img src="{{ cover.src }}" alt=""><figcaption>{{ cover.caption }}</figcaption></figure>
+  {% endif %}
+  <div>
+    <div class="verdict"><div class="eyebrow">Why it performed</div><p>{{ a.verdict }}</p></div>
+    <div class="scores">
+      <div class="sc">
+        <div class="lab">Hook score</div>
+        <div class="v" style="color: {{ score_colour }}">{{ a.hook.score }}<small> / 10</small></div>
+        <div class="pips">{% for i in range(10) %}<span class="pip"{% if i < a.hook.score %} style="background: {{ score_colour }}"{% endif %}></span>{% endfor %}</div>
+      </div>
+      <div class="sc"><div class="lab">Hook type</div><div class="t">{{ hook_type }}</div></div>
+      <div class="sc"><div class="lab">Call to action</div><div class="t{% if a.caption.cta_strength == 'none' %} none{% endif %}">{{ a.caption.cta_strength }}</div></div>
+    </div>
+  </div>
+</div>
+
+{% if kpis %}
+<div class="kpis" style="grid-template-columns: repeat({{ kpis|length }}, 1fr)">
+  {% for label, value in kpis %}<div class="kpi"><div class="n">{{ value }}</div><div class="k">{{ label }}</div></div>{% endfor %}
+</div>
+{% endif %}
+<div class="na">{% if missing %}Not reported by {{ platform }} for this post: {{ missing|join(', ') }}.{% endif %}</div>
+
+{% if a.takeaways %}
+<div class="glance">
+  <div class="eyebrow c">At a glance · {{ [a.takeaways|length, 3]|min }} moves to reuse</div>
+  <ol>{% for t in a.takeaways[:3] %}<li><span>{{ '%02d'|format(loop.index) }}</span>{{ t.title }}</li>{% endfor %}</ol>
+</div>
+{% endif %}
+
+<!-- ============================ PAGE 2 · THE VIDEO ============================ -->
+<section class="pb">
+  <div class="sh"><span class="no">01</span><h2>The hook</h2>{% if hook_frames %}<span class="eyebrow right">First 3 seconds · {{ hook_frames|length }} frames</span>{% endif %}</div>
+  {% if hook_frames %}
+  <div class="film">{% for f in hook_frames %}<figure><img src="{{ f.src }}" alt=""><figcaption>{{ f.caption }}</figcaption></figure>{% endfor %}</div>
+  {% endif %}
+  <div class="cols3">
+    <div><div class="lab">What happens</div><p>{{ a.hook.opening }}</p></div>
+    <div><div class="lab">Why it grabs</div><p>{{ a.hook.why_it_grabs }}</p></div>
+    <div><div class="lab">Score · {{ a.hook.score }} / 10</div><p>{{ a.hook.score_reason }}</p></div>
+  </div>
+</section>
+
+{% if a.structure %}
+<section>
+  <div class="sh"><span class="no">02</span><h2>Structure</h2><span class="eyebrow right">{% if post.duration_seconds %}{{ post.duration_seconds|round|int }} seconds · {% endif %}{{ a.structure|length }} beats</span></div>
+  {% if timeline %}
+  <div class="timeline">{% for seg in timeline.segments %}<div class="seg s{{ seg.i % 6 }}" style="left: {{ seg.left }}%; width: {{ seg.width }}%"><span>{{ seg.i + 1 }}</span></div>{% endfor %}</div>
+  <div class="ticks">{% for t in timeline.ticks %}<span>{{ t }}s</span>{% endfor %}</div>
+  {% endif %}
+  <div class="beats">
+    {% for b in a.structure %}
+    <div class="beat"><div class="bn s{{ loop.index0 % 6 }}">{{ loop.index }}</div>
+      <div><div class="bt">{{ b.beat }}{% if b.timing %} <span>{{ b.timing }}</span>{% endif %}</div><p>{{ b.what_happens }}</p></div></div>
+    {% endfor %}
+  </div>
+  {% if body_frames %}
+  <div class="film">{% for f in body_frames %}<figure><img src="{{ f.src }}" alt=""><figcaption>{{ f.caption }}</figcaption></figure>{% endfor %}</div>
+  {% endif %}
+</section>
+{% endif %}
+
+<!-- ============================ PAGE 3 · THE PLAYBOOK ============================ -->
+<section class="pb">
+  <div class="sh"><span class="no">03</span><h2>How to apply it to our posts</h2><span class="eyebrow right">Brief-ready playbook</span></div>
+  <ol class="play">
+    {% for t in a.takeaways %}<li><div class="num">{{ '%02d'|format(loop.index) }}</div><div><h3>{{ t.title }}</h3><p>{{ t.how_to_apply }}</p></div></li>{% endfor %}
+  </ol>
+</section>
+<section>
+  <div class="cols2">
+    <div class="box"><h3><span class="tick">✓</span> Why it works</h3><ul>{% for x in a.why_it_works %}<li>{{ x }}</li>{% endfor %}</ul></div>
+    {% if a.avoid %}<div class="box bad"><h3><span class="cross">✕</span> Don’t copy</h3><ul>{% for x in a.avoid %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+  </div>
+</section>
+
+<!-- ============================ PAGE 4 · THE DETAIL ============================ -->
+<section class="pb">
+  <div class="sh"><span class="no">04</span><h2>Editing &amp; pacing</h2></div>
+  <div class="rows">
+    <div class="r"><div class="lab">Editing</div><p>{{ a.pacing.editing }}</p></div>
+    <div class="r"><div class="lab">On-screen text</div><p>{{ a.pacing.on_screen_text }}</p></div>
+    <div class="r"><div class="lab">Audio</div><p>{{ a.pacing.audio }}</p></div>
+    {% if post.sound %}<div class="r"><div class="lab">Sound</div><p>{{ post.sound }}</p></div>{% endif %}
+  </div>
+</section>
+
+<section>
+  <div class="sh"><span class="no">05</span><h2>Caption &amp; call to action</h2><span class="chip right{% if a.caption.cta_strength == 'none' %} none{% endif %}">CTA · {{ a.caption.cta_strength }}</span></div>
+  {% if caption %}<div class="quote">“{{ caption }}”</div>{% endif %}
+  <p>{{ a.caption.assessment }}</p>
+  {% if a.caption.cta %}<p><strong>Call to action:</strong> {{ a.caption.cta }}</p>{% endif %}
+</section>
+
+<section>
+  <div class="sh"><span class="no">06</span><h2>What the numbers say</h2></div>
+  <p>{{ a.performance.read }}</p>
+  {% if rates %}
+  <table class="rates">{% for label, value, note in rates %}<tr><td>{{ label }}</td><td>{{ value }}</td><td>{{ note }}</td></tr>{% endfor %}</table>
+  {% endif %}
+  {% if a.performance.signals %}<ul class="signals">{% for s in a.performance.signals %}<li>{{ s }}</li>{% endfor %}</ul>{% endif %}
+</section>
+
+{% if limits %}
+<div class="limits"><div class="lab">Limits of this read</div><ul>{% for l in limits %}<li>{{ l }}</li>{% endfor %}</ul></div>
+{% endif %}
+<div class="method">Method: public counts fetched at the time of the audit{% if frame_count %}; {{ frame_count }} frames sampled{% endif %}{% if metrics.cuts is not none %}; hard cuts detected automatically{% endif %}; analysis by Claude. Frames are samples, so motion between them is inferred.</div>
+
+</body>
+</html>

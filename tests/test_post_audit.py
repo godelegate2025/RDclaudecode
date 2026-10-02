@@ -487,7 +487,45 @@ class PostPdfTest(unittest.TestCase):
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 5000)
         self.assertEqual(report["pdf"]["filename"], "tiktok-greta-audit.pdf")
-        self.assertIn("https://example.com/tracker.jpg", seen)  # requested, and refused by the route
+        # A remote "frame" never reaches the template, so nothing outside the
+        # brand fonts is even requested.
+        self.assertFalse([u for u in seen if not (u.startswith("data:") or post_pdf.ALLOWED.match(u))], seen)
+
+    def test_template_escapes_scraped_text_and_lays_out_the_summary(self):
+        from service import post_pdf
+
+        report = json.loads(json.dumps(self.REPORT))
+        report["post"].update(caption="<script>alert(1)</script> nice", duration_seconds=15, likes=10200,
+                              posted_at="2026-03-09T10:00:00Z")
+        report["frames"] = [{"seconds": 0.0, "label": "hook", "src": "data:image/jpeg;base64,AAAA"},
+                            {"seconds": 0.6, "label": "hook", "src": "data:image/jpeg;base64,BBBB"}]
+        html = post_pdf.render_html(report)
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn("Greta Lynn", html)
+        self.assertIn("Posted 9 March 2026", html)
+        self.assertIn(">10K<", html)                 # likes, shortened
+        self.assertIn("Open on a question", html)     # takeaway in the at-a-glance box
+        self.assertIn("data:image/svg+xml;base64,", html)  # the vector logo
+        self.assertIn("timeline", html)               # "0-3s" parses onto the bar
+
+    def test_compact_numbers(self):
+        from service.post_pdf import compact
+
+        cases = {164: "164", 1000: "1K", 1050: "1.1K", 10200: "10K", 145900: "146K",
+                 999_999: "1M", 1_400_000: "1.4M", None: None}
+        for n, expected in cases.items():
+            self.assertEqual(compact(n), expected, n)
+
+    def test_timeline_only_when_every_beat_has_times(self):
+        from service.post_pdf import timeline
+
+        beats = [{"timing": "0-0.6s"}, {"timing": "0.6–~10s (inferred)"}, {"timing": "~20-29s"}]
+        bar = timeline(beats, 29)
+        self.assertEqual([s["left"] for s in bar["segments"]], [0.0, 2.07, 68.97])
+        self.assertEqual(bar["ticks"][-1], 29)
+        self.assertIsNone(timeline(beats + [{"timing": "slide 2"}], 29))
+        self.assertIsNone(timeline(beats, None))
 
     def test_pdf_failure_still_returns_the_report(self):
         import service.app as app_module
@@ -499,6 +537,27 @@ class PostPdfTest(unittest.TestCase):
             response = TestClient(app).post("/api/post-audit", json={"url": "https://www.tiktok.com/@a/video/1"})
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("pdf", response.json())
+
+
+
+
+class BrandAssetsTest(unittest.TestCase):
+    def test_logo_and_favicons_are_served_and_linked(self):
+        client = TestClient(app)
+        icon = client.get("/favicon.ico")
+        self.assertEqual(icon.status_code, 200)
+        self.assertEqual(icon.headers["content-type"], "image/x-icon")
+        for path in ("/static/logo.svg", "/static/favicon.svg", "/static/apple-touch-icon.png"):
+            self.assertEqual(client.get(path).status_code, 200, path)
+        for page in ("/", "/website-audit", "/post-audit"):
+            html = client.get(page).text
+            self.assertIn('href="/static/favicon.svg"', html, page)
+            self.assertIn('src="/static/logo.svg"', html, page)
+
+    def test_website_audit_pdf_uses_the_vector_logo(self):
+        from website_audit.report import brand_logo
+
+        self.assertTrue(brand_logo().startswith("data:image/svg+xml;base64,"))
 
 
 if __name__ == "__main__":

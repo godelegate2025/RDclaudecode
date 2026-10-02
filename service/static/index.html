@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Redefine Website Design Audit</title>
 <meta name="description" content="Render any page in a real browser and measure its typography, colour palette, WCAG contrast and what can be automated.">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -260,13 +263,7 @@ button:disabled { opacity: .5; cursor: progress; }
 
 <header role="banner">
   <a class="brand" href="/" title="Back to Redefine App">
-    <!-- Drop your own file at service/static/logo.png to replace the fallback mark. -->
-    <img src="/static/logo.png" alt="Redefine" onerror="this.remove();document.getElementById('mark').hidden=false">
-    <svg id="mark" hidden width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="Redefine">
-      <rect width="32" height="32" rx="6" fill="#FC4452"/>
-      <text x="16" y="24" text-anchor="middle" fill="#F4F3F0"
-            font-family="Anton, Arial Narrow, sans-serif" font-size="21">R</text>
-    </svg>
+    <img src="/static/logo.svg" alt="Redefine" width="29" height="32">
     <span class="word">Redefine</span>
     <span class="divider" aria-hidden="true"></span>
     <span class="tool">Website Design Audit</span>
