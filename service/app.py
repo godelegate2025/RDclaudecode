@@ -389,6 +389,9 @@ def team_set_role(email: str, change: RoleChange, request: Request) -> JSONRespo
 @app.delete("/api/team/{email}")
 def team_remove(email: str, request: Request) -> JSONResponse:
     me = _team_admin(request)
+    # Admins can remove members; removing an admin is the owners' call.
+    if get_team().role_of(email) == "admin" and get_team().role_of(me) != "owner":
+        raise HTTPException(403, "Only owners can remove admins.")
     try:
         get_team().remove(email, by=me)
     except StoreUnavailable as exc:

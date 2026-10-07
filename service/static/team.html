@@ -113,7 +113,7 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
 <main>
   <h1>Team <span class="accent">access</span></h1>
   <p class="lede">Who can sign in to the Redefine tools. Members can use the tools; admins can also
-    add members and remove people. Only owners can make someone an admin, and owners are set on the
+    add and remove members. Only owners can make, change or remove admins, and owners are set on the
     server so nobody gets locked out.</p>
 
   <div class="banner" id="banner" role="status"><strong>Team list storage not set up</strong><span id="bannerText"></span></div>
@@ -195,7 +195,9 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
       }
       const meta = el('td', 'meta', p.owner ? 'Server setting' : [fmtDate(p.added_at), p.added_by && `by ${p.added_by}`].filter(Boolean).join(' · '));
       const actions = el('td', 'actions');
-      if (!p.owner && p.email !== me && storeReady) {
+      // Owners can remove anyone but owners; admins only members.
+      const canRemove = !p.owner && p.email !== me && storeReady && (meRole === 'owner' || p.role === 'member');
+      if (canRemove) {
         const remove = el('button', 'ghost', 'Remove');
         remove.type = 'button';
         remove.addEventListener('click', () => removePerson(p.email, remove));
