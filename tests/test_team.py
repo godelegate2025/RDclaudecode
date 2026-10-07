@@ -114,6 +114,11 @@ class TeamPageTest(unittest.TestCase):
         ana = client_for("ana@gmail.com")
         self.assertTrue(ana.get("/auth/me").json()["can_manage_team"])
         self.assertEqual(ana.post("/api/team", json={"email": "cy@gmail.com", "role": "member"}).status_code, 200)
+        # Admins add members only; making admins is for owners.
+        refused = ana.post("/api/team", json={"email": "dee@gmail.com", "role": "admin"})
+        self.assertEqual(refused.status_code, 403)
+        self.assertIn("Only owners can add admins", refused.json()["detail"])
+        self.assertIsNone(self.team.role_of("dee@gmail.com"))
         self.assertEqual(ana.delete("/api/team/owner@gmail.com").status_code, 400)
 
     def test_owner_switches_roles_both_ways(self):

@@ -352,6 +352,9 @@ def team_list(request: Request) -> JSONResponse:
 @app.post("/api/team")
 def team_add(change: TeamChange, request: Request) -> JSONResponse:
     me = _team_admin(request)
+    # Admins can bring people in; making someone an admin is the owners' call.
+    if change.role == "admin" and get_team().role_of(me) != "owner":
+        raise HTTPException(403, "Only owners can add admins. Add them as a member and ask an owner to promote them.")
     try:
         member = get_team().add(change.email, change.role, by=me)
     except StoreUnavailable as exc:

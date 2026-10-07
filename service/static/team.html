@@ -113,7 +113,8 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
 <main>
   <h1>Team <span class="accent">access</span></h1>
   <p class="lede">Who can sign in to the Redefine tools. Members can use the tools; admins can also
-    add and remove people. Owners can change anyone's role, and are set on the server so nobody gets locked out.</p>
+    add members and remove people. Only owners can make someone an admin, and owners are set on the
+    server so nobody gets locked out.</p>
 
   <div class="banner" id="banner" role="status"><strong>Team list storage not set up</strong><span id="bannerText"></span></div>
 
@@ -211,6 +212,12 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
     if (!res.ok) { say(data.detail || 'Could not load the team.', false); return; }
     me = data.me;
     meRole = data.me_role || '';
+    // Only owners can make admins, so admins only get the Member option.
+    const adminOption = document.querySelector('#role option[value="admin"]');
+    if (meRole !== 'owner' && adminOption) {
+      adminOption.remove();
+      document.getElementById('role').value = 'member';
+    }
     storeReady = data.store_ready;
     const banner = document.getElementById('banner');
     if (!storeReady) {
