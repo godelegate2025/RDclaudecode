@@ -1,12 +1,13 @@
-"""Team sign-in: "Sign in with Google", limited to an allowed list of emails.
+"""Team sign-in: "Sign in with Google", limited to the team.
 
-No accounts database. Google holds the accounts (ordinary Gmail works; no
-Workspace needed), the allowed list lives in the ALLOWED_EMAILS setting, and a
-signed cookie keeps someone signed in.
+Google holds the accounts (ordinary Gmail works; no Workspace needed). Who is
+on the team is decided in team.py: owners from the ALLOWED_EMAILS setting plus
+the members managed on the admin page. A signed cookie keeps someone signed in.
 
 Settings (all three switch sign-in on; none of them leaves the app public):
   GOOGLE_CLIENT_ID  OAuth client ID of type "Web application"
-  ALLOWED_EMAILS    comma-separated, e.g. "you@gmail.com, kian@gmail.com"
+  ALLOWED_EMAILS    the owners, comma-separated, e.g. "you@gmail.com"; everyone
+                    else is added on the admin page (/admin/team, see team.py)
   SESSION_SECRET    a long random string that signs the session cookie
 
 With none set, sign-in is off and the app behaves as before. With only some
@@ -24,6 +25,8 @@ import os
 import time
 from dataclasses import dataclass
 from urllib.parse import quote
+
+from .team import get_team
 
 log = logging.getLogger("auth")
 
@@ -43,7 +46,6 @@ class NotAllowed(Exception):
 @dataclass
 class Config:
     client_id: str
-    allowed: frozenset[str]
     secret: bytes
 
 
@@ -62,7 +64,6 @@ def mode() -> str:
 def config() -> Config:
     return Config(
         client_id=_setting("GOOGLE_CLIENT_ID"),
-        allowed=frozenset(e.strip().lower() for e in _setting("ALLOWED_EMAILS").split(",") if e.strip()),
         secret=_setting("SESSION_SECRET").encode(),
     )
 
@@ -106,15 +107,15 @@ def read_session(value: str | None, cfg: Config, now: float | None = None) -> st
     if not isinstance(data, dict) or data.get("exp", 0) < (now or time.time()):
         return None
     email = str(data.get("email", "")).lower()
-    # Re-checked on every request, so removing someone from the list signs
+    # Re-checked on every request, so removing someone from the team signs
     # them out at once rather than when their cookie expires.
-    return email if email in cfg.allowed else None
+    return email if get_team().is_allowed(email) else None
 
 
 # ------------------------------------------------------------------ Google
 
 def verify_google_credential(credential: str, cfg: Config) -> str:
-    """Check Google's signed ID token and the allowed list; return the email."""
+    """Check Google's signed ID token and the team list; return the email."""
     from google.auth.transport import requests as google_requests
     from google.oauth2 import id_token
 
@@ -125,7 +126,7 @@ def verify_google_credential(credential: str, cfg: Config) -> str:
     email = str(claims.get("email", "")).lower()
     if not email or not claims.get("email_verified"):
         raise NotAllowed("That Google account has no verified email address.")
-    if email not in cfg.allowed:
+    if not get_team().is_allowed(email):
         log.info("sign-in refused for %s", email)
         raise NotAllowed(f"{email} isn't on the Redefine team list. Ask the admin to add it.")
     return email

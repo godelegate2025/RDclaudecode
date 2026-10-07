@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team · Redefine App</title>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --coral: #FC4452; --coral-dark: #d92f3c; --ink: #191616; --charcoal: #2C2828;
+  --paper: #F4F3F0; --paper-2: #EAE8E3; --line: #D8D5CE; --muted: #7C7773;
+  --good: #0f8a3d; --warn: #b57500; --bad: #C3281C;
+  --font-display: 'Anton', 'Arial Narrow', sans-serif;
+  --font-body: 'Archivo', system-ui, -apple-system, sans-serif;
+  --radius: 10px; --header-h: 60px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body);
+       font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; border-radius: 3px; }
+
+header { height: var(--header-h); display: flex; align-items: center; gap: 16px; padding: 0 24px;
+         border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; min-width: 0; }
+.brand img { height: 32px; width: auto; display: block; }
+.brand .word { font-family: var(--font-display); font-size: 22px; letter-spacing: .02em; text-transform: uppercase; line-height: 1; }
+.brand .divider { width: 1px; height: 24px; background: var(--line); }
+.brand .tool { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+header .spacer { flex: 1; }
+header .account { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+header .account a { color: var(--ink); font-weight: 600; }
+
+main { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(32px, 4vw, 44px); line-height: 1;
+     text-transform: uppercase; margin: 0 0 8px; }
+h1 .accent { color: var(--coral); }
+.lede { margin: 0 0 28px; color: var(--charcoal); max-width: 60ch; }
+
+.card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; margin-bottom: 18px; }
+.card h2 { font-family: var(--font-display); font-weight: 400; font-size: 20px; text-transform: uppercase;
+           letter-spacing: .02em; margin: 0 0 12px; }
+
+form { display: grid; grid-template-columns: 1fr 150px auto; gap: 10px; }
+input, select {
+  font: inherit; font-size: 15px; padding: 11px 13px; color: var(--ink); background: #fff;
+  border: 1.5px solid var(--line); border-radius: var(--radius); min-width: 0;
+}
+input:focus, select:focus { outline: none; border-color: var(--coral); box-shadow: 0 0 0 3px rgba(252, 68, 82, .14); }
+button {
+  font: inherit; font-weight: 700; font-size: 12.5px; letter-spacing: .12em; text-transform: uppercase;
+  padding: 0 20px; min-height: 46px; border: 0; border-radius: var(--radius); cursor: pointer;
+  color: #fff; background: var(--coral);
+}
+button:hover:not(:disabled) { background: var(--coral-dark); }
+button:disabled { opacity: .5; cursor: progress; }
+.hint { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); }
+
+.msg { display: none; margin-top: 12px; padding: 10px 13px; border-radius: 8px; font-size: 13.5px; }
+.msg[data-show] { display: block; }
+.msg.ok { background: #EAF5EE; color: var(--good); }
+.msg.err { background: #FCF0EF; color: var(--bad); }
+
+.banner { display: none; border: 1.5px solid var(--warn); border-left-width: 4px; background: #FFF8EC;
+          border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; font-size: 14px; }
+.banner[data-show] { display: block; }
+.banner strong { display: block; color: var(--warn); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+     color: var(--muted); padding: 0 8px 8px 0; border-bottom: 1px solid var(--line); }
+td { padding: 11px 8px 11px 0; border-bottom: 1px solid var(--paper-2); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.email { font-weight: 600; word-break: break-all; }
+td.meta { color: var(--muted); font-size: 13px; }
+td.actions { text-align: right; white-space: nowrap; }
+.chip { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+        padding: 3px 9px; border-radius: 999px; background: var(--paper-2); color: var(--charcoal); }
+.chip.owner { background: var(--ink); color: var(--paper); }
+.chip.admin { background: #FBD9DC; color: #A8201A; }
+.you { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+button.ghost { background: transparent; color: var(--bad); border: 1.5px solid var(--line); min-height: 34px;
+               padding: 0 12px; font-size: 11px; }
+button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad); }
+.empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+@media (max-width: 640px) {
+  header { padding: 0 16px; }
+  .brand .tool, header .account #accountEmail, header .account .sep { display: none; }
+  main { padding: 28px 16px 64px; }
+  form { grid-template-columns: 1fr; }
+  th.meta, td.meta { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/" title="Back to Redefine App">
+    <img src="/static/logo.svg" alt="Redefine" width="29" height="32">
+    <span class="word">Redefine</span>
+    <span class="divider" aria-hidden="true"></span>
+    <span class="tool">Team</span>
+  </a>
+  <div class="spacer"></div>
+  <div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
+</header>
+
+<main>
+  <h1>Team <span class="accent">access</span></h1>
+  <p class="lede">Who can sign in to the Redefine tools. Members can use the tools; admins can also
+    manage this list. Owners are set on the server and can't be removed here, so nobody gets locked out.</p>
+
+  <div class="banner" id="banner" role="status"><strong>Team list storage not set up</strong><span id="bannerText"></span></div>
+
+  <section class="card" aria-labelledby="addTitle">
+    <h2 id="addTitle">Add someone</h2>
+    <form id="form">
+      <input id="email" type="email" required placeholder="name@gmail.com" autocomplete="off" aria-label="Google account email">
+      <select id="role" aria-label="Role">
+        <option value="member">Member</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button id="add" type="submit">Add</button>
+    </form>
+    <p class="hint">Use the exact Google account they sign in with (any Gmail works). They can sign in straight away.</p>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <section class="card" aria-labelledby="listTitle">
+    <h2 id="listTitle">People with access <span id="count" class="you"></span></h2>
+    <table>
+      <thead><tr><th>Email</th><th>Role</th><th class="meta">Added</th><th></th></tr></thead>
+      <tbody id="rows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+  // Everything shown comes from the server; it is only ever inserted as text.
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  };
+  const msg = document.getElementById('msg');
+  const say = (text, ok) => {
+    msg.textContent = text;
+    msg.className = 'msg ' + (ok ? 'ok' : 'err');
+    msg.setAttribute('data-show', '');
+  };
+  const fmtDate = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  let me = '';
+  let storeReady = true;
+
+  const render = (people) => {
+    const rows = document.getElementById('rows');
+    rows.textContent = '';
+    document.getElementById('count').textContent = `· ${people.length}`;
+    if (!people.length) {
+      const td = el('td', 'empty', 'No one yet.'); td.colSpan = 4;
+      rows.appendChild(el('tr')).appendChild(td);
+      return;
+    }
+    for (const p of people) {
+      const tr = el('tr');
+      const email = el('td', 'email', p.email);
+      if (p.email === me) email.appendChild(el('span', 'you', '(you)'));
+      const role = el('td'); role.appendChild(el('span', 'chip ' + p.role, p.role));
+      const meta = el('td', 'meta', p.owner ? 'Server setting' : [fmtDate(p.added_at), p.added_by && `by ${p.added_by}`].filter(Boolean).join(' · '));
+      const actions = el('td', 'actions');
+      if (!p.owner && p.email !== me && storeReady) {
+        const remove = el('button', 'ghost', 'Remove');
+        remove.type = 'button';
+        remove.addEventListener('click', () => removePerson(p.email, remove));
+        actions.appendChild(remove);
+      }
+      tr.append(email, role, meta, actions);
+      rows.appendChild(tr);
+    }
+  };
+
+  const load = async () => {
+    const res = await fetch('/api/team', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { say(data.detail || 'Could not load the team.', false); return; }
+    me = data.me;
+    storeReady = data.store_ready;
+    const banner = document.getElementById('banner');
+    if (!storeReady) {
+      document.getElementById('bannerText').textContent =
+        `${data.problem} Owners can still sign in. To add people here, create a Firestore database in this ` +
+        `Google Cloud project (DEPLOY.md, "Team admin page").`;
+      banner.setAttribute('data-show', '');
+      document.getElementById('add').disabled = true;
+    } else {
+      banner.removeAttribute('data-show');
+      document.getElementById('add').disabled = false;
+    }
+    render(data.members || []);
+  };
+
+  const removePerson = async (email, button) => {
+    if (!confirm(`Remove ${email}? They lose access on their next click.`)) return;
+    button.disabled = true;
+    const res = await fetch('/api/team/' + encodeURIComponent(email), { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { say(data.detail || 'Could not remove them.', false); button.disabled = false; return; }
+    say(`${email} was removed.`, true);
+    load();
+  };
+
+  document.getElementById('form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = document.getElementById('add');
+    const email = document.getElementById('email').value.trim();
+    const role = document.getElementById('role').value;
+    button.disabled = true;
+    try {
+      const res = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, role }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { say(data.detail || 'Could not add them.', false); return; }
+      say(`${data.email} can now sign in as ${data.role}.`, true);
+      document.getElementById('email').value = '';
+      load();
+    } catch (e) {
+      say('Could not reach the server. Try again.', false);
+    } finally {
+      button.disabled = !storeReady;
+    }
+  });
+
+  fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((info) => {
+    if (!info.signed_in) return;
+    document.getElementById('accountEmail').textContent = info.email;
+    document.getElementById('account').hidden = false;
+  }).catch(() => {});
+  load();
+</script>
+</body>
+</html>

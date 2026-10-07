@@ -205,9 +205,24 @@ needed, and no accounts database — Google holds the accounts.
      --update-env-vars "^;^GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com;ALLOWED_EMAILS=you@gmail.com,teammate@gmail.com;SESSION_SECRET=YOUR_SECRET"
    ```
 
-To add or remove someone, run the same command with the new `ALLOWED_EMAILS`
-list alone. Removal takes effect on their next click; changing
+`ALLOWED_EMAILS` are the **owners**: they can always sign in and manage the
+team, and can't be removed from the admin page, so nobody can lock everyone
+out from inside the app. Add everyone else on the admin page (below). Changing
 `SESSION_SECRET` signs everyone out.
+
+### Team admin page
+
+Owners and admins manage everyone else at `/admin/team` (the **Team** link next
+to Sign out): add a Gmail as member (uses the tools) or admin (also manages the
+team), or remove someone; removal applies on their next click. The list lives
+in Firestore, collection `team_members`, in this same project.
+
+One-time setup: Console → **Firestore** → **Create database** → Native mode,
+database ID `(default)`, location `us-central1`, **production** security rules
+(browsers never talk to Firestore directly; the app reaches it as the Cloud Run
+service account, which the default Compute Engine account already allows — a
+custom service account needs `roles/datastore.user`). Until the database exists,
+owners can still sign in and the page explains what is missing.
 
 ## Automatic deploys
 

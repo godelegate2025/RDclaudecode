@@ -9,6 +9,10 @@ from fastapi.testclient import TestClient
 
 from service import auth
 from service.app import app
+from service.team import MemoryStore, use_store
+
+# Never reach for real Firestore from tests.
+use_store(MemoryStore())
 
 SETTINGS = {
     "GOOGLE_CLIENT_ID": "123-abc.apps.googleusercontent.com",

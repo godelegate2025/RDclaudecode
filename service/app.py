@@ -39,6 +39,7 @@ from website_audit.report import html_to_pdf, render_html, render_site_html, wri
 from website_audit.site import audit_site
 
 from . import auth
+from .team import StoreUnavailable, TeamError, get_team
 from .brief_view import render_brief_html
 from .post_pdf import attach_pdf
 from .security import UnsafeURL, guard_route, validate
@@ -81,6 +82,7 @@ POST_PAGE = STATIC / "post.html"
 SERVICE_WORKER = STATIC / "sw.js"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 LOGIN_PAGE = STATIC / "login.html"
+TEAM_PAGE = STATIC / "team.html"
 
 
 @app.middleware("http")
@@ -300,8 +302,76 @@ def sign_out() -> Response:
 @app.get("/auth/me")
 def who_am_i(request: Request) -> JSONResponse:
     email = auth.read_session(request.cookies.get(auth.COOKIE), auth.config()) if auth.mode() == "on" else None
-    return JSONResponse({"signed_in": bool(email), "email": email, "sign_in": auth.mode()},
+    return JSONResponse({"signed_in": bool(email), "email": email, "sign_in": auth.mode(),
+                         "can_manage_team": bool(email) and get_team().can_manage(email)},
                         headers={"Cache-Control": "no-store"})
+
+
+# ------------------------------------------------------------------ team admin
+
+class TeamChange(BaseModel):
+    email: str = ""
+    role: str = "member"
+
+
+def _team_admin(request: Request) -> str:
+    """The signed-in owner or admin making this request, or a 403."""
+    if auth.mode() != "on":
+        raise HTTPException(409, "Turn on team sign-in first (see DEPLOY.md, Team sign-in).")
+    email = getattr(request.state, "user", None)
+    if not email or not get_team().can_manage(email):
+        raise HTTPException(403, "Only owners and admins can manage the team.")
+    return email
+
+
+@app.get("/admin/team", response_class=HTMLResponse)
+def team_page(request: Request) -> Response:
+    if auth.mode() != "on":
+        return RedirectResponse("/", status_code=303)
+    if not get_team().can_manage(getattr(request.state, "user", "")):
+        return PlainTextResponse("Only owners and admins can manage the team.", status_code=403)
+    return HTMLResponse(TEAM_PAGE.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/team")
+def team_list(request: Request) -> JSONResponse:
+    me = _team_admin(request)
+    team = get_team()
+    try:
+        people = [m.to_dict() for m in team.listing()]
+        ready, problem = True, ""
+    except StoreUnavailable as exc:
+        people = [{"email": e, "role": "owner", "owner": True, "added_by": "Server setting", "added_at": ""}
+                  for e in team.owners()]
+        ready, problem = False, str(exc)
+    return JSONResponse({"me": me, "members": people, "store_ready": ready, "problem": problem},
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/team")
+def team_add(change: TeamChange, request: Request) -> JSONResponse:
+    me = _team_admin(request)
+    try:
+        member = get_team().add(change.email, change.role, by=me)
+    except StoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except TeamError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    log.info("team: %s added %s as %s", me, member.email, member.role)
+    return JSONResponse(member.to_dict())
+
+
+@app.delete("/api/team/{email}")
+def team_remove(email: str, request: Request) -> JSONResponse:
+    me = _team_admin(request)
+    try:
+        get_team().remove(email, by=me)
+    except StoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except TeamError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    log.info("team: %s removed %s", me, email.lower())
+    return JSONResponse({"ok": True})
 
 
 @app.get("/", response_class=HTMLResponse)

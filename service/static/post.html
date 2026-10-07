@@ -624,7 +624,17 @@ ul.points li { margin-bottom: 6px; }
   fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((me) => {
     if (!me.signed_in) return;
     document.getElementById('accountEmail').textContent = me.email;
-    document.getElementById('account').hidden = false;
+    const account = document.getElementById('account');
+    if (me.can_manage_team) {
+      // Owners and admins get a way into the team page.
+      const link = document.createElement('a');
+      link.href = '/admin/team';
+      link.textContent = 'Team';
+      const signOut = account.querySelector('a[href="/auth/logout"]');
+      account.insertBefore(link, signOut);
+      account.insertBefore(document.createTextNode(' · '), signOut);
+    }
+    account.hidden = false;
   }).catch(() => {});
 </script>
 </body>

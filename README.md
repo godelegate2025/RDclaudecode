@@ -87,8 +87,9 @@ on each redirect.
 limited to the emails in `ALLOWED_EMAILS`. Google holds the accounts; a signed,
 HttpOnly cookie keeps someone signed in for 14 days, and the list is re-checked
 on every request. It is off until `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and
-`SESSION_SECRET` are set, and fails closed if only some are. Setup steps are in
-DEPLOY.md.
+`SESSION_SECRET` are set, and fails closed if only some are. `ALLOWED_EMAILS`
+are the owners; everyone else is managed at `/admin/team` and stored in
+Firestore (`service/team.py`). Setup steps are in DEPLOY.md.
 
 ## Post Auditor
 
