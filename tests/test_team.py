@@ -116,6 +116,36 @@ class TeamPageTest(unittest.TestCase):
         self.assertEqual(ana.post("/api/team", json={"email": "cy@gmail.com", "role": "member"}).status_code, 200)
         self.assertEqual(ana.delete("/api/team/owner@gmail.com").status_code, 400)
 
+    def test_owner_switches_roles_both_ways(self):
+        owner = client_for("owner@gmail.com")
+        owner.post("/api/team", json={"email": "ben@gmail.com", "role": "member"})
+        self.assertEqual(owner.get("/api/team").json()["me_role"], "owner")
+
+        promoted = owner.patch("/api/team/Ben@Gmail.com", json={"role": "admin"})
+        self.assertEqual((promoted.status_code, promoted.json()["role"]), (200, "admin"))
+        self.assertTrue(client_for("ben@gmail.com").get("/auth/me").json()["can_manage_team"])
+        stored = self.team.store.all()["ben@gmail.com"]
+        self.assertEqual((stored["added_by"], stored["role_changed_by"]), ("owner@gmail.com", "owner@gmail.com"))
+
+        demoted = owner.patch("/api/team/ben@gmail.com", json={"role": "member"})
+        self.assertEqual(demoted.json()["role"], "member")
+        self.assertEqual(client_for("ben@gmail.com").get("/admin/team").status_code, 403)
+
+    def test_only_owners_change_roles_and_only_real_members(self):
+        owner = client_for("owner@gmail.com")
+        owner.post("/api/team", json={"email": "ana@gmail.com", "role": "admin"})
+        owner.post("/api/team", json={"email": "ben@gmail.com", "role": "member"})
+        ana = client_for("ana@gmail.com")
+        self.assertEqual(ana.get("/api/team").json()["me_role"], "admin")
+        response = ana.patch("/api/team/ben@gmail.com", json={"role": "admin"})
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("Only owners", response.json()["detail"])
+        self.assertEqual(client_for("ben@gmail.com").patch("/api/team/ben@gmail.com", json={"role": "admin"}).status_code, 403)
+        self.assertEqual(owner.patch("/api/team/owner@gmail.com", json={"role": "member"}).status_code, 400)
+        self.assertEqual(owner.patch("/api/team/nobody@gmail.com", json={"role": "admin"}).status_code, 400)
+        self.assertEqual(owner.patch("/api/team/ben@gmail.com", json={"role": "owner"}).status_code, 400)
+        self.assertEqual(TestClient(app).patch("/api/team/ben@gmail.com", json={"role": "admin"}).status_code, 401)
+
     def test_signed_out_visitors_get_nothing(self):
         anon = TestClient(app, follow_redirects=False)
         self.assertEqual(anon.get("/admin/team").status_code, 303)

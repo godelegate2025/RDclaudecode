@@ -177,6 +177,23 @@ class Team:
         self._forget()
         return member
 
+    def set_role(self, email: str, role: str, by: str) -> Member:
+        """Switch a member between member and admin. Only owners may (enforced by the route)."""
+        email = (email or "").strip().lower()
+        if role not in ROLES:
+            raise TeamError("Choose member or admin.")
+        if email in self.owners():
+            raise TeamError("Owners are set on the server; their role can't be changed here.")
+        current = self.store.all().get(email)
+        if current is None:
+            raise TeamError(f"{email} isn't on the team.")
+        updated = {**current, "role": role, "role_changed_by": by,
+                   "role_changed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        self.store.put(email, updated)
+        self._forget()
+        return Member(email=email, role=role, added_by=current.get("added_by", ""),
+                      added_at=current.get("added_at", ""))
+
     def remove(self, email: str, by: str) -> None:
         email = (email or "").strip().lower()
         if email in self.owners():

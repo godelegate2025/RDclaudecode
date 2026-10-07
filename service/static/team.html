@@ -83,6 +83,7 @@ td.actions { text-align: right; white-space: nowrap; }
 .chip.owner { background: var(--ink); color: var(--paper); }
 .chip.admin { background: #FBD9DC; color: #A8201A; }
 .you { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+select.role { padding: 5px 28px 5px 10px; font-size: 13px; font-weight: 600; min-height: 32px; }
 button.ghost { background: transparent; color: var(--bad); border: 1.5px solid var(--line); min-height: 34px;
                padding: 0 12px; font-size: 11px; }
 button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad); }
@@ -112,7 +113,7 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
 <main>
   <h1>Team <span class="accent">access</span></h1>
   <p class="lede">Who can sign in to the Redefine tools. Members can use the tools; admins can also
-    manage this list. Owners are set on the server and can't be removed here, so nobody gets locked out.</p>
+    add and remove people. Owners can change anyone's role, and are set on the server so nobody gets locked out.</p>
 
   <div class="banner" id="banner" role="status"><strong>Team list storage not set up</strong><span id="bannerText"></span></div>
 
@@ -159,6 +160,7 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
     return isNaN(d) ? '' : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
   };
   let me = '';
+  let meRole = '';
   let storeReady = true;
 
   const render = (people) => {
@@ -174,7 +176,22 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
       const tr = el('tr');
       const email = el('td', 'email', p.email);
       if (p.email === me) email.appendChild(el('span', 'you', '(you)'));
-      const role = el('td'); role.appendChild(el('span', 'chip ' + p.role, p.role));
+      const role = el('td');
+      if (meRole === 'owner' && !p.owner && storeReady) {
+        // Owners can switch anyone else between member and admin in place.
+        const pick = el('select', 'role');
+        pick.setAttribute('aria-label', `Role for ${p.email}`);
+        for (const value of ['member', 'admin']) {
+          const option = el('option', null, value[0].toUpperCase() + value.slice(1));
+          option.value = value;
+          option.selected = value === p.role;
+          pick.appendChild(option);
+        }
+        pick.addEventListener('change', () => changeRole(p.email, pick, p.role));
+        role.appendChild(pick);
+      } else {
+        role.appendChild(el('span', 'chip ' + p.role, p.role));
+      }
       const meta = el('td', 'meta', p.owner ? 'Server setting' : [fmtDate(p.added_at), p.added_by && `by ${p.added_by}`].filter(Boolean).join(' · '));
       const actions = el('td', 'actions');
       if (!p.owner && p.email !== me && storeReady) {
@@ -193,6 +210,7 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { say(data.detail || 'Could not load the team.', false); return; }
     me = data.me;
+    meRole = data.me_role || '';
     storeReady = data.store_ready;
     const banner = document.getElementById('banner');
     if (!storeReady) {
@@ -206,6 +224,26 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
       document.getElementById('add').disabled = false;
     }
     render(data.members || []);
+  };
+
+  const changeRole = async (email, pick, previous) => {
+    pick.disabled = true;
+    try {
+      const res = await fetch('/api/team/' + encodeURIComponent(email), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: pick.value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { say(data.detail || 'Could not change the role.', false); pick.value = previous; return; }
+      say(`${email} is now ${data.role === 'admin' ? 'an admin' : 'a member'}.`, true);
+      load();
+    } catch (e) {
+      say('Could not reach the server. Try again.', false);
+      pick.value = previous;
+    } finally {
+      pick.disabled = false;
+    }
   };
 
   const removePerson = async (email, button) => {

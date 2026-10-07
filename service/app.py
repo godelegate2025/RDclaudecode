@@ -344,7 +344,8 @@ def team_list(request: Request) -> JSONResponse:
         people = [{"email": e, "role": "owner", "owner": True, "added_by": "Server setting", "added_at": ""}
                   for e in team.owners()]
         ready, problem = False, str(exc)
-    return JSONResponse({"me": me, "members": people, "store_ready": ready, "problem": problem},
+    return JSONResponse({"me": me, "me_role": team.role_of(me), "members": people,
+                         "store_ready": ready, "problem": problem},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -358,6 +359,27 @@ def team_add(change: TeamChange, request: Request) -> JSONResponse:
     except TeamError as exc:
         raise HTTPException(400, str(exc)) from exc
     log.info("team: %s added %s as %s", me, member.email, member.role)
+    return JSONResponse(member.to_dict())
+
+
+class RoleChange(BaseModel):
+    role: str = ""
+
+
+@app.patch("/api/team/{email}")
+def team_set_role(email: str, change: RoleChange, request: Request) -> JSONResponse:
+    me = _team_admin(request)
+    # Admins run the team day to day; deciding who else becomes an admin is
+    # the owners' call.
+    if get_team().role_of(me) != "owner":
+        raise HTTPException(403, "Only owners can change someone's role.")
+    try:
+        member = get_team().set_role(email, change.role, by=me)
+    except StoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except TeamError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    log.info("team: %s made %s %s", me, member.email, member.role)
     return JSONResponse(member.to_dict())
 
 
