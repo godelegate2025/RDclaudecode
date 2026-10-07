@@ -8,6 +8,7 @@ request landing on a different instance than the one that made the report.
 from __future__ import annotations
 
 import base64
+import html
 import logging
 import os
 import shutil
@@ -19,7 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -37,6 +38,7 @@ from website_audit.collector import collect
 from website_audit.report import html_to_pdf, render_html, render_site_html, write_json
 from website_audit.site import audit_site
 
+from . import auth
 from .brief_view import render_brief_html
 from .post_pdf import attach_pdf
 from .security import UnsafeURL, guard_route, validate
@@ -78,6 +80,30 @@ INDEX = STATIC / "index.html"
 POST_PAGE = STATIC / "post.html"
 SERVICE_WORKER = STATIC / "sw.js"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+LOGIN_PAGE = STATIC / "login.html"
+
+
+@app.middleware("http")
+async def require_sign_in(request: Request, call_next):
+    """Every page and API call needs a signed-in team member, once sign-in is set up."""
+    state = auth.mode()
+    path = request.url.path
+    if state == "off" or auth.is_public(path):
+        return await call_next(request)
+    is_api = path.startswith("/api/")
+    if state == "broken":
+        # Half-configured must not mean open: refuse until all settings exist.
+        detail = f"Sign-in is not fully set up: {', '.join(auth.missing_settings())} missing on the server."
+        log.error(detail)
+        return JSONResponse({"detail": detail}, status_code=503) if is_api else PlainTextResponse(detail, status_code=503)
+    email = auth.read_session(request.cookies.get(auth.COOKIE), auth.config())
+    if not email:
+        if is_api:
+            return JSONResponse({"detail": "Your session has ended. Refresh the page and sign in again."}, status_code=401)
+        target = path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(auth.login_url(target), status_code=303)
+    request.state.user = email
+    return await call_next(request)
 
 
 class BlockedError(RuntimeError):
@@ -219,6 +245,63 @@ def run_audit(target: str, work_dir: Path):
         pdf_path = work_dir / "report.pdf"
         html_to_pdf(render_html(data, results), pdf_path, work_dir, browser=browser)
     return pdf_path, data, results
+
+
+class GoogleCredential(BaseModel):
+    credential: str = ""
+    next: str = "/"
+
+
+def _secure_cookie(request: Request) -> bool:
+    # Cloud Run terminates TLS in front of the app and says so in this header.
+    return request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = "/") -> Response:
+    if auth.mode() == "off":
+        return RedirectResponse("/", status_code=303)
+    if auth.mode() == "on" and auth.read_session(request.cookies.get(auth.COOKIE), auth.config()):
+        return RedirectResponse(auth.safe_next(next), status_code=303)
+    page = LOGIN_PAGE.read_text(encoding="utf-8")
+    client_id = html.escape(auth.config().client_id, quote=True)
+    return HTMLResponse(page.replace("__GOOGLE_CLIENT_ID__", client_id), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/google")
+def google_sign_in(payload: GoogleCredential, request: Request) -> JSONResponse:
+    if auth.mode() != "on":
+        raise HTTPException(503, "Sign-in is not set up on this server.")
+    try:
+        email = auth.verify_google_credential(payload.credential, auth.config())
+    except auth.NotAllowed as exc:
+        raise HTTPException(403, str(exc)) from exc
+    log.info("signed in: %s", email)
+    response = JSONResponse({"ok": True, "email": email, "next": auth.safe_next(payload.next)})
+    response.set_cookie(
+        auth.COOKIE,
+        auth.make_session(email, auth.config().secret),
+        max_age=auth.SESSION_DAYS * 86400,
+        httponly=True,                    # page scripts can't read it
+        secure=_secure_cookie(request),
+        samesite="lax",                   # not sent on other sites' requests
+        path="/",
+    )
+    return response
+
+
+@app.api_route("/auth/logout", methods=["GET", "POST"])
+def sign_out() -> Response:
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(auth.COOKIE, path="/")
+    return response
+
+
+@app.get("/auth/me")
+def who_am_i(request: Request) -> JSONResponse:
+    email = auth.read_session(request.cookies.get(auth.COOKIE), auth.config()) if auth.mode() == "on" else None
+    return JSONResponse({"signed_in": bool(email), "email": email, "sign_in": auth.mode()},
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -175,6 +175,40 @@ rotate a key, add a new version (`gcloud secrets versions add apify-token
 
 Then open `$SERVICE/post-audit` and audit a public TikTok or Instagram post.
 
+## Team sign-in
+
+Off until configured: with none of the three settings below, the app is public
+as before. With all three, every page and API call needs a Google account on
+the allowed list. With only some, it refuses everything (fails closed) and
+says which setting is missing. Plain Gmail accounts work; no Google Workspace
+needed, and no accounts database — Google holds the accounts.
+
+1. **Consent screen.** Console → Google Auth Platform (APIs & Services → OAuth
+   consent screen) → Get started: app name "Redefine App", your email as
+   support contact, audience **External**. Under Audience, **Publish app**:
+   sign-in only asks for name and email, which needs no Google review.
+2. **Client ID.** Clients → Create client → **Web application**. Under
+   *Authorised JavaScript origins* add the service URL, e.g.
+   `https://website-audit-1015165980124.us-central1.run.app` (and any custom
+   domain later). No redirect URIs are needed. Copy the client ID.
+3. **Session secret.** Any long random string. In PowerShell:
+
+   ```powershell
+   $b = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+   ```
+
+4. **Turn it on.** The `^;^` prefix makes `;` the separator, because the email
+   list itself contains commas:
+
+   ```bash
+   gcloud run services update website-audit --region us-central1 \
+     --update-env-vars "^;^GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com;ALLOWED_EMAILS=you@gmail.com,teammate@gmail.com;SESSION_SECRET=YOUR_SECRET"
+   ```
+
+To add or remove someone, run the same command with the new `ALLOWED_EMAILS`
+list alone. Removal takes effect on their next click; changing
+`SESSION_SECRET` signs everyone out.
+
 ## Automatic deploys
 
 `cloudbuild.yaml` deploys on every push: it builds the image, runs the whole

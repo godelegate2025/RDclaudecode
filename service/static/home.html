@@ -46,6 +46,8 @@ body {
 
 main { width: 100%; max-width: 704px; text-align: center; }
 
+.account { position: fixed; top: 16px; right: 20px; font-size: 13px; color: var(--muted); }
+.account a { color: var(--ink); font-weight: 600; }
 .logo { display: block; margin: 0 auto 18px; height: 64px; width: auto; }
 
 .eyebrow {
@@ -116,6 +118,7 @@ a.tool.alt:hover p { color: #fff; }
 </style>
 </head>
 <body>
+<div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 <main>
   <img class="logo" src="/static/logo.svg" alt="Redefine" width="58" height="64">
   <p class="eyebrow">Redefine Agency · Tools</p>
@@ -135,5 +138,13 @@ a.tool.alt:hover p { color: #fff; }
     </a>
   </div>
 </main>
+<script>
+  // Shows who is signed in, once sign-in is switched on; hidden otherwise.
+  fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((me) => {
+    if (!me.signed_in) return;
+    document.getElementById('accountEmail').textContent = me.email;
+    document.getElementById('account').hidden = false;
+  }).catch(() => {});
+</script>
 </body>
 </html>

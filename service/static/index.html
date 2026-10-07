@@ -78,6 +78,8 @@ header {
   color: var(--muted); white-space: nowrap;
 }
 header .spacer { flex: 1; }
+header .account { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+header .account a { color: var(--ink); font-weight: 600; }
 header .tagline {
   font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
 }
@@ -252,6 +254,7 @@ button:disabled { opacity: .5; cursor: progress; }
 @media (max-width: 480px) {
   /* The wordmark alone fits a phone; the tool label pushed the header past the edge. */
   .brand .tool { display: none; }
+  header .account #accountEmail, header .account .sep { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -270,6 +273,7 @@ button:disabled { opacity: .5; cursor: progress; }
   </a>
   <div class="spacer"></div>
   <div class="tagline">Build. Realize. Redefine</div>
+  <div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
 <main id="main-content">
@@ -580,6 +584,14 @@ button:disabled { opacity: .5; cursor: progress; }
       button.disabled = false;
     }
   });
+</script>
+<script>
+  // Shows who is signed in, once sign-in is switched on; hidden otherwise.
+  fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((me) => {
+    if (!me.signed_in) return;
+    document.getElementById('accountEmail').textContent = me.email;
+    document.getElementById('account').hidden = false;
+  }).catch(() => {});
 </script>
 </body>
 </html>

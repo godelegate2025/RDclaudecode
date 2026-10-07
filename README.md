@@ -81,6 +81,15 @@ hand back a screenshot. Every URL is resolved and checked against private,
 loopback, link-local and metadata ranges before Chromium sees it, and re-checked
 on each redirect.
 
+## Team sign-in
+
+`service/auth.py` puts every page and API call behind "Sign in with Google",
+limited to the emails in `ALLOWED_EMAILS`. Google holds the accounts; a signed,
+HttpOnly cookie keeps someone signed in for 14 days, and the list is re-checked
+on every request. It is off until `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and
+`SESSION_SECRET` are set, and fails closed if only some are. Setup steps are in
+DEPLOY.md.
+
 ## Post Auditor
 
 `/post-audit` audits a live TikTok, Instagram, Facebook or LinkedIn post: why it
