@@ -271,6 +271,61 @@ ul.points li { margin-bottom: 6px; }
 .actions .ghost:hover:not(:disabled) { background: #fff; }
 
 /* ---------- responsive ---------- */
+/* ---------- Higgsfield prompt dialog ---------- */
+dialog.prompt {
+  width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0;
+  border: 0; border-radius: 14px; background: var(--paper); color: var(--ink);
+  box-shadow: 0 30px 80px -20px rgba(25, 22, 22, .5);
+}
+.prompt [hidden] { display: none !important; }  /* form and .field set display, which beats [hidden] */
+dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
+.prompt .top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px;
+               padding: 18px 22px; background: var(--paper); border-bottom: 1px solid var(--line); }
+.prompt .top h2 { margin: 0; flex: 1; font-family: var(--font-display); font-weight: 400; font-size: 24px;
+                  text-transform: uppercase; letter-spacing: .02em; line-height: 1.1; }
+.prompt .top h2 .accent { color: var(--coral); }
+.prompt .close { min-height: 36px; width: 36px; padding: 0; font-size: 20px; line-height: 1; letter-spacing: 0;
+                 background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.prompt .close:hover:not(:disabled) { background: #fff; }
+.prompt .body { padding: 20px 22px 24px; }
+.prompt .intro { margin: 0 0 18px; color: var(--charcoal); font-size: 14px; }
+.prompt .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.prompt .field { display: flex; flex-direction: column; gap: 6px; }
+.prompt .field.wide { grid-column: 1 / -1; }
+.prompt .field > span { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.prompt .field > span em { font-style: normal; color: var(--coral-dark); }
+.prompt .field small { font-size: 12px; color: var(--muted); }
+.prompt input[type=text], .prompt textarea, .prompt select {
+  width: 100%; padding: 11px 13px; font: inherit; font-size: 14.5px; color: var(--ink); background: #fff;
+  border: 1.5px solid var(--line); border-radius: var(--radius);
+}
+.prompt textarea { min-height: 84px; resize: vertical; }
+.prompt textarea:focus, .prompt select:focus { outline: none; border-color: var(--coral); box-shadow: 0 0 0 3px rgba(252, 68, 82, .14); }
+.prompt .go { margin-top: 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.prompt .go .note { font-size: 13px; color: var(--muted); }
+.prompt .go .note.err { color: var(--bad); }
+.prompt .pack .card { margin-bottom: 12px; }
+.prompt .shot-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.prompt .shot-head strong { font-family: var(--font-display); font-weight: 400; font-size: 20px; text-transform: uppercase; }
+.prompt .shot-head .timing { color: var(--muted); font-size: 13px; }
+.prompt .copyable { position: relative; background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+                    padding: 10px 76px 10px 12px; font-size: 13.5px; white-space: pre-wrap; margin: 4px 0 10px; }
+.prompt .copyable button { position: absolute; top: 6px; right: 6px; min-height: 28px; padding: 0 10px; font-size: 10.5px;
+                           background: var(--ink); }
+.prompt .copyable button:hover:not(:disabled) { background: var(--charcoal); }
+.prompt .meta-row { font-size: 13.5px; margin: 2px 0; }
+.prompt .meta-row b { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+.prompt .bar-actions { position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end;
+                       padding: 12px 22px; background: var(--paper); border-top: 1px solid var(--line); }
+.prompt .bar-actions button { min-height: 42px; padding: 0 16px; font-size: 12px; }
+.prompt .bar-actions .ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.prompt .bar-actions .ghost:hover:not(:disabled) { background: #fff; }
+@media (max-width: 640px) {
+  .prompt .grid { grid-template-columns: 1fr; }
+  .prompt .body { padding: 16px; }
+  .prompt .top, .prompt .bar-actions { padding: 14px 16px; }
+}
+
 @media (max-width: 900px) {
   main { height: auto; grid-template-columns: minmax(0, 1fr); }
   .panel { border-right: 0; border-bottom: 1px solid var(--line); padding: var(--space-6) var(--space-5); }
@@ -371,6 +426,58 @@ ul.points li { margin-bottom: 6px; }
     <div id="result" aria-live="polite"></div>
   </section>
 </main>
+
+<dialog class="prompt" id="promptDialog" aria-labelledby="promptTitle">
+  <div class="top">
+    <h2 id="promptTitle">Higgsfield <span class="accent">prompt</span></h2>
+    <button class="close" type="button" id="promptClose" aria-label="Close">×</button>
+  </div>
+  <form class="body" id="promptForm">
+    <p class="intro" id="promptIntro">Tell us about the post you want to make. The prompt reuses what worked in this audit.</p>
+    <div class="grid">
+      <label class="field wide"><span>What is your post about? <em>*</em></span>
+        <textarea id="pTopic" required maxlength="600" placeholder="e.g. Our new iced Spanish latte, launching this Friday at all branches"></textarea></label>
+      <label class="field"><span>Brand or account</span>
+        <input type="text" id="pBrand" maxlength="200" placeholder="e.g. Brew Lab Coffee"></label>
+      <label class="field"><span>Who is it for?</span>
+        <input type="text" id="pAudience" maxlength="300" placeholder="e.g. Office workers in Makati, 22–35"></label>
+      <label class="field wide"><span>Goal / call to action</span>
+        <input type="text" id="pGoal" maxlength="300" placeholder="e.g. Visit a branch this weekend, or DM to order"></label>
+      <label class="field"><span>Format</span>
+        <select id="pFormat">
+          <option value="video">Video / reel</option>
+          <option value="carousel">Carousel</option>
+          <option value="image">Single image</option>
+        </select></label>
+      <label class="field" id="pLengthField"><span>Length</span>
+        <select id="pLength">
+          <option value="15">15 seconds</option>
+          <option value="30" selected>30 seconds</option>
+          <option value="45">45 seconds</option>
+          <option value="60">60 seconds</option>
+        </select></label>
+      <label class="field"><span>Posting on</span>
+        <select id="pPlatform">
+          <option>TikTok</option><option>Instagram</option><option>Facebook</option>
+          <option>LinkedIn</option><option>YouTube Shorts</option>
+        </select></label>
+      <label class="field"><span>Style or mood</span>
+        <input type="text" id="pStyle" maxlength="600" placeholder="e.g. Warm, cinematic, slow-motion pours"></label>
+      <label class="field wide"><span>Must include</span>
+        <input type="text" id="pMust" maxlength="600" placeholder="e.g. The cup with our logo, a barista, the line “Only ₱99 this week”">
+        <small>People, products, places or lines that have to appear. Leave blank to let Claude decide.</small></label>
+    </div>
+    <div class="go">
+      <button type="submit" id="promptGo">Generate prompt</button>
+      <span class="note" id="promptNote" role="status"></span>
+    </div>
+  </form>
+  <div class="body pack" id="promptPack" hidden></div>
+  <div class="bar-actions" id="promptBar" hidden>
+    <button type="button" class="ghost" id="promptEdit">Edit answers</button>
+    <button type="button" id="promptCopyAll">Copy everything</button>
+  </div>
+</dialog>
 
 <script>
   const form   = document.getElementById('form');
@@ -552,16 +659,10 @@ ul.points li { margin-bottom: 6px; }
     const limitText = [a.limits, ...(notes || [])].filter(Boolean);
     const limits = limitText.length ? add(card(null, 'limits'), el('div', 'label', 'Limits of this read'), points(limitText)) : null;
 
-    const copy = el('button', 'ghost', 'Copy takeaways');
+    // Turns this audit into a Higgsfield prompt for our own post.
+    const copy = el('button', 'ghost', 'Generate prompt');
     copy.type = 'button';
-    copy.addEventListener('click', async () => {
-      const text = `${data.platform_label} post by ${post.author || post.author_handle} — ${post.url}\n\n` +
-        `${a.verdict}\n\nHow to apply it:\n` +
-        a.takeaways.map((t, i) => `${i + 1}. ${t.title} — ${t.how_to_apply}`).join('\n');
-      try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied'; }
-      catch (e) { copy.textContent = 'Copy failed'; }
-      setTimeout(() => { copy.textContent = 'Copy takeaways'; }, 2000);
-    });
+    copy.addEventListener('click', () => openPrompt(data));
     // The server prints a real PDF alongside the report; printing from the
     // browser is only the fallback when that failed.
     // A saved audit has no PDF attached; the server rebuilds it from the saved copy.
@@ -630,6 +731,140 @@ ul.points li { margin-bottom: 6px; }
     result.closest('.report').scrollTop = 0;
     document.title = `${data.platform_label} post audit — ${post.author || post.author_handle || 'Redefine'}`;
   };
+
+  // ---------- Higgsfield prompt ----------
+  const dialog = document.getElementById('promptDialog');
+  const promptForm = document.getElementById('promptForm');
+  const promptPack = document.getElementById('promptPack');
+  const promptBar = document.getElementById('promptBar');
+  const promptNote = document.getElementById('promptNote');
+  const promptGo = document.getElementById('promptGo');
+  const $ = (id) => document.getElementById(id);
+  const PLATFORM_NAMES = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn' };
+  const REMEMBER = ['pBrand', 'pAudience', 'pStyle'];  // per browser, so the next prompt starts filled in
+  let promptAudit = null;
+  let promptText = '';
+  let promptTicker = null;
+
+  const showForm = () => {
+    promptForm.hidden = false;
+    promptPack.hidden = true;
+    promptBar.hidden = true;
+  };
+  const syncLength = () => { $('pLengthField').hidden = $('pFormat').value !== 'video'; };
+  $('pFormat').addEventListener('change', syncLength);
+
+  const openPrompt = (data) => {
+    if (promptAudit !== data) {
+      promptAudit = data;
+      const media = (data.post && data.post.media_type) || '';
+      $('pFormat').value = /carousel|sidecar|album/i.test(media) ? 'carousel' : /image|photo/i.test(media) ? 'image' : 'video';
+      const name = PLATFORM_NAMES[data.platform];
+      if (name) $('pPlatform').value = name;
+      const seconds = data.post && data.post.duration_seconds;
+      if (seconds) $('pLength').value = seconds <= 22 ? '15' : seconds <= 37 ? '30' : seconds <= 52 ? '45' : '60';
+      $('promptIntro').textContent = 'Tell us about the post you want to make. The prompt reuses what worked here: ' +
+        ((data.analysis && data.analysis.verdict) || '');
+      promptNote.textContent = '';
+      promptNote.className = 'note';
+      showForm();
+    }
+    for (const id of REMEMBER) {
+      try { if (!$(id).value) $(id).value = localStorage.getItem('rd-' + id) || ''; } catch (e) { /* storage blocked */ }
+    }
+    syncLength();
+    dialog.showModal();
+    if (!promptForm.hidden) $('pTopic').focus();
+  };
+  $('promptClose').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+  $('promptEdit').addEventListener('click', () => { showForm(); $('pTopic').focus(); });
+  $('promptCopyAll').addEventListener('click', (e) => copyText(promptText, e.currentTarget));
+
+  const copyText = async (text, button) => {
+    const label = button.textContent;
+    try { await navigator.clipboard.writeText(text); button.textContent = 'Copied'; }
+    catch (e) { button.textContent = 'Copy failed'; }
+    setTimeout(() => { button.textContent = label; }, 1800);
+  };
+  const copyable = (text) => {
+    const box = el('div', 'copyable', text);
+    const button = el('button', null, 'Copy');
+    button.type = 'button';
+    button.addEventListener('click', () => copyText(text, button));
+    box.appendChild(button);
+    return box;
+  };
+  const metaRow = (name, value) => value ? add(el('div', 'meta-row'), el('b', null, name), document.createTextNode(value)) : null;
+
+  const renderPack = (pack) => {
+    promptText = pack.as_text || '';
+    promptPack.textContent = '';
+    const concept = card('The concept');
+    add(concept, el('p', null, pack.concept), metaRow('Aspect ratio', pack.aspect_ratio));
+    if ((pack.why_it_will_work || []).length) {
+      add(concept, el('div', 'label', 'Why it should work'), points(pack.why_it_will_work));
+    }
+    const style = add(card('Style — paste into every shot'), copyable(pack.style_anchor || ''));
+    add(promptPack, concept, style);
+    (pack.shots || []).forEach((shot, i) => {
+      const box = card();
+      add(box, add(el('div', 'shot-head'), el('strong', null, `Shot ${i + 1} · ${shot.label || ''}`),
+                   shot.timing ? el('span', 'timing', shot.timing) : null));
+      if (shot.purpose) add(box, el('p', null, shot.purpose));
+      add(box, el('div', 'label', 'Start frame — image prompt'), copyable(shot.start_frame_prompt || ''));
+      if (shot.video_prompt) add(box, el('div', 'label', 'Video prompt'), copyable(shot.video_prompt));
+      add(box, metaRow('Camera', shot.camera_motion), metaRow('On-screen text', shot.on_screen_text),
+          metaRow('Voiceover', shot.voiceover), metaRow('Sound', shot.sound));
+      promptPack.appendChild(box);
+    });
+    const tags = (pack.hashtags || []).map((t) => t.startsWith('#') ? t : '#' + t).join(' ');
+    add(promptPack, add(card('Caption'), copyable([pack.caption, tags].filter(Boolean).join('\n\n'))));
+    if ((pack.production_notes || []).length) add(promptPack, add(card('Making it in Higgsfield'), points(pack.production_notes)));
+    promptForm.hidden = true;
+    promptPack.hidden = false;
+    promptBar.hidden = false;
+    dialog.scrollTop = 0;
+  };
+
+  promptForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!promptAudit) return;
+    const brief = {
+      topic: $('pTopic').value.trim(), brand: $('pBrand').value.trim(), audience: $('pAudience').value.trim(),
+      goal: $('pGoal').value.trim(), format: $('pFormat').value, length_seconds: Number($('pLength').value),
+      platform: $('pPlatform').value, style: $('pStyle').value.trim(), must_include: $('pMust').value.trim(),
+    };
+    if (!brief.topic) { $('pTopic').focus(); return; }
+    for (const id of REMEMBER) { try { localStorage.setItem('rd-' + id, $(id).value.trim()); } catch (e) { /* storage blocked */ } }
+    // A saved audit is looked up on the server; an unsaved one is sent without its frames and PDF.
+    const body = promptAudit.history_id
+      ? { audit_id: promptAudit.history_id, brief }
+      : { audit: { platform: promptAudit.platform, platform_label: promptAudit.platform_label, post: promptAudit.post,
+                   metrics: promptAudit.metrics, analysis: promptAudit.analysis }, brief };
+    promptGo.disabled = true;
+    promptNote.className = 'note';
+    const started = Date.now();
+    const tick = () => { promptNote.textContent = `Claude is writing your prompt · ${Math.round((Date.now() - started) / 1000)}s`; };
+    tick();
+    clearInterval(promptTicker);
+    promptTicker = setInterval(tick, 1000);
+    try {
+      const response = await fetch('/api/post-audit/prompt', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || 'Could not write the prompt. Try again.');
+      promptNote.textContent = '';
+      renderPack(data);
+    } catch (error) {
+      promptNote.className = 'note err';
+      promptNote.textContent = error.message && !/fetch/i.test(error.message) ? error.message : 'Could not reach the server. Try again.';
+    } finally {
+      clearInterval(promptTicker);
+      promptGo.disabled = false;
+    }
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import html
+import json
 import logging
 import os
 import shutil
@@ -24,6 +25,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from post_audit import higgsfield
 from post_audit.analysis import AnalysisError
 from post_audit.apify import ScrapeError
 from post_audit.media import MediaError
@@ -69,6 +71,8 @@ _hits_lock = threading.Lock()
 # A post audit spends money on Apify and Claude, so it costs more of the hourly
 # budget than a single page. Keys come from the environment, never the repo.
 POST_RATE_COST = int(os.environ.get("POST_RATE_COST", "3"))
+PROMPT_RATE_COST = int(os.environ.get("PROMPT_RATE_COST", "1"))
+MAX_PROMPT_AUDIT_BYTES = 200_000
 _post_lock = threading.Lock()
 
 # Chromium is not thread-safe and each instance is sized for one audit at a
@@ -116,6 +120,12 @@ class BlockedError(RuntimeError):
 
 class PostAuditRequest(BaseModel):
     url: str = ""
+
+
+class PromptRequest(BaseModel):
+    audit_id: str = ""         # a saved audit; preferred, so the page sends nothing heavy
+    audit: dict | None = None  # an unsaved audit, minus frames and PDF
+    brief: dict = {}
 
 
 class AuditRequest(BaseModel):
@@ -693,3 +703,42 @@ def history_delete(audit_id: str, request: Request) -> JSONResponse:
         raise HTTPException(503, str(exc)) from exc
     log.info("history: %s deleted %s", me or "someone", audit_id)
     return JSONResponse({"ok": True})
+
+
+# ------------------------------------------------------------------ Higgsfield prompt
+
+@app.post("/api/post-audit/prompt")
+def post_prompt(payload: PromptRequest, request: Request) -> JSONResponse:
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "Prompt writing is not set up yet: ANTHROPIC_API_KEY missing on the server.")
+    try:
+        brief = higgsfield.clean_brief(payload.brief or {})
+    except AnalysisError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    if payload.audit_id:
+        report = _saved_report(payload.audit_id)
+    elif payload.audit:
+        report = payload.audit
+        if len(json.dumps(report, default=str)) > MAX_PROMPT_AUDIT_BYTES:
+            raise HTTPException(413, "That audit is too large to send. Open it from the history and try again.")
+    else:
+        raise HTTPException(400, "Run or open an audit first.")
+
+    ip = client_ip(request)
+    wait = seconds_until_allowed(ip, PROMPT_RATE_COST)
+    if wait:
+        raise HTTPException(429, f"Rate limit reached. Try again in {_minutes(wait)}.",
+                            headers={"Retry-After": str(wait)})
+    try:
+        pack, usage = higgsfield.generate(report, brief)
+    except AnalysisError as exc:
+        refund(ip, PROMPT_RATE_COST)
+        raise HTTPException(502, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        refund(ip, PROMPT_RATE_COST)
+        log.exception("prompt generation failed")
+        raise HTTPException(502, "Could not write the prompt. Try again in a moment.") from exc
+    log.info("higgsfield prompt for %s: %s shots, %s in / %s out tokens", _me(request) or ip,
+             len(pack.get("shots") or []), usage.get("input_tokens"), usage.get("output_tokens"))
+    return JSONResponse(pack, headers={"Cache-Control": "no-store"})

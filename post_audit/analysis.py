@@ -158,18 +158,21 @@ def build_content(post: Post, metrics: dict, frames: list[Frame]) -> list[dict]:
     return content
 
 
-def analyse(post: Post, metrics: dict, frames: list[Frame], client: anthropic.Anthropic | None = None) -> tuple[dict, dict]:
-    """Return (analysis, usage) — usage feeds the log line, so cost is visible per audit."""
-    client = client or anthropic.Anthropic()
+def call_claude(client: anthropic.Anthropic, *, system: str, content: list[dict], schema: dict,
+                effort: str, max_tokens: int, what: str) -> tuple[dict, dict]:
+    """One structured Claude request; errors come back as AnalysisError with a message safe to show.
+
+    `what` names the job in those messages, e.g. "analyse this post".
+    """
     try:
         response = client.beta.messages.create(
             model=MODEL,
-            max_tokens=16000,
-            system=SYSTEM,
-            messages=[{"role": "user", "content": build_content(post, metrics, frames)}],
-            output_config={"effort": EFFORT, "format": {"type": "json_schema", "schema": SCHEMA}},
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": content}],
+            output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
             # If a safety classifier declines, the API retries on the model
-            # Anthropic recommends for that case instead of failing the audit.
+            # Anthropic recommends for that case instead of failing the request.
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
         )
@@ -185,18 +188,24 @@ def analyse(post: Post, metrics: dict, frames: list[Frame], client: anthropic.An
         raise AnalysisError("Could not reach the Claude API.") from exc
 
     if response.stop_reason == "refusal":
-        raise AnalysisError("Claude declined to analyse this post.")
+        raise AnalysisError(f"Claude declined to {what}.")
     if response.stop_reason == "max_tokens":
-        raise AnalysisError("The analysis ran out of room. Try again.")
+        raise AnalysisError("Claude ran out of room. Try again.")
     text = next((block.text for block in response.content if block.type == "text"), "")
     try:
-        analysis = json.loads(text)
+        result = json.loads(text)
     except ValueError as exc:
-        raise AnalysisError("Claude returned an analysis that could not be read.") from exc
+        raise AnalysisError("Claude returned an answer that could not be read.") from exc
 
     usage = {
         "model": response.model,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
     }
-    return analysis, usage
+    return result, usage
+
+
+def analyse(post: Post, metrics: dict, frames: list[Frame], client: anthropic.Anthropic | None = None) -> tuple[dict, dict]:
+    """Return (analysis, usage) — usage feeds the log line, so cost is visible per audit."""
+    return call_claude(client or anthropic.Anthropic(), system=SYSTEM, content=build_content(post, metrics, frames),
+                       schema=SCHEMA, effort=EFFORT, max_tokens=16000, what="analyse this post")
