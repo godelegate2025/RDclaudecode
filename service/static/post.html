@@ -433,16 +433,19 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     <button class="close" type="button" id="promptClose" aria-label="Close">×</button>
   </div>
   <form class="body" id="promptForm">
-    <p class="intro" id="promptIntro">Tell us about the post you want to make. The prompt reuses what worked in this audit.</p>
+    <p class="intro" id="promptIntro">Tell us about the REDEFINE post you want to make. The prompt reuses what worked in this audit.</p>
     <div class="grid">
       <label class="field wide"><span>What is your post about? <em>*</em></span>
-        <textarea id="pTopic" required maxlength="600" placeholder="e.g. Our new iced Spanish latte, launching this Friday at all branches"></textarea></label>
-      <label class="field"><span>Brand or account</span>
-        <input type="text" id="pBrand" maxlength="200" placeholder="e.g. Brew Lab Coffee"></label>
+        <textarea id="pTopic" required maxlength="600" placeholder="e.g. How our AI follow-up replies to every new lead in under 60 seconds"></textarea></label>
+      <label class="field"><span>Whose page?</span>
+        <select id="pPage">
+          <option value="agency">REDEFINE agency page</option>
+          <option value="founder">Lanz's founder profile</option>
+        </select></label>
       <label class="field"><span>Who is it for?</span>
-        <input type="text" id="pAudience" maxlength="300" placeholder="e.g. Office workers in Makati, 22–35"></label>
+        <input type="text" id="pAudience" maxlength="300" placeholder="e.g. US real estate developers"></label>
       <label class="field wide"><span>Goal / call to action</span>
-        <input type="text" id="pGoal" maxlength="300" placeholder="e.g. Visit a branch this weekend, or DM to order"></label>
+        <input type="text" id="pGoal" maxlength="300" placeholder="e.g. Comment SYSTEM to get the follow-up checklist"></label>
       <label class="field"><span>Format</span>
         <select id="pFormat">
           <option value="video">Video / reel</option>
@@ -462,9 +465,9 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
           <option>LinkedIn</option><option>YouTube Shorts</option>
         </select></label>
       <label class="field"><span>Style or mood</span>
-        <input type="text" id="pStyle" maxlength="600" placeholder="e.g. Warm, cinematic, slow-motion pours"></label>
+        <input type="text" id="pStyle" maxlength="600" placeholder="e.g. Raw screen recording, talking head in the Cebu office"></label>
       <label class="field wide"><span>Must include</span>
-        <input type="text" id="pMust" maxlength="600" placeholder="e.g. The cup with our logo, a barista, the line “Only ₱99 this week”">
+        <input type="text" id="pMust" maxlength="600" placeholder="e.g. A GoHighLevel workflow on screen, the line “Build. Realize. Redefine.”">
         <small>People, products, places or lines that have to appear. Leave blank to let Claude decide.</small></label>
     </div>
     <div class="go">
@@ -741,7 +744,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   const promptGo = document.getElementById('promptGo');
   const $ = (id) => document.getElementById(id);
   const PLATFORM_NAMES = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn' };
-  const REMEMBER = ['pBrand', 'pAudience', 'pStyle'];  // per browser, so the next prompt starts filled in
+  const REMEMBER = ['pPage', 'pAudience', 'pStyle'];  // per browser, so the next prompt starts filled in
   let promptAudit = null;
   let promptText = '';
   let promptTicker = null;
@@ -763,7 +766,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
       if (name) $('pPlatform').value = name;
       const seconds = data.post && data.post.duration_seconds;
       if (seconds) $('pLength').value = seconds <= 22 ? '15' : seconds <= 37 ? '30' : seconds <= 52 ? '45' : '60';
-      $('promptIntro').textContent = 'Tell us about the post you want to make. The prompt reuses what worked here: ' +
+      $('promptIntro').textContent = 'Tell us about the REDEFINE post you want to make. The prompt reuses what worked here: ' +
         ((data.analysis && data.analysis.verdict) || '');
       promptNote.textContent = '';
       promptNote.className = 'note';
@@ -831,7 +834,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     event.preventDefault();
     if (!promptAudit) return;
     const brief = {
-      topic: $('pTopic').value.trim(), brand: $('pBrand').value.trim(), audience: $('pAudience').value.trim(),
+      topic: $('pTopic').value.trim(), page: $('pPage').value, audience: $('pAudience').value.trim(),
       goal: $('pGoal').value.trim(), format: $('pFormat').value, length_seconds: Number($('pLength').value),
       platform: $('pPlatform').value, style: $('pStyle').value.trim(), must_include: $('pMust').value.trim(),
     };
