@@ -107,6 +107,11 @@ a.tool.alt p { color: var(--charcoal); }
 a.tool.alt:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
 a.tool.alt:hover p { color: #fff; }
 
+.more { margin: 22px 0 0; font-size: 13px; }
+.more a { color: var(--ink); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
+          border-bottom: 2px solid var(--coral); padding-bottom: 2px; }
+.more a:hover { color: var(--coral-dark); }
+
 @media (max-width: 640px) {
   .tools { grid-template-columns: 1fr; }
   h1 { margin-bottom: 28px; }
@@ -137,6 +142,7 @@ a.tool.alt:hover p { color: #fff; }
       <span class="cta">Open →</span>
     </a>
   </div>
+  <p class="more"><a href="/history">Audit history →</a></p>
 </main>
 <script>
   // Shows who is signed in, once sign-in is switched on; hidden otherwise.

@@ -80,6 +80,10 @@ header {
 header .spacer { flex: 1; }
 header .account { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 header .account a { color: var(--ink); font-weight: 600; }
+header .nav { font-size: 12.5px; font-weight: 600; color: var(--ink); text-decoration: none; white-space: nowrap; }
+header .nav:hover { color: var(--coral-dark); }
+.saved-note { font-size: 12.5px; color: var(--muted); margin: 0 0 var(--space-3); }
+.saved-note a { color: var(--ink); font-weight: 600; }
 header .tagline {
   font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
 }
@@ -315,6 +319,7 @@ ul.points li { margin-bottom: 6px; }
   </a>
   <div class="spacer"></div>
   <div class="tagline">Build. Realize. Redefine</div>
+  <a class="nav" href="/history">Audit history</a>
   <div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
@@ -559,9 +564,30 @@ ul.points li { margin-bottom: 6px; }
     });
     // The server prints a real PDF alongside the report; printing from the
     // browser is only the fallback when that failed.
-    const save = el('button', null, data.pdf ? 'Download PDF' : 'Print / Save PDF');
+    // A saved audit has no PDF attached; the server rebuilds it from the saved copy.
+    const savedPdf = !data.pdf && data.history_id ? '/api/history/' + encodeURIComponent(data.history_id) + '/pdf' : null;
+    const save = el('button', null, data.pdf || savedPdf ? 'Download PDF' : 'Print / Save PDF');
     save.type = 'button';
     save.addEventListener('click', () => {
+      if (savedPdf) {
+        save.disabled = true;
+        save.textContent = 'Preparing PDF…';
+        fetch(savedPdf).then(async (res) => {
+          if (!res.ok) throw new Error('pdf');
+          const name = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || 'post-audit.pdf';
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(await res.blob());
+          link.download = name;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+        }).catch(() => window.print()).finally(() => {
+          save.disabled = false;
+          save.textContent = 'Download PDF';
+        });
+        return;
+      }
       if (!data.pdf) { window.print(); return; }
       const raw = atob(data.pdf.base64);
       const bytes = new Uint8Array(raw.length);
@@ -575,13 +601,29 @@ ul.points li { margin-bottom: 6px; }
       setTimeout(() => URL.revokeObjectURL(link.href), 10000);
     });
 
+    // Where this report lives now: reopened from the history, or just saved to it.
+    let savedNote = null;
+    if (data.saved) {
+      const when = new Date(data.saved.created_at);
+      savedNote = el('p', 'saved-note', 'Saved audit' +
+        (data.saved.by ? ` · run by ${data.saved.by}` : '') +
+        (!isNaN(when) ? ` on ${when.toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : '') + ' · ');
+    } else if (data.history_id) {
+      savedNote = el('p', 'saved-note', 'Saved to the team history · ');
+    }
+    if (savedNote) {
+      const back = el('a', null, 'All audits');
+      back.href = '/history';
+      savedNote.appendChild(back);
+    }
+
     // Only shown in the PDF, where the page header and the form are hidden.
     const printed = new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
     const title = add(el('div', 'print-title'),
       el('div', 'eyebrow', `Redefine · Post audit · ${printed}`),
       el('h1', null, `${data.platform_label} post — ${post.author || post.author_handle || 'unknown account'}`));
 
-    add(result, title, top, tileRow, verdict, hook, apply, why, structure, pacing, caption, performance, avoid, limits,
+    add(result, title, savedNote, top, tileRow, verdict, hook, apply, why, structure, pacing, caption, performance, avoid, limits,
         add(el('div', 'actions'), copy, save));
     empty.style.display = 'none';
     result.setAttribute('data-show', '');
@@ -610,14 +652,41 @@ ul.points li { margin-bottom: 6px; }
         problem(titles[response.status] || 'Could not audit that post', detail);
         return;
       }
-      render(await response.json());
+      const data = await response.json();
+      render(data);
       clearStatus();
+      if (data.history_id) window.history.replaceState(null, '', '/post-audit?audit=' + encodeURIComponent(data.history_id));
     } catch (error) {
       problem('Connection failed', 'Could not reach the auditor. Check your connection and try again.');
     } finally {
       button.disabled = false;
     }
   });
+
+  // /post-audit?audit=<id> reopens a saved audit from the history.
+  const savedId = new URLSearchParams(location.search).get('audit');
+  if (savedId) {
+    (async () => {
+      head.hidden = true;
+      msg.textContent = 'Opening the saved audit…';
+      status.setAttribute('data-show', '');
+      try {
+        const response = await fetch('/api/history/' + encodeURIComponent(savedId), { cache: 'no-store' });
+        if (!response.ok) {
+          let detail = 'Could not open that audit.';
+          try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
+          problem('Saved audit not available', detail);
+          return;
+        }
+        const data = await response.json();
+        render(data);
+        clearStatus();
+        if (data.post && data.post.url) document.getElementById('url').value = data.post.url;
+      } catch (error) {
+        problem('Connection failed', 'Could not reach the server. Check your connection and try again.');
+      }
+    })();
+  }
 </script>
 <script>
   // Shows who is signed in, once sign-in is switched on; hidden otherwise.

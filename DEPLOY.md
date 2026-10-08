@@ -224,6 +224,21 @@ service account, which the default Compute Engine account already allows — a
 custom service account needs `roles/datastore.user`). Until the database exists,
 owners can still sign in and the page explains what is missing.
 
+### Audit history
+
+Every finished Post Auditor run is saved to the same Firestore database,
+collection `post_audits`: who ran it, when, the post's numbers, the full
+analysis, and the frames re-encoded at 320px (about 300 KB per audit, well
+inside Firestore's 1 MB document limit). `/history` lists them newest first
+with search, a platform filter and "Only mine"; opening one shows the full
+report again, and its PDF is rebuilt from the saved copy on download. The
+person who ran an audit, or any owner or admin, can delete it.
+
+No extra setup beyond the Firestore database above. Saving is best effort: if
+Firestore is missing or down, audits still work, they just are not saved, and
+the history page says so. Firestore's free tier (1 GiB, 20K writes and 50K
+reads a day) covers a few thousand audits.
+
 ## Automatic deploys
 
 `cloudbuild.yaml` deploys on every push: it builds the image, runs the whole

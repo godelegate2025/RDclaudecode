@@ -41,7 +41,8 @@ from website_audit.site import audit_site
 from . import auth
 from .team import StoreUnavailable, TeamError, get_team
 from .brief_view import render_brief_html
-from .post_pdf import attach_pdf
+from .history import NotFound, get_history
+from .post_pdf import attach_pdf, filename_for, render_pdf
 from .security import UnsafeURL, guard_route, validate
 
 log = logging.getLogger("website-audit")
@@ -83,6 +84,7 @@ SERVICE_WORKER = STATIC / "sw.js"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 LOGIN_PAGE = STATIC / "login.html"
 TEAM_PAGE = STATIC / "team.html"
+HISTORY_PAGE = STATIC / "history.html"
 
 
 @app.middleware("http")
@@ -596,6 +598,7 @@ def post_audit(payload: PostAuditRequest, request: Request) -> JSONResponse:
                 log.exception("post audit PDF failed; the page falls back to printing")
         finally:
             _post_lock.release()
+        save_to_history(report, getattr(request.state, "user", "") or "")
         delivered = True
         return JSONResponse(report)
     except HTTPException:
@@ -614,3 +617,79 @@ def post_audit(payload: PostAuditRequest, request: Request) -> JSONResponse:
         if not delivered:
             refund(ip, POST_RATE_COST)
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+# ------------------------------------------------------------------ audit history
+
+def save_to_history(report: dict, by: str) -> None:
+    """Keep a copy of the audit; a failed save never costs anyone their report."""
+    try:
+        report["history_id"] = get_history().save(report, by=by)
+    except Exception:  # noqa: BLE001 - history is a convenience, the report is the product
+        log.exception("could not save the post audit to history")
+
+
+def _me(request: Request) -> str:
+    return getattr(request.state, "user", "") or ""
+
+
+def _saved_report(audit_id: str) -> dict:
+    try:
+        return get_history().get(audit_id)
+    except NotFound as exc:
+        raise HTTPException(404, "That audit is not in the history any more.") from exc
+    except StoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get("/history", response_class=HTMLResponse)
+def history_page() -> HTMLResponse:
+    return HTMLResponse(HISTORY_PAGE.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/history")
+def history_list(request: Request) -> JSONResponse:
+    me = _me(request)
+    try:
+        audits, ready, problem = get_history().recent(), True, ""
+    except StoreUnavailable as exc:
+        audits, ready, problem = [], False, str(exc)
+    return JSONResponse({"me": me, "can_manage": bool(me) and get_team().can_manage(me),
+                         "ready": ready, "problem": problem, "audits": audits},
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/history/{audit_id}")
+def history_item(audit_id: str) -> JSONResponse:
+    return JSONResponse(_saved_report(audit_id), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/history/{audit_id}/pdf")
+def history_pdf(audit_id: str) -> Response:
+    report = _saved_report(audit_id)
+    try:
+        pdf = render_pdf(report)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("history PDF failed")
+        raise HTTPException(502, "Could not build the PDF. Try again in a moment.") from exc
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename_for(report)}"',
+                             "Cache-Control": "no-store"})
+
+
+@app.delete("/api/history/{audit_id}")
+def history_delete(audit_id: str, request: Request) -> JSONResponse:
+    me = _me(request)
+    history = get_history()
+    try:
+        by = history.owner_of(audit_id)
+        # Whoever ran it can tidy it away; anyone else's audit needs an owner or admin.
+        if auth.mode() == "on" and by.lower() != me.lower() and not get_team().can_manage(me):
+            raise HTTPException(403, "Only the person who ran this audit, or an owner or admin, can delete it.")
+        history.delete(audit_id)
+    except NotFound as exc:
+        raise HTTPException(404, "That audit is not in the history any more.") from exc
+    except StoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    log.info("history: %s deleted %s", me or "someone", audit_id)
+    return JSONResponse({"ok": True})

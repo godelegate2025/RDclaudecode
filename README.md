@@ -91,6 +91,13 @@ on every request. It is off until `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and
 are the owners; everyone else is managed at `/admin/team` and stored in
 Firestore (`service/team.py`). Setup steps are in DEPLOY.md.
 
+## Audit history
+
+Each Post Auditor run is saved to Firestore (`service/history.py`, collection
+`post_audits`) with who ran it. `/history` lists the team's audits; opening one
+reopens the full report at `/post-audit?audit=<id>` and rebuilds its PDF on
+demand. A failed save never fails the audit.
+
 ## Post Auditor
 
 `/post-audit` audits a live TikTok, Instagram, Facebook or LinkedIn post: why it
@@ -238,8 +245,13 @@ website_audit/
 service/
   app.py          FastAPI: one request runs one audit and returns the PDF
   security.py     SSRF guard — required for any public deployment
+  auth.py         Google sign-in and the session cookie
+  team.py         owners, admins and members (Firestore)
+  history.py      saved post audits (Firestore)
+  firestore_db.py the shared Firestore client
+  post_pdf.py     the Redefine post audit PDF
   static/         the home page, the website audit form and report viewer, the post
-                  auditor page, and the service worker that gives the PDF a real URL
+                  auditor page, the team and history pages, and the service worker that gives the PDF a real URL
                   so the browser names the download after the site
 post_audit/
   platforms.py    which network a URL belongs to

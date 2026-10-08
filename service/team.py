@@ -19,6 +19,9 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from . import firestore_db
+from .firestore_db import StoreUnavailable  # noqa: F401 - re-exported for callers
+
 log = logging.getLogger("team")
 
 COLLECTION = "team_members"
@@ -32,10 +35,6 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 class TeamError(Exception):
     """A change the admin page cannot make; the message is safe to show."""
-
-
-class StoreUnavailable(TeamError):
-    """Firestore is not set up or not reachable."""
 
 
 @dataclass
@@ -68,38 +67,14 @@ class MemoryStore:
 
 
 class FirestoreStore:
-    def __init__(self):
-        self._client = None
-
-    def _collection(self):
-        try:
-            if self._client is None:
-                from google.cloud import firestore
-
-                # On Cloud Run the project and credentials come from the
-                # service's own identity; no key file is involved.
-                self._client = firestore.Client(database=os.environ.get("FIRESTORE_DATABASE", "(default)"))
-            return self._client.collection(COLLECTION)
-        except Exception as exc:  # noqa: BLE001 - missing project, API off, no credentials
-            raise StoreUnavailable("Firestore is not set up for this project yet.") from exc
-
-    def _call(self, fn):
-        try:
-            return fn(self._collection())
-        except StoreUnavailable:
-            raise
-        except Exception as exc:  # noqa: BLE001 - database not created, permission denied, network
-            log.warning("firestore call failed: %s", exc)
-            raise StoreUnavailable("Firestore is not set up for this project yet, or not reachable.") from exc
-
     def all(self) -> dict[str, dict]:
-        return self._call(lambda c: {doc.id: doc.to_dict() or {} for doc in c.stream()})
+        return firestore_db.call(COLLECTION, lambda c: {doc.id: doc.to_dict() or {} for doc in c.stream()})
 
     def put(self, email: str, data: dict) -> None:
-        self._call(lambda c: c.document(email).set(data))
+        firestore_db.call(COLLECTION, lambda c: c.document(email).set(data))
 
     def delete(self, email: str) -> None:
-        self._call(lambda c: c.document(email).delete())
+        firestore_db.call(COLLECTION, lambda c: c.document(email).delete())
 
 
 @dataclass

@@ -353,6 +353,7 @@ class PostAuditHTTPTest(unittest.TestCase):
             response = self.client.post("/api/post-audit", json={"url": "https://www.tiktok.com/@a/video/1"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), report)
+        self.assertTrue(report["history_id"])  # saved to the team history
         self.assertEqual(run.call_args.kwargs["check"], validate)
 
     def test_scraper_failure_is_a_502_with_its_message(self):
