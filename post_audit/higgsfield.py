@@ -19,10 +19,6 @@ from .analysis import AnalysisError, call_claude
 
 EFFORT = os.environ.get("PROMPT_EFFORT", "medium")
 FORMATS = ("video", "carousel", "image")
-PAGES = {
-    "agency": "REDEFINE agency page (speaks as \"we\")",
-    "founder": "Lanz Oronce's founder profile (speaks as \"I\")",
-}
 MAX_FIELD = 600
 
 _str = {"type": "string"}
@@ -97,15 +93,13 @@ blueprint: Attract, Capture, Nurture, Convert.
 - Lead vertical is real estate (developers, builders, investors, agents); also founders, execs, coaches, \
 consultants and service businesses. Built in Cebu, Philippines, serving US clients, creating real careers \
 for Filipino talent.
-- Two pages. The REDEFINE agency page speaks as "we": services, proof, team, hiring, teaching. Lanz \
-Oronce's founder profile speaks as "I": the journey, lessons, opinions; for LinkedIn it must make a US \
-business owner think "this person runs a real operation". Write for the page the brief names.
+- Every post is for the REDEFINE agency page and speaks as "we": services, proof, team, hiring, \
+teaching. Never write for a personal profile, and never speak as "I".
 - Voice: calm, confident, clear, conversational; an operator sharing what works. Short sentences, plain \
 words. No hype, jargon, guru energy, fake urgency or desperate CTAs.
-- Look for the agency: ink #191616, charcoal #2C2828, paper #F4F3F0, coral #FC4452 as the one accent; \
+- Look: ink #191616, charcoal #2C2828, paper #F4F3F0, coral #FC4452 as the one accent; \
 black-and-white or muted photography with coral accents; heavy uppercase Anton headlines for overlay text. \
-Founder: darker, editorial (#050507, #362E2D, #7C8685, #AAACA1, accent #E3311D). Real work beats stock: \
-screens, workflows, a team in a Cebu office, a founder talking to camera.
+Real work beats stock: screens, workflows, the team in a Cebu office, a team member talking to camera.
 - Never use em dashes in the caption, on-screen text or voiceover. No invented metrics, clients, results, \
 testimonials or prices; write around a missing number and say so in production_notes.
 
@@ -138,7 +132,6 @@ def clean_brief(brief: dict) -> dict:
     """The brief as the person typed it, trimmed; raises AnalysisError when the topic is missing."""
     cleaned = {
         "topic": _clip(brief.get("topic")),
-        "page": PAGES.get(brief.get("page"), PAGES["agency"]),
         "audience": _clip(brief.get("audience"), 300),
         "goal": _clip(brief.get("goal"), 300),
         "format": brief.get("format") if brief.get("format") in FORMATS else "video",

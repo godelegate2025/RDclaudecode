@@ -127,10 +127,9 @@ Each audit costs roughly $0.01 on Apify and $0.05–0.20 on the Claude API, and
 counts as 3 against the hourly rate limit (`POST_RATE_COST`).
 
 **Generate prompt** turns an audit into a Higgsfield prompt pack for the team's
-own post (`post_audit/higgsfield.py`). Posts are always REDEFINE's, so the
-page asks what the post is about, whose page (the agency or Lanz's founder
-profile), the audience, goal, format, length, platform, style and anything it
-must include. The prompt carries REDEFINE's positioning, voice, palette and
+own post (`post_audit/higgsfield.py`). Posts are always for the REDEFINE
+agency page, so the page asks what the post is about, the audience, goal,
+format, length, platform, style and anything it must include. The prompt carries REDEFINE's positioning, voice, palette and
 rules (no em dashes, no invented numbers). Claude rewrites the audit's verdict and takeaways into a shot
 list where each shot has a start-frame image prompt, an image-to-video prompt
 and one camera move, plus on-screen text, voiceover and the caption. Text is

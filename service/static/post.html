@@ -437,12 +437,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     <div class="grid">
       <label class="field wide"><span>What is your post about? <em>*</em></span>
         <textarea id="pTopic" required maxlength="600" placeholder="e.g. How our AI follow-up replies to every new lead in under 60 seconds"></textarea></label>
-      <label class="field"><span>Whose page?</span>
-        <select id="pPage">
-          <option value="agency">REDEFINE agency page</option>
-          <option value="founder">Lanz's founder profile</option>
-        </select></label>
-      <label class="field"><span>Who is it for?</span>
+      <label class="field wide"><span>Who is it for?</span>
         <input type="text" id="pAudience" maxlength="300" placeholder="e.g. US real estate developers"></label>
       <label class="field wide"><span>Goal / call to action</span>
         <input type="text" id="pGoal" maxlength="300" placeholder="e.g. Comment SYSTEM to get the follow-up checklist"></label>
@@ -744,7 +739,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   const promptGo = document.getElementById('promptGo');
   const $ = (id) => document.getElementById(id);
   const PLATFORM_NAMES = { tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn' };
-  const REMEMBER = ['pPage', 'pAudience', 'pStyle'];  // per browser, so the next prompt starts filled in
+  const REMEMBER = ['pAudience', 'pStyle'];  // per browser, so the next prompt starts filled in
   let promptAudit = null;
   let promptText = '';
   let promptTicker = null;
@@ -834,7 +829,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     event.preventDefault();
     if (!promptAudit) return;
     const brief = {
-      topic: $('pTopic').value.trim(), page: $('pPage').value, audience: $('pAudience').value.trim(),
+      topic: $('pTopic').value.trim(), audience: $('pAudience').value.trim(),
       goal: $('pGoal').value.trim(), format: $('pFormat').value, length_seconds: Number($('pLength').value),
       platform: $('pPlatform').value, style: $('pStyle').value.trim(), must_include: $('pMust').value.trim(),
     };

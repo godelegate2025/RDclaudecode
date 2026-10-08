@@ -37,21 +37,20 @@ AUDIT = {"platform": "tiktok", "platform_label": "TikTok",
 class PromptPackTest(unittest.TestCase):
     def test_brief_is_cleaned(self):
         brief = higgsfield.clean_brief({"topic": "  Iced latte launch ", "format": "gif", "length_seconds": "500",
-                                        "page": "someone-else", "audience": "x" * 1000})
+                                        "page": "founder", "audience": "x" * 1000})
         self.assertEqual(brief["topic"], "Iced latte launch")
         self.assertEqual(brief["format"], "video")
         self.assertEqual(brief["length_seconds"], 90)
         self.assertEqual(len(brief["audience"]), 300)
-        self.assertIn("REDEFINE agency page", brief["page"])  # unknown pages fall back to the agency
-        self.assertNotIn("brand", brief)
-        self.assertIn("founder profile", higgsfield.clean_brief({"topic": "x", "page": "founder"})["page"])
+        self.assertNotIn("brand", brief)  # always the REDEFINE agency page
+        self.assertNotIn("page", brief)
         self.assertIsNone(higgsfield.clean_brief({"topic": "x", "format": "carousel", "length_seconds": 30})["length_seconds"])
         with self.assertRaisesRegex(AnalysisError, "what your post is about"):
             higgsfield.clean_brief({"topic": "   "})
 
     def test_sends_the_audit_reading_and_the_brief(self):
         client = fake_client(PACK)
-        brief = higgsfield.clean_brief({"topic": "Iced latte launch", "page": "founder"})
+        brief = higgsfield.clean_brief({"topic": "Iced latte launch"})
         report = dict(AUDIT, frames=[{"src": "data:image/jpeg;base64,AAAA"}], pdf={"base64": "AAAA"})
         pack, usage = higgsfield.generate(report, brief, client=client)
 
@@ -62,9 +61,9 @@ class PromptPackTest(unittest.TestCase):
         self.assertIn("Iced latte launch", sent)          # the brief
         self.assertNotIn("data:image", sent)              # frames never go back to Claude
         self.assertEqual(kwargs["output_config"]["format"]["schema"], higgsfield.SCHEMA)
-        self.assertIn("Lanz Oronce", sent)                # whose page
-        self.assertIn("REDEFINE", kwargs["system"])
-        self.assertIn("founder profile", pack["brief"]["page"])
+        self.assertIn("REDEFINE agency page", kwargs["system"])
+        for word in ("Lanz", "founder profile", "#E3311D"):  # agency only, never the founder brand
+            self.assertNotIn(word, kwargs["system"] + sent)
         self.assertEqual(usage["output_tokens"], 1200)
 
         text = pack["as_text"]
@@ -136,7 +135,8 @@ class PromptApiTest(unittest.TestCase):
         self.assertIn('id="promptDialog"', page)
         self.assertNotIn("Copy takeaways", page)
         self.assertNotIn('id="pBrand"', page)  # always REDEFINE, so the brand is never asked
-        self.assertIn('id="pPage"', page)
+        self.assertNotIn('id="pPage"', page)
+        self.assertNotIn("founder profile", page)
 
 
 if __name__ == "__main__":
