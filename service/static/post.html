@@ -313,6 +313,11 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
 .prompt .copyable button { position: absolute; top: 6px; right: 6px; min-height: 28px; padding: 0 10px; font-size: 10.5px;
                            background: var(--ink); }
 .prompt .copyable button:hover:not(:disabled) { background: var(--charcoal); }
+.prompt .count { position: absolute; right: 10px; bottom: 6px; font-size: 10.5px; color: var(--muted); }
+.prompt .count.over { color: var(--bad); font-weight: 700; }
+.prompt .copyable.counted { padding-bottom: 24px; }
+.prompt .card.main { border: 2px solid var(--coral); }
+.prompt .hint { font-size: 12.5px; color: var(--muted); margin: 0 0 6px; }
 .prompt .meta-row { font-size: 13.5px; margin: 2px 0; }
 .prompt .meta-row b { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
 .prompt .bar-actions { position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end;
@@ -473,7 +478,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   <div class="body pack" id="promptPack" hidden></div>
   <div class="bar-actions" id="promptBar" hidden>
     <button type="button" class="ghost" id="promptEdit">Edit answers</button>
-    <button type="button" id="promptCopyAll">Copy everything</button>
+    <button type="button" id="promptCopyAll" title="Every part in one block, for a doc or the team chat. Too long for Higgsfield.">Copy team brief</button>
   </div>
 </dialog>
 
@@ -785,33 +790,46 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     catch (e) { button.textContent = 'Copy failed'; }
     setTimeout(() => { button.textContent = label; }, 1800);
   };
-  const copyable = (text) => {
-    const box = el('div', 'copyable', text);
+  // Prompts carry a character count against Higgsfield's limit; the caption does not need one.
+  let promptLimit = 3000;
+  const copyable = (text, counted) => {
+    const box = el('div', 'copyable' + (counted ? ' counted' : ''), text);
     const button = el('button', null, 'Copy');
     button.type = 'button';
     button.addEventListener('click', () => copyText(text, button));
     box.appendChild(button);
+    if (counted) {
+      const count = el('span', 'count' + (text.length > promptLimit ? ' over' : ''),
+                       `${text.length.toLocaleString()} / ${promptLimit.toLocaleString()}`);
+      box.appendChild(count);
+    }
     return box;
   };
   const metaRow = (name, value) => value ? add(el('div', 'meta-row'), el('b', null, name), document.createTextNode(value)) : null;
 
   const renderPack = (pack) => {
     promptText = pack.as_text || '';
+    promptLimit = pack.limit || 3000;
     promptPack.textContent = '';
     const concept = card('The concept');
     add(concept, el('p', null, pack.concept), metaRow('Aspect ratio', pack.aspect_ratio));
     if ((pack.why_it_will_work || []).length) {
       add(concept, el('div', 'label', 'Why it should work'), points(pack.why_it_will_work));
     }
-    const style = add(card('Style — paste into every shot'), copyable(pack.style_anchor || ''));
-    add(promptPack, concept, style);
+    // The one prompt to paste first; the shots below are for generating piece by piece.
+    const full = pack.higgsfield_prompt ? add(card('Higgsfield prompt', 'main'),
+      el('p', 'hint', 'The whole post in one prompt, ready to paste. Or make it shot by shot with the prompts below.'),
+      copyable(pack.higgsfield_prompt, true)) : null;
+    const style = add(card('Style'), el('p', 'hint', 'Already inside every shot prompt below. Use it to keep extra shots matching.'),
+                      copyable(pack.style_anchor || '', true));
+    add(promptPack, full, concept, style);
     (pack.shots || []).forEach((shot, i) => {
       const box = card();
       add(box, add(el('div', 'shot-head'), el('strong', null, `Shot ${i + 1} · ${shot.label || ''}`),
                    shot.timing ? el('span', 'timing', shot.timing) : null));
       if (shot.purpose) add(box, el('p', null, shot.purpose));
-      add(box, el('div', 'label', 'Start frame — image prompt'), copyable(shot.start_frame_prompt || ''));
-      if (shot.video_prompt) add(box, el('div', 'label', 'Video prompt'), copyable(shot.video_prompt));
+      add(box, el('div', 'label', 'Start frame — image prompt'), copyable(shot.start_frame_prompt || '', true));
+      if (shot.video_prompt) add(box, el('div', 'label', 'Video prompt'), copyable(shot.video_prompt, true));
       add(box, metaRow('Camera', shot.camera_motion), metaRow('On-screen text', shot.on_screen_text),
           metaRow('Voiceover', shot.voiceover), metaRow('Sound', shot.sound));
       promptPack.appendChild(box);

@@ -17,6 +17,7 @@ PACK = {
     "concept": "A barista asks 'Would you drink this?' over a slow-motion pour, then reveals the price.",
     "why_it_will_work": ["Opens on a question, like the original's hook."],
     "aspect_ratio": "9:16",
+    "higgsfield_prompt": "Warm café, golden light. Shot 1 (0-3s): milk swirls into espresso, slow dolly in.",
     "style_anchor": "Warm café, golden morning light, shallow depth of field.",
     "shots": [
         {"label": "Hook", "timing": "0-3s", "purpose": "Question hook.",
@@ -67,10 +68,24 @@ class PromptPackTest(unittest.TestCase):
         self.assertEqual(usage["output_tokens"], 1200)
 
         text = pack["as_text"]
-        for piece in ("HIGGSFIELD PROMPT PACK — Iced latte launch", "SHOT 1 · Hook · 0-3s", "Camera: slow dolly in",
+        for piece in ("HIGGSFIELD PROMPT PACK: Iced latte launch", "SHOT 1 · Hook · 0-3s", "Camera: slow dolly in",
                       "On-screen text: Would you drink this?", "#icedlatte #coffee"):
             self.assertIn(piece, text)
         self.assertNotIn("Voiceover:", text)  # empty fields are left out
+
+    def test_every_prompt_fits_higgsfield(self):
+        long = "A barista pours milk into an iced latte under warm light. " * 80  # ~4,600 characters
+        pack = dict(PACK, higgsfield_prompt=long, style_anchor=long,
+                    shots=[dict(PACK["shots"][0], start_frame_prompt=long, video_prompt=long)])
+        result, _ = higgsfield.generate(AUDIT, higgsfield.clean_brief({"topic": "x"}), client=fake_client(pack))
+        prompts = [result["higgsfield_prompt"], result["style_anchor"],
+                   result["shots"][0]["start_frame_prompt"], result["shots"][0]["video_prompt"]]
+        for prompt in prompts:
+            self.assertLessEqual(len(prompt), higgsfield.HIGGSFIELD_LIMIT)
+            self.assertTrue(prompt.endswith("light."))  # cut at a full sentence
+        self.assertEqual(result["limit"], 3000)
+        self.assertIn("3,000 characters", higgsfield.SYSTEM)
+        self.assertIn("Full prompt (paste into Higgsfield):", result["as_text"])
 
     def test_an_audit_without_analysis_is_refused(self):
         with self.assertRaisesRegex(AnalysisError, "no analysis"):

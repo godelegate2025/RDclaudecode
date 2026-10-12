@@ -20,14 +20,17 @@ from .analysis import AnalysisError, call_claude
 EFFORT = os.environ.get("PROMPT_EFFORT", "medium")
 FORMATS = ("video", "carousel", "image")
 MAX_FIELD = 600
+HIGGSFIELD_LIMIT = 3000   # Higgsfield refuses longer prompts
+FULL_PROMPT_TARGET = 2500  # asked of Claude, leaving room under the limit
+SHOT_PROMPT_TARGET = 900
 
 _str = {"type": "string"}
 
 SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["concept", "why_it_will_work", "aspect_ratio", "style_anchor", "shots", "caption",
-                 "hashtags", "production_notes"],
+    "required": ["concept", "why_it_will_work", "aspect_ratio", "higgsfield_prompt", "style_anchor", "shots",
+                 "caption", "hashtags", "production_notes"],
     "properties": {
         "concept": {**_str, "description": "The idea for the new post in one or two sentences."},
         "why_it_will_work": {
@@ -35,6 +38,13 @@ SCHEMA = {
             "description": "2-4 bullets tying the concept to the audit: which takeaway each part applies.",
         },
         "aspect_ratio": {**_str, "description": "e.g. 9:16"},
+        "higgsfield_prompt": {
+            **_str,
+            "description": f"ONE paste-ready Higgsfield prompt for the whole post, under {FULL_PROMPT_TARGET} "
+                           "characters including spaces. Video: the look in one line, then each shot in order as "
+                           "'Shot 1 (0-3s): ...' with its action and camera move. Carousel: the shared look, then "
+                           "one short line per slide. No words, logos or captions in the visuals.",
+        },
         "style_anchor": {
             **_str,
             "description": "One paragraph describing the look shared by every shot (subject, wardrobe, setting, "
@@ -53,13 +63,15 @@ SCHEMA = {
                     "purpose": {**_str, "description": "What this shot does for the viewer, and the takeaway it applies."},
                     "start_frame_prompt": {
                         **_str,
-                        "description": "A complete, self-contained image prompt for the first frame (or the slide). "
-                                       "Include the style anchor's details. No words, logos or captions in the image.",
+                        "description": "A complete, self-contained image prompt for the first frame (or the slide), "
+                                       f"under {SHOT_PROMPT_TARGET} characters. Include the style anchor's key details. "
+                                       "No words, logos or captions in the image.",
                     },
                     "video_prompt": {
                         **_str,
-                        "description": "A complete, self-contained image-to-video prompt: the action, what moves, "
-                                       "pace and mood. Empty for carousel slides and single images.",
+                        "description": "A complete, self-contained image-to-video prompt, under "
+                                       f"{SHOT_PROMPT_TARGET} characters: the action, what moves, pace and mood. "
+                                       "Empty for carousel slides and single images.",
                     },
                     "camera_motion": {**_str, "description": "One camera move, e.g. slow dolly in, crash zoom, handheld follow, static."},
                     "on_screen_text": {**_str, "description": "Overlay text added in editing, quoted; empty if none."},
@@ -104,6 +116,8 @@ Real work beats stock: screens, workflows, the team in a Cebu office, a team mem
 testimonials or prices; write around a missing number and say so in production_notes.
 
 How Higgsfield is used:
+- Higgsfield accepts at most 3,000 characters per prompt. Keep higgsfield_prompt under 2,500 characters \
+and every start_frame_prompt and video_prompt under 900. Cut adjectives before cutting the action.
 - Each shot is generated separately, so every prompt must stand on its own. Repeat the key look details \
 from the style anchor inside each start_frame_prompt so the shots match.
 - A shot is usually made in two steps: an image for the first frame, then image-to-video with one camera \
@@ -126,6 +140,25 @@ asking.
 
 def _clip(value, limit: int = MAX_FIELD) -> str:
     return str(value or "").strip()[:limit]
+
+
+def fit(text: str, limit: int = HIGGSFIELD_LIMIT) -> str:
+    """Keep a prompt pasteable: if it runs over, cut at the last full sentence that fits."""
+    text = str(text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind(".\n"))
+    return cut[:end + 1] if end > limit // 2 else cut.rsplit(" ", 1)[0]
+
+
+def _fit_prompts(pack: dict) -> dict:
+    pack["higgsfield_prompt"] = fit(pack.get("higgsfield_prompt", ""))
+    pack["style_anchor"] = fit(pack.get("style_anchor", ""))
+    for shot in pack.get("shots") or []:
+        for key in ("start_frame_prompt", "video_prompt"):
+            shot[key] = fit(shot.get(key, ""))
+    return pack
 
 
 def clean_brief(brief: dict) -> dict:
@@ -180,17 +213,21 @@ def generate(report: dict, brief: dict, client: anthropic.Anthropic | None = Non
         raise AnalysisError("This audit has no analysis to build a prompt from.")
     pack, usage = call_claude(client or anthropic.Anthropic(), system=SYSTEM, content=build_content(report, brief),
                               schema=SCHEMA, effort=EFFORT, max_tokens=12000, what="write this prompt")
+    pack = _fit_prompts(pack)
+    pack["limit"] = HIGGSFIELD_LIMIT
     pack["brief"] = brief
     pack["as_text"] = as_text(pack)
     return pack, usage
 
 
 def as_text(pack: dict) -> str:
-    """Everything in one block, ready to paste into a doc or a chat."""
+    """The whole brief in one block for the team (a doc or a chat), not for pasting into Higgsfield."""
     brief = pack.get("brief") or {}
-    lines = [f"HIGGSFIELD PROMPT PACK — {brief.get('topic', '')}".rstrip(" —"), "",
-             f"Concept: {pack.get('concept', '')}", f"Aspect ratio: {pack.get('aspect_ratio', '')}", "",
-             "Style (keep the same in every shot):", pack.get("style_anchor", ""), ""]
+    lines = [f"HIGGSFIELD PROMPT PACK: {brief.get('topic', '')}".rstrip(": "), "",
+             f"Concept: {pack.get('concept', '')}", f"Aspect ratio: {pack.get('aspect_ratio', '')}", ""]
+    if pack.get("higgsfield_prompt"):
+        lines += ["Full prompt (paste into Higgsfield):", pack["higgsfield_prompt"], ""]
+    lines += ["Style (keep the same in every shot):", pack.get("style_anchor", ""), ""]
     for i, shot in enumerate(pack.get("shots") or [], 1):
         head = f"SHOT {i} · {shot.get('label', '')}" + (f" · {shot['timing']}" if shot.get("timing") else "")
         lines += [head, f"Purpose: {shot.get('purpose', '')}", f"Start frame prompt: {shot.get('start_frame_prompt', '')}"]
