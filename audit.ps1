@@ -6,7 +6,7 @@
 .EXAMPLE
   .\audit.ps1 https://example.com
   .\audit.ps1 https://a.com, https://b.com -OutDir .\reports
-  $env:AUDIT_SERVICE = "https://website-audit-xxxx.us-central1.run.app"   # set once per window
+  $env:AUDIT_SERVICE = "https://redefine-website-xxxx.us-central1.run.app"   # set once per window
 #>
 [CmdletBinding()]
 param(
@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 
 if (-not $Service) {
   Write-Host "No service URL. Pass -Service, or set it once for this window:" -ForegroundColor Red
-  Write-Host '  $env:AUDIT_SERVICE = "https://website-audit-xxxx.us-central1.run.app"'
+  Write-Host '  $env:AUDIT_SERVICE = "https://redefine-website-xxxx.us-central1.run.app"'
   exit 1
 }
 $Service = $Service.TrimEnd('/')

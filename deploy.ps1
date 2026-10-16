@@ -11,7 +11,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Service      = "website-audit",
+  [string]$Service      = "redefine-website",
   [string]$Region       = "europe-west2",
   [int]   $MaxInstances = 3,
   [string]$Project      = ""
