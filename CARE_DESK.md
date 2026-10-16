@@ -67,8 +67,9 @@ App (DEPLOY.md, "Team sign-in"). Then:
 ```
 
 The script copies `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and `SESSION_SECRET` from
-the running `website-audit` service, uses the `anthropic-api-key` secret the
-Post Auditor already has, creates the webhook and cron keys, builds
+the running `redefine-apps` service (pass `-AppService` for another name), reuses
+the Post Auditor's Claude key (the `anthropic-api-key` secret if there is one,
+otherwise the key set on the app), creates the webhook and cron keys, builds
 `Dockerfile.desk`, deploys `care-desk` to `us-central1` and schedules the
 5-minute clock. Re-run it after code changes, and after changing the app's
 sign-in settings.
@@ -88,7 +89,7 @@ Then, once:
 3. **Link it from the Redefine App:**
 
    ```powershell
-   gcloud run services update website-audit --region us-central1 --update-env-vars CARE_DESK_URL=https://<care-desk-url>/desk
+   gcloud run services update redefine-apps --region us-central1 --update-env-vars CARE_DESK_URL=https://<care-desk-url>/desk
    ```
 
    The Care Desk card on the app's home page then opens it.

@@ -22,14 +22,16 @@
 [CmdletBinding()]
 param(
   [string]$Service    = "care-desk",
-  [string]$AppService = "website-audit",
+  [string]$AppService = "redefine-apps",
   [string]$Region     = "us-central1",
   [string]$Project    = "",
   [string]$FromEmail  = "",
   [string]$ReplyTo    = ""
 )
 
-$ErrorActionPreference = "Stop"
+# gcloud reports progress on stderr, which Windows PowerShell turns into errors
+# when output is redirected; every step checks $LASTEXITCODE instead.
+$ErrorActionPreference = "Continue"
 function Write-Step($text) { Write-Host $text -ForegroundColor Cyan }
 function Fail($text) { Write-Host $text -ForegroundColor Red; exit 1 }
 
@@ -73,8 +75,10 @@ foreach ($name in "desk-webhook-key", "desk-cron-key") {
   if (-not (Test-Secret $name)) { New-RandomSecret $name }
 }
 $secrets = "DESK_WEBHOOK_KEY=desk-webhook-key:latest,DESK_CRON_KEY=desk-cron-key:latest"
+$copyClaudeKey = $false
 if (Test-Secret "anthropic-api-key") { $secrets += ",ANTHROPIC_API_KEY=anthropic-api-key:latest" }
-else { Write-Host "  anthropic-api-key not found: messages will be sorted by keyword rules" -ForegroundColor Yellow }
+elseif ($appEnv["ANTHROPIC_API_KEY"]) { $copyClaudeKey = $true; Write-Host "  using the Claude key set on $AppService" }
+else { Write-Host "  no Claude key found: messages will be sorted by keyword rules" -ForegroundColor Yellow }
 if (Test-Secret "resend-api-key") { $secrets += ",RESEND_API_KEY=resend-api-key:latest" }
 else { Write-Host "  resend-api-key not found: emails are logged, not sent" -ForegroundColor Yellow }
 
@@ -100,6 +104,7 @@ Write-Step "4/6  Deploying"
 $vars = @("GOOGLE_CLIENT_ID=$($appEnv['GOOGLE_CLIENT_ID'])", "ALLOWED_EMAILS=$($appEnv['ALLOWED_EMAILS'])",
           "SESSION_SECRET=$($appEnv['SESSION_SECRET'])")
 if ($appEnv["FIRESTORE_DATABASE"]) { $vars += "FIRESTORE_DATABASE=$($appEnv['FIRESTORE_DATABASE'])" }
+if ($copyClaudeKey) { $vars += "ANTHROPIC_API_KEY=$($appEnv['ANTHROPIC_API_KEY'])" }
 if ($FromEmail) { $vars += "DESK_FROM_EMAIL=$FromEmail" }
 if ($ReplyTo) { $vars += "DESK_REPLY_TO=$ReplyTo" }
 gcloud run deploy $Service --image $image --project $Project --region $Region `
@@ -122,10 +127,12 @@ gcloud scheduler jobs $verb http $job --location $Region --project $Project --sc
 if ($LASTEXITCODE) { Fail "Could not set up the scheduler job." }
 
 Write-Step "6/6  Checking the deployment"
+# Not /healthz: Cloud Run's front end reserves that path and never passes it on.
+# The sign-in page answers 200 only when sign-in is fully set up (503 otherwise).
 try {
-  $health = Invoke-RestMethod "$url/healthz" -TimeoutSec 30
-  if (-not $health.ok) { Fail "Health check failed." }
-} catch { Fail "The service did not answer at $url/healthz" }
+  $page = Invoke-WebRequest "$url/login" -UseBasicParsing -TimeoutSec 60
+  if ($page.StatusCode -ne 200) { Fail "The sign-in page answered $($page.StatusCode)." }
+} catch { Fail "The desk did not answer at $url/login : $($_.Exception.Message)" }
 
 Write-Host ""
 Write-Host "Care Desk is live: $url/desk" -ForegroundColor Green
