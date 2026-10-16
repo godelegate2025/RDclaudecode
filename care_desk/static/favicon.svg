@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Paper tile so the ink half of the mark stays visible on dark browser tabs. -->
+  <rect width="64" height="64" rx="14" fill="#F4F3F0"/>
+  <g transform="translate(-8.9 -5.95) scale(0.66)">
+    <path fill="#FC4452" d="M26 43 42 35V100L26 92Z"/>
+    <path fill="#FC4452" d="M50 77 66 69V100L50 92Z"/>
+    <path fill="#191616" d="M42 15 82 35V53L98 61V100L82 92V71L66 63V45L42 33Z"/>
+  </g>
+</svg>

@@ -1,0 +1,162 @@
+# Care Desk
+
+Every comment, direct message and email that reaches Redefine's GHL lands in one
+inbox. Claude sorts each one by issue type and urgency and drafts a public
+reply. Concerns become tickets with response-time clocks, and questions about
+services and prices become leads with an email follow-up journey.
+
+It runs as its own Cloud Run service next to the Redefine App, because it keeps
+data and must answer GHL's webhooks quickly while audits run for minutes.
+
+| Piece | What it uses |
+|---|---|
+| Staff | The Redefine App's team sign-in: the same Google accounts, team list and admin page |
+| Data | The app's Firestore database, in collections named `desk_…` |
+| Messages in | A GHL workflow posts each new comment or message to `/hooks/ghl` |
+| Sorting | Claude (`ANTHROPIC_API_KEY`, the Post Auditor's key), or keyword rules without one |
+| Email out | Resend (`RESEND_API_KEY`, `DESK_FROM_EMAIL`); without them nothing is sent |
+| Clock | Cloud Scheduler calls `/api/desk/tick` every 5 minutes to escalate late tickets and send due journey emails |
+
+## What it can and cannot do
+
+- **Replies are posted in GHL, not from the desk.** GHL's API has no endpoint
+  for Social Planner comments (requested in March 2026, still open). The desk
+  drafts the reply, copies it, links to the post or GHL's comments page, and
+  records when someone marks it posted. That counts as the ticket's first reply.
+- **Only new comments arrive.** The GHL workflow fires on new comments, so
+  anything posted before it was switched on stays in GHL.
+- **Customer emails need an email on the GHL contact.** Most commenters have
+  none, so their tickets are updated through GHL instead and their leads are
+  marked "follow up by DM".
+- **Lead journeys stop on a reply only if the lead writes in again.** A new
+  message from the same email stops the journey automatically. A reply to a
+  journey email goes to `DESK_REPLY_TO`; mark the lead "Replied" by hand.
+- **A placeholder can never be emailed.** Templates with `[SQUARE BRACKETS]`
+  cannot go live. The new lead journey ships with `[PORTFOLIO LINK]` and
+  `[BOOKING LINK]` to fill in on the Email screen.
+- **It never runs open.** Unlike the auditors, the desk refuses every page
+  until team sign-in is set up, because it holds customers' messages.
+
+## Who can use it
+
+Whoever can sign in to the Redefine App: the owners in `ALLOWED_EMAILS` and the
+people on the app's team page (`/admin/team`). Removing someone there signs them
+out of the desk too. The desk needs no user list of its own.
+
+## Run it on a laptop
+
+```powershell
+pip install -r requirements-desk.txt
+$env:DESK_STORE = "memory"            # keep data in memory; nothing reaches Firestore
+$env:DESK_DEV_EMAIL = "you@redefine.ph"  # act as this person; only works with sign-in off
+uvicorn care_desk.app:app --port 8010 --reload
+```
+
+Open http://127.0.0.1:8010. Data is gone when the server stops. Without
+`ANTHROPIC_API_KEY` messages are sorted by keyword rules, and the header says
+so. `DESK_DEV_EMAIL` is ignored as soon as the sign-in settings are present, so
+it can never open a deployed desk.
+
+## Deploy
+
+Team sign-in and the Firestore database must already be set up for the Redefine
+App (DEPLOY.md, "Team sign-in"). Then:
+
+```powershell
+.\deploy-desk.ps1 -FromEmail "Redefine <hello@redefine.ph>" -ReplyTo "hello@redefine.ph"
+```
+
+The script copies `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and `SESSION_SECRET` from
+the running `website-audit` service, uses the `anthropic-api-key` secret the
+Post Auditor already has, creates the webhook and cron keys, builds
+`Dockerfile.desk`, deploys `care-desk` to `us-central1` and schedules the
+5-minute clock. Re-run it after code changes, and after changing the app's
+sign-in settings.
+
+Then, once:
+
+1. **Google sign-in.** Console → Google Auth Platform → Clients → the app's
+   client → *Authorised JavaScript origins*: add the desk's URL (the script
+   prints it). Without this, Google's button refuses to sign in on the desk.
+2. **Email (optional).** Add and verify Redefine's domain in Resend (it gives
+   you DNS records to add), then store the key and re-run the script:
+
+   ```powershell
+   "re_..." | gcloud secrets create resend-api-key --data-file=-
+   ```
+
+3. **Link it from the Redefine App:**
+
+   ```powershell
+   gcloud run services update website-audit --region us-central1 --update-env-vars CARE_DESK_URL=https://<care-desk-url>/desk
+   ```
+
+   The Care Desk card on the app's home page then opens it.
+
+The automatic deploy on push (cloudbuild.yaml) runs the desk's tests but does
+not deploy the desk; `deploy-desk.ps1` does.
+
+### Firestore costs
+
+Each open desk page loads everything once, then asks only for what changed
+every 20 seconds: an idle page costs about six reads a refresh, around 8,600 a
+day if left open all day. Firestore's free tier is 50,000 reads and 20,000
+writes a day. Each new message costs about ten writes.
+
+## Connect GHL
+
+Get the webhook address:
+
+```powershell
+gcloud secrets versions access latest --secret desk-webhook-key
+```
+
+The URL is `https://<care-desk-url>/hooks/ghl?key=<that key>`.
+
+In Redefine's GHL sub-account, go to **Automation → Workflows → Create Workflow →
+Start from scratch**, then:
+
+1. **Trigger:** *Facebook/Instagram – Comment(s) On A Post*. Choose Redefine's
+   page and, if GHL offers it, all posts.
+2. **Action:** *Webhook*. Method `POST`, URL as above.
+3. **Custom Data**, one item per row. Pick each value from the merge-field
+   picker (the `{{ }}` menu, under the trigger's fields):
+
+   | Key | Value |
+   |---|---|
+   | `comment` | the comment text |
+   | `channel` | type `facebook` (or `instagram` in a second workflow) |
+   | `comment_id` | the comment's id, if the picker has one; stops duplicates |
+   | `post_url` | the post's link, if the picker has one; powers "Open the post" |
+
+4. Save and publish, then comment on a test post.
+
+The comment should appear in the inbox within seconds. If it shows as **Could
+not read**, the desk received the webhook but found no `comment`. Open it: the
+desk shows exactly what GHL sent, so you can pick the right merge field.
+
+**Direct messages and emails** use the same webhook. Make a second workflow with
+the *Customer Replied* trigger, filtered to the channels you want, with
+`comment` = the message body (`{{message.body}}`) and `channel` = `messenger`,
+`instagram` or `email`.
+
+GHL retries a webhook that fails. The desk ignores repeats with the same
+`comment_id`, or the same person and text within a day when there is no id.
+
+## Settings
+
+Everything Redefine-specific (issue types, teams, response targets, interests
+and the default email templates) is in `care_desk/config.py`. Emails can also be
+edited on the Email screen; those edits are stored in Firestore.
+
+| Variable | Purpose |
+|---|---|
+| `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS`, `SESSION_SECRET` | The Redefine App's sign-in, copied by the deploy script |
+| `DESK_WEBHOOK_KEY` | Must match `?key=` on the GHL webhook URL |
+| `DESK_CRON_KEY` | Lets Cloud Scheduler call the clock |
+| `DESK_PUBLIC_URL` | Base of unsubscribe links (set by the deploy script) |
+| `ANTHROPIC_API_KEY` | Claude sorting |
+| `DESK_MODEL`, `DESK_EFFORT` | Default `claude-opus-5-5` at `low` effort |
+| `RESEND_API_KEY`, `DESK_FROM_EMAIL`, `DESK_REPLY_TO` | Email sending |
+| `DESK_BRAND`, `DESK_TICKET_PREFIX`, `DESK_SIGN_OFF` | Default `Redefine`, `RD`, `The Redefine team` |
+| `DESK_STORE`, `DESK_DEV_EMAIL` | Laptop runs only, see above |

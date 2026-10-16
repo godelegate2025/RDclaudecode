@@ -27,6 +27,9 @@ RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('base', de
 COPY website_audit/ ./website_audit/
 COPY post_audit/ ./post_audit/
 COPY service/ ./service/
+# The Care Desk runs as its own service (Dockerfile.desk); it is copied here
+# too so the test suite that gates every deploy can import it.
+COPY care_desk/ ./care_desk/
 
 # Chromium's own sandbox needs privileges a managed container platform does not
 # grant. Cloud Run runs every container inside gVisor, which is the isolation

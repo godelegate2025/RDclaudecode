@@ -34,6 +34,13 @@ Claude runs the audit, delivers the PDF, and summarises what matters. See
 [the skill](.claude/skills/website-audit/SKILL.md) for the workflow it follows
 and for scheduling recurring audits.
 
+## Care Desk
+
+`care_desk/` is a separate app: every comment and message from Redefine's GHL,
+sorted by Claude into tickets and leads, with response-time clocks and email
+follow-ups. It deploys as its own Cloud Run service. See
+[CARE_DESK.md](CARE_DESK.md) for setup, deployment and the GHL workflow.
+
 ## As a hosted service
 
 `service/` wraps the same engine in a web app: a form, an audit endpoint that

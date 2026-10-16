@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Care Desk</title>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;700&display=swap">
+<script src="https://accounts.google.com/gsi/client" async></script>
+<style>
+:root{--ink:#191616;--panel:#211D1D;--coral:#FC4452;--line-2:rgba(255,255,255,.14);--t-hi:rgba(255,255,255,.95);--t-mid:rgba(255,255,255,.66);color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--ink);color:var(--t-hi);font:400 15px/1.5 'Archivo','Helvetica Neue',Arial,sans-serif}
+main{width:min(400px,100%);background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:28px}
+/* Same brand block as the Redefine App's tool pages. */
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.brand img{height:32px;width:auto;display:block;flex:none}
+.brand .word{font:400 22px/1 'Anton',Impact,sans-serif;letter-spacing:.02em;text-transform:uppercase}
+.brand .divider{width:1px;height:24px;background:var(--line-2)}
+.brand .tool{font:600 12px 'Archivo',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--t-mid)}
+h1{margin:0 0 4px;font:400 34px/1 'Anton',Impact,sans-serif;text-transform:uppercase;letter-spacing:.01em}
+p{margin:0 0 22px;color:var(--t-mid)}
+.google{display:flex;justify-content:center;min-height:44px}
+#err{min-height:22px;margin:16px 0 0;color:var(--coral);font-weight:600}
+.note{margin:6px 0 0;font-size:12px;color:var(--t-mid)}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <img src="/static/favicon.svg" alt="Redefine" width="32" height="32">
+    <span class="word">Redefine</span>
+    <span class="divider" aria-hidden="true"></span>
+    <span class="tool">Care Desk</span>
+  </div>
+  <h1>Sign in</h1>
+  <p>Use the Google account your team admin added in the Redefine App.</p>
+
+  <!-- Google renders its own button here; the client ID is filled in by the server. -->
+  <div id="g_id_onload" data-client_id="__GOOGLE_CLIENT_ID__" data-callback="onGoogleCredential"
+       data-auto_prompt="false" data-ux_mode="popup"></div>
+  <div class="google"><div class="g_id_signin" data-type="standard" data-theme="filled_black" data-size="large"
+       data-text="signin_with" data-shape="pill" data-logo_alignment="left"></div></div>
+
+  <p id="err" role="alert"></p>
+  <p class="note">The same team list as the Redefine App.</p>
+</main>
+<script>
+  // Google hands over a signed token; the server checks it and the team list.
+  async function onGoogleCredential(response) {
+    const err = document.getElementById('err');
+    err.textContent = '';
+    try {
+      const res = await fetch('/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential, next: '/desk' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { err.textContent = data.detail || 'Sign-in failed. Try again.'; return; }
+      location.replace(data.next || '/desk');
+    } catch {
+      err.textContent = 'Could not reach the desk. Check your connection and try again.';
+    }
+  }
+</script>
+</body>
+</html>

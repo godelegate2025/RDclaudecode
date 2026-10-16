@@ -1,0 +1,26 @@
+# The Care Desk: a small web app talking to Firestore and Claude. None of the
+# auditors' Chromium or ffmpeg, so the image is a fraction of the size and
+# starts fast.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY requirements-desk.txt ./
+RUN pip install --no-cache-dir -r requirements-desk.txt
+
+# Sign-in is the Redefine App's own: its team list, sessions and Firestore client.
+COPY service/__init__.py service/auth.py service/team.py service/firestore_db.py ./service/
+COPY care_desk/ ./care_desk/
+
+RUN useradd --create-home desk
+USER desk
+
+# Cloud Run sends traffic to $PORT and will not route to anything else.
+ENV PORT=8080
+EXPOSE 8080
+
+CMD exec uvicorn care_desk.app:app --host 0.0.0.0 --port ${PORT} --workers 1 --timeout-keep-alive 75 --proxy-headers --forwarded-allow-ips="*"

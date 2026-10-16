@@ -1,0 +1,8 @@
+# Care Desk service only: no browser, no media tools.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+anthropic>=1.10
+requests>=2.31
+# The Redefine App's team sign-in and its Firestore database
+google-auth>=2.30
+google-cloud-firestore>=2.16

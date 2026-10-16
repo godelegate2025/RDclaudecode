@@ -1,0 +1,6 @@
+# Builds the Care Desk image from Dockerfile.desk. `gcloud run deploy --source`
+# only reads a file named Dockerfile, which belongs to the auditors.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "Dockerfile.desk", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]

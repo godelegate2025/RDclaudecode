@@ -439,6 +439,16 @@ def favicon() -> Response:
     )
 
 
+@app.get("/care-desk")
+def care_desk() -> Response:
+    # The Care Desk is its own service (it keeps state and must not queue behind
+    # audits); this just sends people to wherever it is deployed.
+    target = os.environ.get("CARE_DESK_URL", "")
+    if target.startswith("https://"):
+        return RedirectResponse(target, status_code=302)
+    return PlainTextResponse("The Care Desk is not deployed yet. See CARE_DESK.md.", status_code=503)
+
+
 @app.get("/sw.js")
 def service_worker() -> Response:
     # Served from the root so its scope covers /reports/. A worker's scope can
