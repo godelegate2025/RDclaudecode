@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-SERVICE="${SERVICE:-redefine-website}"
+SERVICE="${SERVICE:-redefine-apps}"
 REGION="${REGION:-europe-west2}"
 MAX_INSTANCES="${MAX_INSTANCES:-3}"
 
