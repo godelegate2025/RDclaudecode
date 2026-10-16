@@ -5,7 +5,7 @@
 .DESCRIPTION
   Builds Dockerfile.desk and deploys it as its own service next to the Redefine
   App. Sign-in is the app's: the script copies GOOGLE_CLIENT_ID, ALLOWED_EMAILS
-  and SESSION_SECRET from the running website-audit service, and the desk reads
+  and SESSION_SECRET from the running redefine-apps service, and the desk reads
   the same team list from the same Firestore database. It also creates the
   webhook and cron keys, and the 5-minute Cloud Scheduler job that escalates
   late tickets and sends journey emails. Safe to re-run.

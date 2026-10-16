@@ -6,7 +6,7 @@
 # deploy.sh / deploy.ps1 still work for a manual deploy.
 
 substitutions:
-  _SERVICE: website-audit
+  _SERVICE: redefine-apps
   _REGION: us-central1
   _MAX_INSTANCES: "3"
   # The repository `gcloud run deploy --source` already created on the first deploy.

@@ -69,7 +69,7 @@ REGION=us-central1 MAX_INSTANCES=5 ./deploy.sh
 The equivalent by hand, if you would rather see it:
 
 ```bash
-gcloud run deploy website-audit \
+gcloud run deploy redefine-apps \
   --source . \
   --region europe-west2 \
   --memory 2Gi \
@@ -83,7 +83,7 @@ gcloud run deploy website-audit \
 ```
 
 Cloud Build picks up the `Dockerfile`, pushes the image to Artifact Registry, and
-Cloud Run gives you a `https://website-audit-….run.app` URL. First build takes
+Cloud Run gives you a `https://redefine-apps-….run.app` URL. First build takes
 5–10 minutes (the Playwright base image is large); later builds are much faster.
 
 ### Why each flag
@@ -125,7 +125,7 @@ If a later run names a different missing permission, add
 ## 3. Check it
 
 ```bash
-SERVICE=$(gcloud run services describe website-audit --region europe-west2 --format='value(status.url)')
+SERVICE=$(gcloud run services describe redefine-apps --region europe-west2 --format='value(status.url)')
 
 curl -s "$SERVICE/healthz"
 
@@ -165,7 +165,7 @@ for SECRET in apify-token anthropic-api-key; do
     --role=roles/secretmanager.secretAccessor
 done
 
-gcloud run services update website-audit --region us-central1 \
+gcloud run services update redefine-apps --region us-central1 \
   --update-secrets APIFY_TOKEN=apify-token:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest
 ```
 
@@ -189,7 +189,7 @@ needed, and no accounts database — Google holds the accounts.
    sign-in only asks for name and email, which needs no Google review.
 2. **Client ID.** Clients → Create client → **Web application**. Under
    *Authorised JavaScript origins* add the service URL, e.g.
-   `https://website-audit-1015165980124.us-central1.run.app` (and any custom
+   `https://redefine-apps-1015165980124.us-central1.run.app` (and any custom
    domain later). No redirect URIs are needed. Copy the client ID.
 3. **Session secret.** Any long random string. In PowerShell:
 
@@ -201,7 +201,7 @@ needed, and no accounts database — Google holds the accounts.
    list itself contains commas:
 
    ```bash
-   gcloud run services update website-audit --region us-central1 \
+   gcloud run services update redefine-apps --region us-central1 \
      --update-env-vars "^;^GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com;ALLOWED_EMAILS=you@gmail.com,teammate@gmail.com;SESSION_SECRET=YOUR_SECRET"
    ```
 
@@ -328,7 +328,7 @@ gVisor or equivalent isn't doing that job.
 
 ```bash
 gcloud beta run domain-mappings create \
-  --service website-audit \
+  --service redefine-apps \
   --domain audit.yourdomain.com \
   --region europe-west2
 ```
@@ -338,7 +338,7 @@ Add the DNS records it prints. Certificates are issued automatically.
 ## 7. Watching it
 
 ```bash
-gcloud run services logs read website-audit --region europe-west2 --limit 50
+gcloud run services logs read redefine-apps --region europe-west2 --limit 50
 ```
 
 Each completed audit logs a line with the host, duration, score and finding
