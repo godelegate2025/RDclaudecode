@@ -142,6 +142,9 @@ main{min-width:0;padding-block:22px 60px;padding-inline:clamp(16px,2.4vw,32px)}
 pre.raw{margin:12px 0 0;max-height:260px;overflow:auto;padding:12px;border-radius:10px;background:var(--ink);border:1px solid var(--line);font:12px/1.45 ui-monospace,Consolas,monospace;color:var(--t-mid);white-space:pre-wrap;overflow-wrap:anywhere}
 
 .try{padding:16px;margin-bottom:16px}
+.tryhd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.tryhd label{margin-bottom:0}
+.tryopen{margin-bottom:16px}
 .try label,.field label{display:block;font:700 13px var(--body);margin-bottom:8px}
 .try .row{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
 .try textarea,.field textarea{flex:1 1 100%;min-height:52px;max-height:200px;resize:vertical;padding:12px 14px;border-radius:10px;border:1px solid var(--line-2);background:var(--ink);color:var(--t-hi);font:400 14px/1.45 var(--body)}
@@ -379,6 +382,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
     zap: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
     shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     ext: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
@@ -544,8 +548,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       <div class="vh"><div><div class="eyebrow">01 · Comment intelligence</div><h1>Inbox</h1></div>
         <p>Every comment, message and email from Redefine's GHL lands here and is sorted by issue type. Concerns become tickets. Questions about services and prices become leads.</p></div>
       ${D.status.webhook ? '' : `<div class="banner">${ic('alert', 18)}<span>The GHL webhook is not switched on yet, so only messages you add by hand arrive. Set <code>DESK_WEBHOOK_KEY</code> on the server and add the workflow in GHL.</span></div>`}
-      <div class="card try">
-        <label for="tryText">Add a message by hand</label>
+      ${U.addOpen ? `<div class="card try">
+        <div class="tryhd"><label for="tryText">Add a message by hand</label><button class="btn ghost sm" data-act="addtoggle" aria-label="Close">${ic('x', 15)}</button></div>
         <div class="row">
           <textarea id="tryText" data-keep placeholder="Paste a comment, message or email, for example: How much for a website for my cafe?"></textarea>
           <input id="tryName" data-keep placeholder="Name" aria-label="Name" autocomplete="off">
@@ -553,7 +557,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
           <select id="tryCh" data-keep aria-label="Channel">${Object.keys(CH).map(c => `<option value="${c}">${CH[c].label}</option>`).join('')}</select>
           <button class="btn primary" data-act="add">${ic('zap', 16)}Add and sort</button>
         </div>
-      </div>
+      </div>` : `<button class="btn tryopen" data-act="addtoggle" aria-expanded="false">${ic('plus', 15)}Add a message by hand</button>`}
       <div class="inbox">
         <div style="min-width:0">
           <div class="filters" role="group" aria-label="Channel">
@@ -1003,6 +1007,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     nav: v => { U.view = v; U.drawer = null; U.editing = false; window.scrollTo(0, 0); },
     refresh: async () => { await load(); toast('Up to date'); return false; },
     logout: () => { location.href = '/auth/logout'; return false; },
+    addtoggle: () => { U.addOpen = !U.addOpen; render(); if (U.addOpen) $('#tryText').focus(); return false; },
     add: async () => {
       const ta = $('#tryText'), text = ta.value.trim();
       if (!text) { ta.focus(); toast('Paste a message first.'); return false; }
