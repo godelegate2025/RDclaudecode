@@ -343,11 +343,11 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   </header>
 
   <nav class="side" aria-label="Views">
-    <button class="nav" data-view="inbox" aria-current="page"><span data-icon="inbox"></span>Inbox<span class="badge" id="bdInbox"></span></button>
+    <button class="nav" data-view="dash" aria-current="page"><span data-icon="chart"></span>Dashboard</button>
+    <button class="nav" data-view="inbox"><span data-icon="inbox"></span>Inbox<span class="badge" id="bdInbox"></span></button>
     <button class="nav" data-view="tickets"><span data-icon="ticket"></span>Tickets<span class="badge" id="bdTickets"></span></button>
     <button class="nav" data-view="leads"><span data-icon="users"></span>Leads</button>
     <button class="nav" data-view="email"><span data-icon="mail"></span>Email</button>
-    <button class="nav" data-view="dash"><span data-icon="chart"></span>Dashboard</button>
   </nav>
 
   <main id="view"><p class="loading">Loading the desk</p></main>
@@ -432,7 +432,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
 
   /* ================================================================ state */
   let D = null;  // what the server says
-  const U = { view: 'inbox', filter: { ch: 'all', cat: 'all' }, sel: null, tFilter: 'open', lTab: 'new', jSel: 'newlead', stepSel: 0, drawer: null, modal: null, editing: false, importRows: null };
+  const U = { view: 'dash', filter: { ch: 'all', cat: 'all' }, sel: null, tFilter: 'open', lTab: 'new', jSel: 'newlead', stepSel: 0, drawer: null, modal: null, editing: false, importRows: null };
   // Unsent ticket notes and the files picked for them, by ticket, so a refresh never loses them.
   const NOTE = { draft: {}, files: new Map(), maxFiles: 5, maxBytes: 10 * 1024 * 1024 };
 
@@ -545,7 +545,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const list = D.messages.filter(m => (U.filter.ch === 'all' || m.channel === U.filter.ch) && (U.filter.cat === 'all' || m.category === U.filter.cat));
     const sel = D.mById.get(U.sel) || list[0];
     return `
-      <div class="vh"><div><div class="eyebrow">01 · Comment intelligence</div><h1>Inbox</h1></div>
+      <div class="vh"><div><div class="eyebrow">02 · Comment intelligence</div><h1>Inbox</h1></div>
         <p>Every comment, message and email from Redefine's GHL lands here and is sorted by issue type. Concerns become tickets. Questions about services and prices become leads.</p></div>
       ${D.status.webhook ? '' : `<div class="banner">${ic('alert', 18)}<span>The GHL webhook is not switched on yet, so only messages you add by hand arrive. Set <code>DESK_WEBHOOK_KEY</code> on the server and add the workflow in GHL.</span></div>`}
       ${U.addOpen ? `<div class="card try">
@@ -674,7 +674,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const list = D.tickets.filter(F[U.tFilter]).sort((a, b) => (isOverdue(b) - isOverdue(a)) || (b.created_at - a.created_at));
     const s = D.config.sla;
     return `
-      <div class="vh"><div><div class="eyebrow">02 · Support tickets</div><h1>Tickets</h1></div>
+      <div class="vh"><div><div class="eyebrow">03 · Support tickets</div><h1>Tickets</h1></div>
         <p>Every concern gets a team, an owner and two clocks: time to first reply and time to resolution. Anything past its first reply target is escalated.</p></div>
       <div class="tiles">
         <div class="card tile"><div class="k">Open</div><div class="v num">${open.length}</div><div class="s">${open.filter(t => t.priority === 'Urgent').length} urgent</div></div>
@@ -820,7 +820,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     else if (j.status !== 'live') approval = `<div class="approval">${ic('shield', 18)}<span style="flex:1 1 220px">${j.status === 'paused' ? 'Paused.' : 'Ready for approval.'}${j.enrolled ? ` ${j.enrolled} leads are waiting.` : ''}</span><button class="btn sm primary" data-act="jstatus" data-v="live">${ic('check', 14, 2.4)}Approve and go live</button></div>`;
     else approval = `<div class="approval ok">${ic('shield', 18)}<span style="flex:1 1 220px">Live. Editing an email so it has a [PLACEHOLDER] takes it back to approval.</span><button class="btn sm" data-act="jstatus" data-v="paused">Pause</button></div>`;
     return `
-      <div class="vh"><div><div class="eyebrow">03 · Email automations</div><h1>Email</h1></div>
+      <div class="vh"><div><div class="eyebrow">04 · Email automations</div><h1>Email</h1></div>
         <p>Service emails keep people updated on their tickets. Lead journeys follow up with new and old leads. Nothing with a [PLACEHOLDER] in it can be sent.</p></div>
       ${!D.status.email ? `<div class="banner">${ic('mail', 18)}<span>No email service is set up yet. Service emails are logged as not sent and lead journeys wait. Set <code>RESEND_API_KEY</code> and <code>DESK_FROM_EMAIL</code> on the server.</span></div>` : ''}
       <div class="flows">
@@ -869,7 +869,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const sent = D.emails.filter(e => e.status === 'sent');
     const bars = (rows, max, hot) => rows.map(([k, v], i) => `<div class="hbar${hot && hot(k, i) ? ' c' : ''}"><span>${esc(k)}</span><span class="b"><i style="width:${v / max * 100}%"></i></span><span class="n">${typeof v === 'number' && v > 1000 ? fmtDur(v) : v}</span></div>`).join('');
     return `
-      <div class="vh"><div><div class="eyebrow">04 · Management view</div><h1>Dashboard</h1></div>
+      <div class="vh"><div><div class="eyebrow">01 · Management view</div><h1>Dashboard</h1></div>
         <p>What people raise, how fast each team resolves it, what is stuck, and where leads are. Covers the latest 400 messages.</p></div>
       <div class="tiles">
         <div class="card tile"><div class="k">Messages sorted</div><div class="v num">${D.messages.filter(m => m.sort_status === 'sorted').length}</div><div class="s">${D.messages.filter(m => m.route === 'ticket').length} tickets · ${D.messages.filter(m => m.route === 'lead').length} leads</div></div>
