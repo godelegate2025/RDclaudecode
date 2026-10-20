@@ -36,6 +36,10 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
   `[BOOKING LINK]` to fill in on the Email screen.
 - **It never runs open.** Unlike the auditors, the desk refuses every page
   until team sign-in is set up, because it holds customers' messages.
+- **Notes and files go on open tickets.** Open a ticket to add a note for the
+  team, with up to 5 files (10 MB in all). Customers never see them. A resolved
+  ticket keeps its notes but takes no new ones until it is reopened. Files are
+  stored in Firestore in parts of up to 700 KB, so they need no storage bucket.
 
 ## Who can use it
 
@@ -100,9 +104,11 @@ not deploy the desk; `deploy-desk.ps1` does.
 ### Firestore costs
 
 Each open desk page loads everything once, then asks only for what changed
-every 20 seconds: an idle page costs about six reads a refresh, around 8,600 a
-day if left open all day. Firestore's free tier is 50,000 reads and 20,000
-writes a day. Each new message costs about ten writes.
+every 20 seconds: an idle page costs about seven reads a refresh, around 30,000
+a day if left open around the clock. Firestore's free tier is 50,000 reads and
+20,000 writes a day. Each new message costs about ten writes. A note costs four
+writes, plus two per attached file and one per 700 KB of it; opening a file
+reads one document per 700 KB.
 
 ## Connect GHL
 

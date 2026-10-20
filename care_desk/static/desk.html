@@ -185,6 +185,23 @@ td .sub{display:block;font:500 12px var(--body);color:var(--t-lo)}
 .hist li .t{display:block;font:600 11px var(--body);color:var(--t-lo)}
 .sect{margin-top:22px}
 .sect>h3{font:700 11px var(--body);letter-spacing:.18em;text-transform:uppercase;color:var(--t-lo);margin-bottom:10px}
+.tnotes{display:grid;gap:8px}
+.tnote{padding:12px 14px;border-radius:12px;background:var(--raise)}
+.tnote .by{font:600 12px var(--body);color:var(--t-lo);overflow-wrap:anywhere}
+.tnote .by b{color:var(--t-hi)}
+.tnote p{margin-top:4px;font:400 14px/1.55 var(--body);white-space:pre-wrap;overflow-wrap:anywhere}
+.files{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.file{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:32px;padding:0 10px;border-radius:9px;border:1px solid var(--line-2);background:var(--panel);font:600 12px var(--body);color:var(--t-hi);text-decoration:none}
+a.file:hover{background:var(--raise-2)}
+.file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file small{color:var(--t-lo);font:500 11px var(--body);flex:none}
+.file button{width:22px;height:22px;margin-right:-4px;border:0;border-radius:6px;background:none;color:var(--t-mid);display:grid;place-items:center;flex:none}
+.file button:hover{background:var(--raise-2);color:var(--t-hi)}
+.compose{margin-top:10px}
+.compose textarea{display:block;width:100%;min-height:84px;max-height:280px;resize:vertical;padding:12px 14px;border-radius:10px;border:1px solid var(--line-2);background:var(--ink);color:var(--t-hi);font:400 14px/1.5 var(--body)}
+.compose .acts{margin-top:10px;align-items:center}
+.compose .acts .btn.primary{margin-left:auto}
+.compose input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 
 /* leads */
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
@@ -359,6 +376,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     ext: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    clip: '<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
   };
   const ic = (n, s = 18, sw) => `<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24"${sw ? ` style="stroke-width:${sw}"` : ''} aria-hidden="true">${IP[n]}</svg>`;
   const $ = (s, r = document) => r.querySelector(s);
@@ -380,6 +399,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   };
   const fmtAgo = t => { const d = now() - t; return d < MIN ? 'just now' : fmtDur(d) + ' ago'; };
   const fmtIn = t => { const d = t - now(); return d <= 0 ? 'due now' : 'in ' + fmtDur(d); };
+  const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? Math.round(b / 1024) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 
   /* ================================================================ reference */
   const CH = {
@@ -401,6 +421,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   /* ================================================================ state */
   let D = null;  // what the server says
   const U = { view: 'inbox', filter: { ch: 'all', cat: 'all' }, sel: null, tFilter: 'open', lTab: 'new', jSel: 'newlead', stepSel: 0, drawer: null, modal: null, editing: false, importRows: null };
+  // Unsent ticket notes and the files picked for them, by ticket, so a refresh never loses them.
+  const NOTE = { draft: {}, files: new Map(), maxFiles: 5, maxBytes: 10 * 1024 * 1024 };
 
   async function api(path, body) {
     const opt = body === undefined ? { headers: { 'X-Requested-With': 'desk' } }
@@ -414,7 +436,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   }
   // Records by id, kept between refreshes. The first load brings everything;
   // after that the server sends only what changed, which keeps Firestore reads low.
-  const R = { messages: new Map(), tickets: new Map(), leads: new Map(), events: new Map(), emails: new Map() };
+  const R = { messages: new Map(), tickets: new Map(), leads: new Map(), events: new Map(), emails: new Map(), notes: new Map() };
   let since = 0;
   function prepare(s) {
     if (s.full) Object.values(R).forEach(m => m.clear());
@@ -425,6 +447,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     s.leads = newest('leads', 'created_at');
     s.emails = newest('emails', 'at');
     s.events = newest('events', 'at').reverse();
+    s.nT = new Map();
+    newest('notes', 'at').reverse().forEach(n => { if (!s.nT.has(n.ticket_id)) s.nT.set(n.ticket_id, []); s.nT.get(n.ticket_id).push(n); });
     s.tById = new Map(s.tickets.map(t => [t.id, t]));
     s.lById = new Map(s.leads.map(l => [l.id, l]));
     s.mById = new Map(s.messages.map(m => [m.id, m]));
@@ -659,8 +683,32 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
         ${t.status !== 'Resolved' ? `<button class="btn${t.status === 'In progress' ? ' primary' : ''}" data-act="t-resolve" data-id="${t.id}">${ic('check', 16, 2.4)}Resolve</button>`
           : `<span class="chip g">${ic('check', 12, 2.6)}Resolved in ${fmtDur(t.resolved_at - t.created_at)}</span><button class="btn sm" data-act="t-reopen" data-id="${t.id}">Reopen</button>`}
       </div>
+      ${ticketNotes(t)}
       <div class="sect"><h3>Activity</h3>${history(D.evT.get(t.id))}</div>
     </aside>`;
+  }
+
+  function ticketNotes(t) {
+    const notes = D.nT.get(t.id) || [], picked = NOTE.files.get(t.id) || [];
+    const saved = f => `<a class="file" href="/api/desk/files/${f.id}" target="_blank" rel="noopener">${ic('file', 14)}<span>${esc(f.name)}</span><small>${fmtSize(f.size)}</small></a>`;
+    const list = notes.map(n => `<div class="tnote"><div class="by"><b>${esc(n.by)}</b> · ${fmtClock(n.at)}</div>
+      ${n.text ? `<p>${esc(n.text)}</p>` : ''}${n.files.length ? `<div class="files">${n.files.map(saved).join('')}</div>` : ''}</div>`).join('');
+    // Notes and files go on open tickets only; a resolved one shows what it has.
+    if (t.status === 'Resolved') {
+      return `<div class="sect"><h3>Notes</h3>${list ? `<div class="tnotes">${list}</div>` : ''}
+        <p class="note"${list ? '' : ' style="margin-top:0"'}>${list ? 'Reopen' : 'No notes. Reopen'} the ticket to add notes or files.</p></div>`;
+    }
+    return `<div class="sect"><h3>Notes</h3>${list ? `<div class="tnotes">${list}</div>` : ''}
+      <div class="compose">
+        <textarea id="noteText" data-id="${t.id}" aria-label="Note" placeholder="Add a note for the team. The customer never sees it.">${esc(NOTE.draft[t.id] || '')}</textarea>
+        ${picked.length ? `<div class="files">${picked.map((f, k) => `<span class="file">${ic('file', 14)}<span>${esc(f.name)}</span><small>${fmtSize(f.size)}</small><button data-act="n-drop" data-id="${t.id}" data-v="${k}" aria-label="Remove ${esc(f.name)}">${ic('x', 13)}</button></span>`).join('')}</div>` : ''}
+        <div class="acts">
+          <button class="btn sm" data-act="n-attach">${ic('clip', 14)}Attach files</button>
+          <input type="file" id="noteFile" data-id="${t.id}" multiple hidden>
+          <span class="note" style="margin:0">Up to ${NOTE.maxFiles} files, ${NOTE.maxBytes / 1048576} MB in all</span>
+          <button class="btn sm primary" data-act="n-add" data-id="${t.id}">${ic('check', 14, 2.4)}Add note</button>
+        </div>
+      </div></div>`;
   }
 
   /* ================================================================ leads */
@@ -880,8 +928,10 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     if (U.modal === 'import') h += importModal();
     else if (U.modal && U.modal.sent) { const e = D.emails.find(x => x.id === U.modal.sent); if (e) h += sentModal(e); }
     const keep = $('.drawer') ? $('.drawer').scrollTop : 0;
+    const a = document.activeElement, typing = a && a.id === 'noteText' ? [a.selectionStart, a.selectionEnd] : null;
     $('#layer').innerHTML = h;
     if ($('.drawer')) $('.drawer').scrollTop = keep;
+    if (typing && $('#noteText')) { $('#noteText').focus({ preventScroll: true }); $('#noteText').setSelectionRange(...typing); }
   }
   /* timers and countdowns update in place every second, without a full render */
   function live() {
@@ -945,6 +995,20 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     't-progress': el => { post(`/api/desk/tickets/${id(el)}/progress`, {}, 'Moved to In progress'); return false; },
     't-resolve': el => { post(`/api/desk/tickets/${id(el)}/resolve`, {}, 'Resolved'); return false; },
     't-reopen': el => { post(`/api/desk/tickets/${id(el)}/reopen`, {}, 'Reopened'); return false; },
+    'n-attach': () => { $('#noteFile').click(); return false; },
+    'n-drop': el => { (NOTE.files.get(id(el)) || []).splice(+el.dataset.v, 1); renderLayer(); return false; },
+    'n-add': async el => {
+      const tid = id(el), text = ($('#noteText') || {}).value || '', files = NOTE.files.get(tid) || [];
+      if (!text.trim() && !files.length) { $('#noteText').focus(); toast('Write a note or attach a file first.'); return false; }
+      el.disabled = true;
+      let body;
+      try { body = { text, files: await Promise.all(files.map(async f => ({ name: f.name, type: f.type, data: await base64(f) }))) }; }
+      catch { toast('A file could not be read. Attach it again.', 'u', 'alert'); el.disabled = false; return false; }
+      const r = await post(`/api/desk/tickets/${tid}/notes`, body, files.length ? 'Note and files added' : 'Note added');
+      if (r) { delete NOTE.draft[tid]; NOTE.files.delete(tid); renderLayer(); }
+      else el.disabled = false;
+      return false;
+    },
     tf: el => { U.tFilter = el.dataset.v; },
     ltab: el => { U.lTab = el.dataset.v; },
     'l-status': el => { post(`/api/desk/leads/${id(el)}/${el.dataset.v}`, {}, { replied: 'Marked replied. No more journey emails.', won: 'Marked won', closed: 'Lead closed' }[el.dataset.v]); return false; },
@@ -983,7 +1047,24 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const r = await fn(el);
     if (r !== false) render();
   });
+  const base64 = f => new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(',')[1] || '');
+    r.onerror = () => no(r.error);
+    r.readAsDataURL(f);
+  });
+  document.addEventListener('input', e => { if (e.target.id === 'noteText') NOTE.draft[+e.target.dataset.id] = e.target.value; });
   document.addEventListener('change', async e => {
+    if (e.target.id === 'noteFile') {
+      const tid = +e.target.dataset.id, files = (NOTE.files.get(tid) || []).concat(Array.from(e.target.files));
+      e.target.value = '';
+      if (files.length > NOTE.maxFiles) { toast(`Attach up to ${NOTE.maxFiles} files per note.`, 'u', 'alert'); return; }
+      if (files.reduce((n, f) => n + f.size, 0) > NOTE.maxBytes) { toast(`Attach up to ${NOTE.maxBytes / 1048576} MB per note.`, 'u', 'alert'); return; }
+      if (files.some(f => !f.size)) { toast('That file is empty.', 'u', 'alert'); return; }
+      NOTE.files.set(tid, files);
+      renderLayer();
+      return;
+    }
     if (e.target.id !== 'csvFile' || !e.target.files.length) return;
     const text = await e.target.files[0].text();
     const rows = parseCSV(text);
@@ -997,6 +1078,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     if (e.key === 'Escape' && (U.drawer || U.modal)) { U.drawer = null; U.modal = null; U.importRows = null; render(); }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-act]')) { e.preventDefault(); e.target.click(); }
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target.id === 'tryText') A.add();
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target.id === 'noteText') { const b = $('[data-act="n-add"]'); if (b && !b.disabled) A['n-add'](b); }
   });
 
   $$('[data-icon]').forEach(el => { el.outerHTML = ic(el.dataset.icon, 22); });

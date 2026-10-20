@@ -33,6 +33,13 @@ OPEN_LEAD = ("active", "queued", "manual")
 # How much the page loads on first open; later refreshes only fetch changes.
 LOAD = {"messages": 400, "tickets": 600, "leads": 2000, "emails": 150}
 
+# Ticket notes. Files live in Firestore next to everything else, split into
+# parts because one Firestore document holds at most 1 MiB.
+NOTE_CHARS = 5000
+NOTE_FILES = 5
+NOTE_BYTES = 10 * 1024 * 1024  # all of one note's files together
+FILE_PART = 700_000
+
 
 class DeskError(ValueError):
     """A request the desk refuses; the text is shown to staff as is."""
@@ -320,6 +327,47 @@ class Desk:
         self._event("First reply sent", f"By {user}, {minutes((now - t['created_at']) // MIN)} after it came in",
                     ticket_id=t["id"])
 
+    def add_note(self, ticket_id: int, user: str, text: str, files: list[tuple[str, str, bytes]]) -> int:
+        """A note for the team on an open ticket, with optional files as (name, type, data)."""
+        t = self._one("tickets", ticket_id)
+        if t["status"] == "Resolved":
+            raise DeskError("Reopen the ticket to add notes or files.")
+        text = text.strip()
+        if not text and not files:
+            raise DeskError("Write a note or attach a file first.")
+        if len(text) > NOTE_CHARS:
+            raise DeskError(f"Keep the note under {NOTE_CHARS:,} characters.")
+        if len(files) > NOTE_FILES:
+            raise DeskError(f"Attach up to {NOTE_FILES} files per note.")
+        if sum(len(data) for _, _, data in files) > NOTE_BYTES:
+            raise DeskError(f"Attach up to {NOTE_BYTES // 1024 // 1024} MB per note.")
+        for name, _, data in files:
+            if not data:
+                raise DeskError(f"{name or 'A file'} is empty.")
+        now = self.now()
+        saved = []
+        for name, ctype, data in files:
+            name = re.sub(r"[\x00-\x1f\x7f/\\]", "", name).strip()[:200] or "file"
+            parts = (len(data) + FILE_PART - 1) // FILE_PART
+            file_id = self.db.insert("files", {"ticket_id": ticket_id, "name": name, "type": ctype[:100],
+                                               "size": len(data), "parts": parts, "by": user, "at": now})
+            for k in range(parts):
+                self.db.put("file_parts", f"{file_id}-{k}", {"file_id": file_id,
+                                                             "data": data[k * FILE_PART:(k + 1) * FILE_PART]})
+            saved.append({"id": file_id, "name": name, "type": ctype[:100], "size": len(data)})
+        note_id = self.db.insert("notes", {"ticket_id": ticket_id, "by": user, "at": now, "text": text,
+                                           "files": saved})
+        detail = f"By {user}" + (f", {len(saved)} file{'s' if len(saved) > 1 else ''} attached" if saved else "")
+        self._event("Note added", detail, ticket_id=ticket_id)
+        return note_id
+
+    def file(self, file_id: int) -> tuple[dict, bytes]:
+        meta = self._one("files", file_id)
+        parts = [self.db.get("file_parts", f"{file_id}-{k}") for k in range(meta["parts"])]
+        if not all(parts):
+            raise NotFound(f"File {file_id} is incomplete")
+        return meta, b"".join(bytes(p["data"]) for p in parts)
+
     # ------------------------------------------------------------ messages
 
     def message_action(self, message_id: int, action: str, user: str) -> None:
@@ -546,7 +594,7 @@ class Desk:
         if since:
             changed = lambda coll: self.db.where(coll, "updated_at", ">", since)  # noqa: E731
             msgs, tix, lds = changed("messages"), changed("tickets"), changed("leads")
-            evs, sent = changed("events"), changed("emails")
+            evs, sent, notes = changed("events"), changed("emails"), changed("notes")
             # Templates rarely change: re-send them only when one did.
             journeys_changed = bool(changed("journeys"))
         else:
@@ -558,6 +606,9 @@ class Desk:
             for coll, ids in (("ticket_id", [t["id"] for t in tix]), ("lead_id", [l["id"] for l in lds])):
                 for group in chunks(ids):
                     evs += self.db.where("events", coll, "in", group)
+            notes = []
+            for group in chunks([t["id"] for t in tix]):
+                notes += self.db.where("notes", "ticket_id", "in", group)
             journeys_changed = True
         for m in msgs:
             if m["sort_status"] != "unparsed":
@@ -569,7 +620,7 @@ class Desk:
             "now": self.now(),
             "full": not since,
             "brand": config.BRAND,
-            "messages": msgs, "tickets": tix, "leads": lds, "events": evs, "emails": sent,
+            "messages": msgs, "tickets": tix, "leads": lds, "events": evs, "emails": sent, "notes": notes,
             "journeys": [self.journey(key) for key in config.JOURNEYS] if journeys_changed else None,
             "config": {
                 "categories": {k: v["intent"] for k, v in config.CATEGORIES.items()},

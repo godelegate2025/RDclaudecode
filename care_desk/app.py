@@ -11,12 +11,15 @@ the desk, and removing someone on the app's team page removes them here too.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hmac
 import html
 import logging
 import os
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -60,6 +63,21 @@ class JourneyStatus(BaseModel):
 class Step(BaseModel):
     subject: str = ""
     body: str = ""
+
+
+class NoteFile(BaseModel):
+    name: str = ""
+    type: str = ""
+    data: str = ""  # base64, so a note and its files arrive in one request
+
+
+class NewNote(BaseModel):
+    text: str = ""
+    files: list[NoteFile] = []
+
+
+# Opened in the browser; anything else downloads. Never HTML or SVG, which could run script on this site.
+SHOW_INLINE = {"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"}
 
 
 def dev_email() -> str:
@@ -197,6 +215,31 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     def message_action(message_id: int, action: str, request: Request) -> JSONResponse:
         run(the_desk().message_action, message_id, action, staff(request, mutating=True))
         return JSONResponse({"ok": True})
+
+    # Before the action route below, which would otherwise take "notes" as an action.
+    @app.post("/api/desk/tickets/{ticket_id}/notes")
+    def add_note(ticket_id: int, payload: NewNote, request: Request) -> JSONResponse:
+        email = staff(request, mutating=True)
+        files = []
+        for f in payload.files:
+            try:
+                files.append((f.name, f.type, base64.b64decode(f.data, validate=True)))
+            except (binascii.Error, ValueError) as exc:
+                raise HTTPException(400, f"{f.name or 'A file'} could not be read. Attach it again.") from exc
+        return JSONResponse({"id": run(the_desk().add_note, ticket_id, email, payload.text, files)})
+
+    @app.get("/api/desk/files/{file_id}")
+    def get_file(file_id: int, request: Request) -> Response:
+        staff(request)
+        meta, data = run(the_desk().file, file_id)
+        inline = meta["type"] in SHOW_INLINE
+        disposition = "inline" if inline else "attachment"
+        return Response(data, media_type=meta["type"] if inline else "application/octet-stream", headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(meta['name'])}",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox",
+            "Cache-Control": "private, max-age=3600",
+        })
 
     @app.post("/api/desk/tickets/{ticket_id}/{action}")
     def ticket_action(ticket_id: int, action: str, request: Request) -> JSONResponse:

@@ -1,5 +1,6 @@
 """The Care Desk: intake, routing, timers, journeys and the HTTP surface. No network required."""
 
+import base64
 import os
 import unittest
 
@@ -213,6 +214,32 @@ class TicketTest(DeskTestCase):
         self.assertIsNotNone(self.rows("tickets")[0]["first_reply_at"])
         self.assertEqual(self.rows("tickets")[0]["owner"], "mia@redefine.ph")
 
+    def test_notes_keep_their_files_whole_across_parts(self):
+        big = bytes(range(256)) * 6000  # 1.5 MB: three Firestore-sized parts
+        self.desk.add_note(self.ticket_id, "mia@redefine.ph", "  Called her back  ",
+                           [("../screens/shot.png", "image/png", big), ("brief.txt", "text/plain", b"hi")])
+        note = self.rows("notes")[0]
+        self.assertEqual((note["text"], note["by"]), ("Called her back", "mia@redefine.ph"))
+        self.assertEqual([f["name"] for f in note["files"]], ["..screensshot.png", "brief.txt"])
+        meta, data = self.desk.file(note["files"][0]["id"])
+        self.assertEqual((meta["parts"], data), (3, big))
+        self.assertEqual(self.rows("events")[-1]["detail"], "By mia@redefine.ph, 2 files attached")
+        self.assertEqual(len(self.desk.state()["notes"]), 1)
+
+    def test_notes_only_on_open_tickets_and_within_limits(self):
+        with self.assertRaisesRegex(DeskError, "Write a note"):
+            self.desk.add_note(self.ticket_id, "mia@redefine.ph", "   ", [])
+        with self.assertRaisesRegex(DeskError, "MB per note"):
+            self.desk.add_note(self.ticket_id, "mia@redefine.ph", "", [("a.bin", "", b"x" * (10 * 1024 * 1024 + 1))])
+        with self.assertRaisesRegex(DeskError, "5 files"):
+            self.desk.add_note(self.ticket_id, "mia@redefine.ph", "", [(f"{k}.txt", "", b"x") for k in range(6)])
+        self.desk.ticket_action(self.ticket_id, "resolve", "mia@redefine.ph")
+        with self.assertRaisesRegex(DeskError, "Reopen"):
+            self.desk.add_note(self.ticket_id, "mia@redefine.ph", "late", [])
+        self.desk.ticket_action(self.ticket_id, "reopen", "mia@redefine.ph")
+        self.desk.add_note(self.ticket_id, "mia@redefine.ph", "back on it", [])
+        self.assertEqual(self.store.all("files"), [])
+
 
 class JourneyTest(DeskTestCase):
     def test_placeholders_block_going_live(self):
@@ -377,6 +404,33 @@ class HTTPTest(DeskTestCase):
                              headers={"X-Requested-With": "desk"})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.client.post("/api/desk/tickets/999/resolve", headers={"X-Requested-With": "desk"}).status_code, 404)
+
+    def test_notes_and_files_over_http(self):
+        self.next_sort = sorting("Complaint", "High")
+        self.add("Still broken")
+        ticket_id = self.rows("tickets")[0]["id"]
+        desk = {"X-Requested-With": "desk"}
+        page = {"text": "See the screenshot", "files": [
+            {"name": "shot.png", "type": "image/png", "data": base64.b64encode(b"\x89PNG data").decode()},
+            {"name": "page.html", "type": "text/html", "data": base64.b64encode(b"<script>x</script>").decode()}]}
+        self.assertEqual(self.client.post(f"/api/desk/tickets/{ticket_id}/notes", json=page, headers=desk).status_code, 401)
+        self.sign_in()
+        self.assertEqual(self.client.post(f"/api/desk/tickets/{ticket_id}/notes", json=page).status_code, 403)
+        bad = {"files": [{"name": "x.png", "data": "not base64!"}]}
+        self.assertEqual(self.client.post(f"/api/desk/tickets/{ticket_id}/notes", json=bad, headers=desk).status_code, 400)
+        self.assertEqual(self.client.post(f"/api/desk/tickets/{ticket_id}/notes", json=page, headers=desk).status_code, 200)
+
+        files = self.client.get("/api/desk/state").json()["notes"][0]["files"]
+        image = self.client.get(f"/api/desk/files/{files[0]['id']}")
+        self.assertEqual((image.content, image.headers["content-type"]), (b"\x89PNG data", "image/png"))
+        self.assertTrue(image.headers["content-disposition"].startswith("inline"))
+        html_file = self.client.get(f"/api/desk/files/{files[1]['id']}")
+        self.assertEqual(html_file.headers["content-type"], "application/octet-stream")
+        self.assertTrue(html_file.headers["content-disposition"].startswith("attachment"))
+        self.assertEqual(html_file.headers["content-security-policy"], "sandbox")
+        self.assertEqual(self.client.get("/api/desk/files/999").status_code, 404)
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get(f"/api/desk/files/{files[0]['id']}").status_code, 401)
 
     def test_webhook_needs_its_key(self):
         body = {"full_name": "Kian", "customData": {"comment": "wow", "channel": "facebook", "comment_id": "c9"}}
