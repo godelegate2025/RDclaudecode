@@ -128,6 +128,14 @@ main{min-width:0;padding-block:22px 60px;padding-inline:clamp(16px,2.4vw,32px)}
 .conf i b{display:block;height:100%;background:var(--white)}
 .draft{margin-top:14px;padding:12px 14px;border-radius:12px;border:1px dashed var(--line-2);font:400 14px/1.5 var(--body);color:var(--t-mid);white-space:pre-wrap}
 .draft .eyebrow{display:block;margin-bottom:6px;white-space:normal}
+.replybox{margin-top:14px}
+.replybox .eyebrow{display:block;margin-bottom:8px}
+.replybox textarea{width:100%;min-height:90px;resize:vertical;padding:12px 14px;border-radius:10px;border:1px solid var(--line-2);background:var(--ink);color:var(--t-hi);font:400 14px/1.5 var(--body)}
+.cand{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);margin-top:6px}
+.cand span{flex:1;min-width:0}
+.cand b{display:block;font:600 14px var(--body);overflow-wrap:anywhere}
+.cand small{display:block;font:500 12px var(--body);color:var(--t-lo)}
+.cand small a{color:var(--t-mid)}
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .note{font:500 12px/1.45 var(--body);color:var(--t-lo);margin-top:12px}
 .err{color:var(--coral);font:600 13px/1.45 var(--body);margin-top:10px}
@@ -567,6 +575,42 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       </div>`;
   }
 
+  /* The reply: sent from here when the comment is matched to Facebook, otherwise copied into GHL. */
+  function replyBlock(m, link) {
+    const openLink = link ? `<a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${ic('ext', 14)}${m.post_url ? 'Open on Facebook' : 'Open GHL comments'}</a>` : '';
+    if (m.replied_at) {
+      return `<div class="draft"><span class="eyebrow">${m.fb_reply_id ? 'Replied on Facebook' : 'Reply marked posted'} · ${esc(m.replied_by)} · ${fmtTime(m.replied_at)}</span>${m.reply_text ? esc(m.reply_text) : 'Posted outside the desk.'}</div>
+        <div class="acts">${openLink}</div>`;
+    }
+    const manual = `${m.suggested_reply ? `<div class="draft"><span class="eyebrow">Suggested public reply · check it, then post it in GHL</span>${esc(m.suggested_reply)}</div>` : ''}
+      <div class="acts">
+        ${m.suggested_reply ? `<button class="btn sm" data-act="copy" data-id="${m.id}">${ic('copy', 14)}Copy reply</button>` : ''}
+        ${openLink}
+        <button class="btn sm primary" data-act="replied" data-id="${m.id}">${ic('check', 14, 2.4)}Mark reply posted</button>
+      </div>`;
+    if (!(D.status.facebook_replies && m.channel === 'facebook')) return manual;
+    if (m.fb_match === 'matched') {
+      return `<div class="replybox"><label class="eyebrow" for="reply-${m.id}">Public reply · posts as Redefine Ph under this comment</label>
+          <textarea id="reply-${m.id}" data-keep maxlength="8000">${esc(m.suggested_reply || '')}</textarea></div>
+        <div class="acts">
+          <button class="btn sm primary" data-act="send" data-id="${m.id}">${ic('send', 14)}Send reply</button>
+          ${openLink}
+          <button class="btn sm ghost" data-act="replied" data-id="${m.id}">Replied elsewhere</button>
+        </div>`;
+    }
+    if (m.fb_match === 'ambiguous') {
+      return `<div class="replybox"><span class="eyebrow">Several Facebook comments match. Which one is it?</span>
+          ${(m.fb_candidates || []).map(c => `<div class="cand"><span><b>${esc(c.message)}</b><small>${fmtClock(c.created_at)}${c.comment_url ? ` · <a href="${esc(c.comment_url)}" target="_blank" rel="noopener noreferrer">view</a>` : ''}</small></span>
+            <button class="btn sm" data-act="pick" data-id="${m.id}" data-cid="${esc(c.id)}">This one</button></div>`).join('')}
+        </div>${manual}`;
+    }
+    if (m.fb_match === 'pending') {
+      return `<p class="note">Looking for this comment on Facebook so you can reply from here${m.match_error ? `: ${esc(m.match_error)}` : '…'}</p>${manual}`;
+    }
+    return `<p class="note">Couldn't find this comment on Facebook, so reply in GHL instead.
+        <button class="btn sm ghost" data-act="rematch" data-id="${m.id}">${ic('refresh', 13)}Search again</button></p>${manual}`;
+  }
+
   function detailMsg(m) {
     const t = m.ticket_id && D.tById.get(m.ticket_id), l = m.lead_id && D.lById.get(m.lead_id);
     const link = ghlLink(m);
@@ -590,15 +634,11 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
           <dt>Routed to</dt><dd>${t ? `<button class="btn sm" data-act="openticket" data-id="${t.id}">${ic('ticket', 14)}${esc(t.code)} · ${esc(t.owner || t.team)}</button>`
             : l ? `<button class="btn sm" data-act="openlead" data-id="${l.id}">${ic('users', 14)}${esc(l.name)}</button>` : m.route === 'logged' ? 'Logged, nothing to do' : 'Not routed'}</dd>
         </dl>
-        ${m.suggested_reply ? `<div class="draft"><span class="eyebrow">Suggested public reply · check it, then post it in GHL</span>${esc(m.suggested_reply)}</div>` : ''}
+        ${replyBlock(m, link)}
         <div class="acts">
-          ${m.suggested_reply ? `<button class="btn sm" data-act="copy" data-id="${m.id}">${ic('copy', 14)}Copy reply</button>` : ''}
-          ${link ? `<a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${ic('ext', 14)}${m.post_url ? 'Open the post' : 'Open GHL comments'}</a>` : ''}
-          <button class="btn sm primary" data-act="replied" data-id="${m.id}"${m.replied_at ? ' disabled' : ''}>${ic('check', 14, 2.4)}${m.replied_at ? 'Reply posted' : 'Mark reply posted'}</button>
           ${!t ? `<button class="btn sm" data-act="mkticket" data-id="${m.id}">${ic('ticket', 14)}Make a ticket</button>` : ''}
           ${!l && m.intent !== 'service' ? `<button class="btn sm" data-act="mklead" data-id="${m.id}">${ic('users', 14)}Add as lead</button>` : ''}
-        </div>
-        ${m.replied_at ? `<p class="note">Reply marked posted by ${esc(m.replied_by)} at ${fmtTime(m.replied_at)}.</p>` : ''}`;
+        </div>`;
     } else if (m.sort_status === 'failed') {
       body = `<p class="err">${esc(m.sort_error || 'Sorting failed.')}</p>
         <div class="acts"><button class="btn sm primary" data-act="resort" data-id="${m.id}">${ic('refresh', 14)}Sort again</button></div>
@@ -983,6 +1023,17 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       return false;
     },
     replied: el => { post(`/api/desk/messages/${id(el)}/replied`, {}, 'Marked as replied'); return false; },
+    send: async el => {
+      const box = document.getElementById(`reply-${id(el)}`), text = box ? box.value.trim() : '';
+      if (!text) { if (box) box.focus(); toast('Write the reply first.'); return false; }
+      if (!confirm('Post this reply publicly on Facebook as Redefine Ph?')) return false;
+      el.disabled = true;
+      const r = await post(`/api/desk/messages/${id(el)}/send`, { text }, 'Reply posted on Facebook');
+      if (!r) el.disabled = false;
+      return false;
+    },
+    pick: el => { post(`/api/desk/messages/${id(el)}/pick`, { comment_id: el.dataset.cid }, 'Matched. You can reply from here now.'); return false; },
+    rematch: el => { toast('Searching Facebook'); post(`/api/desk/messages/${id(el)}/rematch`, {}); return false; },
     mkticket: el => { post(`/api/desk/messages/${id(el)}/ticket`, {}, 'Ticket created'); return false; },
     mklead: el => { post(`/api/desk/messages/${id(el)}/lead`, {}, 'Added as a lead'); return false; },
     resort: el => { toast('Sorting again'); post(`/api/desk/messages/${id(el)}/resort`, {}); return false; },

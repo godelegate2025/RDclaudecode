@@ -16,6 +16,7 @@ from typing import Callable
 from urllib.parse import quote
 
 from . import auth, config, mailer, sorter
+from . import meta as meta_api
 from .intake import Incoming
 from .store import chunks
 
@@ -29,6 +30,13 @@ CHANNEL_LABEL = {"facebook": "Facebook comment", "instagram": "Instagram comment
                  "email": "email", "website": "website form", "other": "message"}
 MAX_SORT_ATTEMPTS = 3
 OPEN_LEAD = ("active", "queued", "manual")
+
+# Facebook matching: GHL sends a comment's text and author but not its Facebook
+# id, so the desk finds it among the Page's recent comments by text and time.
+MATCH_BEFORE = 15 * MIN   # how long before the webhook the comment may have been posted
+MATCH_AFTER = 3 * MIN     # and after, for clock differences
+MATCH_ATTEMPTS = 6        # Meta can lag a little; tick() keeps looking for a few minutes
+REPLY_CHARS = 8000
 
 # How much the page loads on first open; later refreshes only fetch changes.
 LOAD = {"messages": 400, "tickets": 600, "leads": 2000, "emails": 150}
@@ -87,6 +95,16 @@ def placeholders(steps: list[dict]) -> list[str]:
     return found
 
 
+def _norm(text: str) -> str:
+    """Compare comments the way people read them: case and spacing do not matter."""
+    return " ".join((text or "").casefold().split())
+
+
+def _candidate(c) -> dict:
+    return {"id": c.id, "message": c.message, "created_at": c.created_at,
+            "post_url": c.post_url, "comment_url": c.comment_url}
+
+
 def first_name(name: str) -> str:
     part = (name or "").strip().split(" ")[0]
     return part if part and part.lower() != "unknown" else "there"
@@ -97,8 +115,9 @@ class Desk:
                  sort: Callable[..., sorter.Sorting] | None = None,
                  send: Callable[..., str] | None = None,
                  mail_ready: Callable[[], bool] | None = None,
-                 public_url: str | None = None):
+                 public_url: str | None = None, meta=None):
         self.db = store
+        self.meta = meta or meta_api  # anything with configured(), recent_comments() and reply()
         self.now = now or (lambda: int(time.time() * 1000))
         self.sort = sort or sorter.sort_message
         self.send = send or mailer.send
@@ -219,10 +238,18 @@ class Desk:
             "retry_at": now + 2 * MIN if incoming.text else None,
             "sorted_by": None, "category": None, "intent": None, "priority": None, "confidence": None,
             "summary": None, "suggested_reply": None, "interest": None, "route": None, "ticket_id": None,
-            "lead_id": None, "replied_at": None, "replied_by": None, "raw": incoming.raw})
+            "lead_id": None, "replied_at": None, "replied_by": None, "raw": incoming.raw,
+            "fb_comment_id": None, "fb_match": "pending" if self._matchable(incoming) else None,
+            "fb_candidates": None, "match_attempts": 0, "match_error": None, "reply_text": None,
+            "fb_reply_id": None})
         if incoming.text:
             self.process(message_id)
+        if self._matchable(incoming):
+            self.match_comments([message_id])
         return {"id": message_id, "duplicate": False}
+
+    def _matchable(self, incoming: Incoming) -> bool:
+        return incoming.channel == "facebook" and bool(incoming.text) and self.meta.configured()
 
     def process(self, message_id: int) -> None:
         """Sort a stored message and route it. A failed sort is kept and retried by tick()."""
@@ -380,6 +407,15 @@ class Desk:
             self.db.update("messages", message_id, {"sort_status": "pending"})
             self.process(message_id)
             return
+        if action == "rematch":
+            if msg.get("fb_comment_id") or msg["channel"] != "facebook" or not msg["text"]:
+                raise DeskError("Only an unmatched Facebook comment can be searched for again.")
+            if not self.meta.configured():
+                raise DeskError("Facebook replies are not set up on the server.")
+            self.db.update("messages", message_id, {"fb_match": "pending", "match_attempts": 0, "match_error": None,
+                                                    "fb_candidates": None})
+            self.match_comments([message_id])
+            return
         out: list[Outgoing] = []
         if action == "replied":
             if msg["replied_at"]:
@@ -405,6 +441,99 @@ class Desk:
         else:
             raise DeskError(f"Unknown message action: {action}")
         self._flush(out)
+
+    # ------------------------------------------------------------ Facebook
+
+    def match_comments(self, message_ids: list[int]) -> None:
+        """Find each message's Facebook comment. One Graph API call covers all of them."""
+        msgs = [m for m in (self.db.get("messages", i) for i in message_ids)
+                if m and m.get("fb_match") == "pending" and not m.get("fb_comment_id")]
+        if not msgs:
+            return
+        now = self.now()
+        try:
+            comments = self.meta.recent_comments()
+        except meta_api.MetaError as exc:
+            for m in msgs:
+                self._match_later(m, now, str(exc))
+            return
+        claimed: set[str] = set()
+        for group in chunks({c.id for c in comments}):
+            claimed |= {m["fb_comment_id"] for m in self.db.where("messages", "fb_comment_id", "in", group)}
+        for m in sorted(msgs, key=lambda m: m["received_at"]):
+            want = _norm(m["text"])
+            found = [c for c in comments if c.id not in claimed and _norm(c.message) == want
+                     and m["received_at"] - MATCH_BEFORE <= c.created_at <= m["received_at"] + MATCH_AFTER
+                     # Meta shows names only for some people; when it does, it must be the same person.
+                     and (not c.author or _norm(c.author) == _norm(m["author"]))]
+            named = [c for c in found if c.author]
+            pick = named[0] if len(named) == 1 else found[0] if len(found) == 1 else None
+            if pick:
+                self._claim(m, pick)
+                claimed.add(pick.id)
+            elif found:
+                self.db.update("messages", m["id"], {"fb_match": "ambiguous", "match_at": None, "match_error": None,
+                                                     "fb_candidates": [_candidate(c) for c in found[:10]]})
+            else:
+                self._match_later(m, now, None)
+
+    def _match_later(self, m: dict, now: int, error: str | None) -> None:
+        attempts = m.get("match_attempts", 0) + 1
+        more = attempts < MATCH_ATTEMPTS
+        self.db.update("messages", m["id"], {"match_attempts": attempts, "match_error": error,
+                                             "fb_match": "pending" if more else "none",
+                                             "match_at": now + MIN if more else None})
+
+    def _claim(self, m: dict, c) -> None:
+        self.db.update("messages", m["id"], {
+            "fb_comment_id": c.id, "fb_match": "matched", "fb_candidates": None, "match_at": None,
+            "match_error": None, "post_url": c.comment_url or c.post_url or m.get("post_url")})
+
+    def pick_comment(self, message_id: int, comment_id: str) -> None:
+        """Staff choose which Facebook comment an ambiguous message is."""
+        m = self._one("messages", message_id)
+        choice = next((c for c in m.get("fb_candidates") or [] if c["id"] == comment_id), None)
+        if m.get("fb_match") != "ambiguous" or not choice:
+            raise DeskError("Pick one of the comments the desk found.")
+        if self.db.where("messages", "fb_comment_id", "==", comment_id, limit=1):
+            raise DeskError("Another message is already that comment. Pick a different one.")
+        self._claim(m, meta_api.Comment(id=choice["id"], message=choice["message"], created_at=choice["created_at"],
+                                        author=None, post_url=choice.get("post_url"),
+                                        comment_url=choice.get("comment_url")))
+
+    def send_reply(self, message_id: int, text: str, user: str) -> None:
+        """Post a public reply as the Page under the matched Facebook comment."""
+        m = self._one("messages", message_id)
+        text = (text or "").strip()
+        if not self.meta.configured():
+            raise DeskError("Facebook replies are not set up on the server.")
+        if m.get("replied_at"):
+            raise DeskError("A reply is already recorded for this comment.")
+        if not m.get("fb_comment_id"):
+            raise DeskError("This comment isn't matched to Facebook yet, so the desk can't reply to it.")
+        if not text:
+            raise DeskError("Write the reply first.")
+        if len(text) > REPLY_CHARS:
+            raise DeskError(f"Keep the reply under {REPLY_CHARS:,} characters.")
+        try:
+            reply_id = self.meta.reply(m["fb_comment_id"], text)
+        except meta_api.MetaError as exc:
+            raise DeskError(str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - say what staff should do, never a bare 500
+            log.exception("facebook reply to message %s failed", message_id)
+            raise DeskError("Something went wrong while posting. Check the comment on Facebook before "
+                            "sending again, in case the reply went through.") from exc
+        now = self.now()
+        self.db.update("messages", message_id, {"replied_at": now, "replied_by": user, "reply_text": text,
+                                                "fb_reply_id": reply_id})
+        log.info("%s replied on Facebook to message %s", user, message_id)
+        if m.get("ticket_id"):
+            self._event("Replied on Facebook", f"By {user}: {text[:300]}", ticket_id=m["ticket_id"])
+            t = self._one("tickets", m["ticket_id"])
+            if not t["first_reply_at"]:
+                self._mark_first_reply(t, user, now)
+        if m.get("lead_id"):
+            self._event("Replied on Facebook", f"By {user}: {text[:300]}", lead_id=m["lead_id"])
 
     # ------------------------------------------------------------ leads
 
@@ -565,6 +694,10 @@ class Desk:
         for message_id in retry:
             self.process(message_id)
 
+        matching = [m["id"] for m in self.db.where("messages", "match_at", "<=", now, limit=20)]
+        if matching:
+            self.match_comments(matching)
+
         sent = 0
         if self.mail_ready():  # without an email service, journeys wait rather than skip emails
             out: list[Outgoing] = []
@@ -585,7 +718,7 @@ class Desk:
                     self._event("Journey finished", "All emails sent with no reply", lead_id=lead["id"])
                 sent += 1
             self._flush(out)
-        return {"escalated": escalated, "resorted": len(retry), "journey_emails": sent}
+        return {"escalated": escalated, "resorted": len(retry), "matched": len(matching), "journey_emails": sent}
 
     # ------------------------------------------------------------ the page's view
 
@@ -631,6 +764,7 @@ class Desk:
                 "sorting": "claude" if os.environ.get("ANTHROPIC_API_KEY") else "rules",
                 "email": self.mail_ready(),
                 "webhook": bool(os.environ.get("DESK_WEBHOOK_KEY")),
+                "facebook_replies": self.meta.configured(),
                 "ghl_location": location,
             },
         }

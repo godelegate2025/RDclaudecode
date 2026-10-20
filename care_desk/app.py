@@ -65,6 +65,14 @@ class Step(BaseModel):
     body: str = ""
 
 
+class Reply(BaseModel):
+    text: str = ""
+
+
+class Pick(BaseModel):
+    comment_id: str = ""
+
+
 class NoteFile(BaseModel):
     name: str = ""
     type: str = ""
@@ -210,6 +218,18 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         if not payload.text.strip():
             raise HTTPException(400, "Paste the message text first.")
         return JSONResponse(the_desk().ingest(intake.manual(payload.text, payload.channel, payload.author, payload.email)))
+
+    # These two come before the action route below, which would otherwise take "send" and "pick" as actions.
+    @app.post("/api/desk/messages/{message_id}/send")
+    def send_reply(message_id: int, payload: Reply, request: Request) -> JSONResponse:
+        run(the_desk().send_reply, message_id, payload.text, staff(request, mutating=True))
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/desk/messages/{message_id}/pick")
+    def pick_comment(message_id: int, payload: Pick, request: Request) -> JSONResponse:
+        staff(request, mutating=True)
+        run(the_desk().pick_comment, message_id, payload.comment_id)
+        return JSONResponse({"ok": True})
 
     @app.post("/api/desk/messages/{message_id}/{action}")
     def message_action(message_id: int, action: str, request: Request) -> JSONResponse:

@@ -81,6 +81,8 @@ elseif ($appEnv["ANTHROPIC_API_KEY"]) { $copyClaudeKey = $true; Write-Host "  us
 else { Write-Host "  no Claude key found: messages will be sorted by keyword rules" -ForegroundColor Yellow }
 if (Test-Secret "resend-api-key") { $secrets += ",RESEND_API_KEY=resend-api-key:latest" }
 else { Write-Host "  resend-api-key not found: emails are logged, not sent" -ForegroundColor Yellow }
+if (Test-Secret "meta-page-token") { $secrets += ",META_PAGE_TOKEN=meta-page-token:latest" }
+else { Write-Host "  meta-page-token not found: Facebook replies are posted in GHL, not from the desk" -ForegroundColor Yellow }
 
 # Cloud Run runs as the default compute service account; it needs to read the secrets.
 $number = gcloud projects describe $Project --format="value(projectNumber)"

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from care_desk import auth, config
 from care_desk.app import create_app
+from care_desk.meta import Comment, MetaError
 from care_desk.desk import MIN, Desk, DeskError
 from care_desk.intake import manual, parse_ghl
 from care_desk.sorter import SortError, Sorting, sort_with_rules
@@ -451,6 +452,216 @@ class HTTPTest(DeskTestCase):
         token = auth.sign("x@example.com", "unsubscribe")
         self.assertEqual(self.client.get(f"/unsubscribe?t={token}").status_code, 200)
         self.assertEqual(self.client.get("/unsubscribe?t=forged.token").status_code, 400)
+
+
+class FakeMeta:
+    """Stands in for Meta's Graph API: the Page's recent comments, and replies posted to them."""
+
+    def __init__(self):
+        self.on = True
+        self.comments = []
+        self.replies = []
+        self.fail = None
+
+    def configured(self):
+        return self.on
+
+    def recent_comments(self):
+        if self.fail:
+            raise self.fail
+        return list(self.comments)
+
+    def reply(self, comment_id, text):
+        if self.fail:
+            raise self.fail
+        self.replies.append((comment_id, text))
+        return f"reply_{len(self.replies)}"
+
+
+class FacebookCase(DeskTestCase):
+    def setUp(self):
+        super().setUp()
+        self.meta = FakeMeta()
+        self.desk.meta = self.meta
+
+    def comment(self, cid, text, minutes_ago=1, author=None):
+        self.meta.comments.append(Comment(id=cid, message=text, created_at=self.clock() - minutes_ago * MIN,
+                                          author=author, post_url="https://fb.example/post",
+                                          comment_url=f"https://fb.example/c/{cid}"))
+
+    def msg(self, message_id):
+        return self.store.get("messages", message_id)
+
+
+class FacebookTest(FacebookCase):
+    def test_finds_the_comment_by_text_and_time(self):
+        self.comment("c1", "Lezzzgo !")
+        m = self.msg(self.add("lezzzgo   !", author="Nilo Urmeneta"))
+        self.assertEqual((m["fb_match"], m["fb_comment_id"]), ("matched", "c1"))
+        self.assertEqual(m["post_url"], "https://fb.example/c/c1")  # "Open on Facebook" goes to the comment
+
+    def test_a_comment_from_someone_else_is_not_taken(self):
+        self.comment("c1", "Nice one", author="Someone Else")
+        self.comment("c2", "Nice one")  # name hidden by Meta: still a candidate
+        self.assertEqual(self.msg(self.add("Nice one", author="Ana Cruz"))["fb_comment_id"], "c2")
+
+    def test_the_clock_keeps_looking_then_gives_up(self):
+        self.comment("old", "wow", minutes_ago=40)  # too old to be this message
+        mid = self.add("wow")
+        self.assertEqual(self.msg(mid)["fb_match"], "pending")
+        for _ in range(6):
+            self.clock.advance(1)
+            self.desk.tick()
+        self.assertEqual((self.msg(mid)["fb_match"], self.msg(mid)["match_at"]), ("none", None))
+
+    def test_a_comment_that_shows_up_late_is_matched_by_the_clock(self):
+        mid = self.add("Any update?")
+        self.assertEqual(self.msg(mid)["fb_match"], "pending")
+        self.comment("c9", "Any update?", minutes_ago=0)
+        self.clock.advance(1)
+        self.assertEqual(self.desk.tick()["matched"], 1)
+        self.assertEqual(self.msg(mid)["fb_comment_id"], "c9")
+
+    def test_identical_comments_are_picked_by_hand_and_never_reused(self):
+        self.comment("h1", "❤️", minutes_ago=2)
+        self.comment("h2", "❤️", minutes_ago=1)
+        first = self.add("❤️", author="Ana Cruz")
+        self.assertEqual(self.msg(first)["fb_match"], "ambiguous")
+        self.assertEqual({c["id"] for c in self.msg(first)["fb_candidates"]}, {"h1", "h2"})
+        with self.assertRaises(DeskError):
+            self.desk.pick_comment(first, "not-a-candidate")
+        self.desk.pick_comment(first, "h2")
+        self.assertEqual(self.msg(first)["fb_comment_id"], "h2")
+        second = self.add("❤️", author="Ben Lim")
+        self.assertEqual(self.msg(second)["fb_comment_id"], "h1")  # h2 is taken
+
+    def test_sending_a_reply_posts_once_and_counts_as_the_first_reply(self):
+        self.next_sort = sorting("Complaint", "High")
+        self.comment("c1", "Nobody replied for 3 days")
+        mid = self.add("Nobody replied for 3 days")
+        self.desk.send_reply(mid, "  Sorry about that, we just sent you a message.  ", "mia@redefine.ph")
+        self.assertEqual(self.meta.replies, [("c1", "Sorry about that, we just sent you a message.")])
+        m = self.msg(mid)
+        self.assertEqual((m["replied_by"], m["fb_reply_id"]), ("mia@redefine.ph", "reply_1"))
+        ticket = self.rows("tickets")[0]
+        self.assertIsNotNone(ticket["first_reply_at"])
+        self.assertIn("Replied on Facebook", [e["label"] for e in self.rows("events")])
+        with self.assertRaisesRegex(DeskError, "already"):
+            self.desk.send_reply(mid, "Again", "mia@redefine.ph")
+        self.assertEqual(len(self.meta.replies), 1)
+
+    def test_a_reply_needs_a_match_and_text_and_survives_facebook_errors(self):
+        mid = self.add("Hello?")
+        with self.assertRaisesRegex(DeskError, "isn't matched"):
+            self.desk.send_reply(mid, "Hi!", "mia@redefine.ph")
+        self.comment("c1", "Hello?", minutes_ago=0)
+        self.desk.message_action(mid, "rematch", "mia@redefine.ph")
+        with self.assertRaisesRegex(DeskError, "Write the reply"):
+            self.desk.send_reply(mid, "   ", "mia@redefine.ph")
+        self.meta.fail = MetaError("The Facebook token stopped working.")
+        with self.assertRaisesRegex(DeskError, "token stopped working"):
+            self.desk.send_reply(mid, "Hi!", "mia@redefine.ph")
+        self.assertIsNone(self.msg(mid)["replied_at"])  # nothing recorded when Facebook refused
+        self.meta.fail = RuntimeError("socket closed")
+        with self.assertRaisesRegex(DeskError, "in case the reply went through"):
+            self.desk.send_reply(mid, "Hi!", "mia@redefine.ph")
+
+    def test_facebook_trouble_while_matching_is_retried(self):
+        self.meta.fail = MetaError("Could not reach Facebook.")
+        mid = self.add("Hi there")
+        self.assertEqual((self.msg(mid)["fb_match"], self.msg(mid)["match_error"]), ("pending", "Could not reach Facebook."))
+        self.meta.fail = None
+        self.comment("c1", "Hi there", minutes_ago=0)
+        self.clock.advance(1)
+        self.desk.tick()
+        self.assertEqual(self.msg(mid)["fb_match"], "matched")
+
+    def test_only_facebook_comments_and_only_when_set_up(self):
+        self.assertIsNone(self.msg(self.add("Hi", channel="instagram"))["fb_match"])
+        self.meta.on = False
+        self.comment("c1", "Hi")
+        self.assertIsNone(self.msg(self.add("Hi"))["fb_match"])
+        self.assertFalse(self.desk.state()["status"]["facebook_replies"])
+
+
+class MetaClientTest(unittest.TestCase):
+    """The Graph API client against canned responses shaped like Redefine Ph's real feed."""
+
+    def setUp(self):
+        self._env = {k: os.environ.get(k) for k in ("META_PAGE_TOKEN", "META_PAGE_ID")}
+        os.environ["META_PAGE_TOKEN"] = "test-token"
+        os.environ.pop("META_PAGE_ID", None)
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def respond(self, status, body):
+        from unittest import mock
+        response = mock.Mock(status_code=status)
+        response.json.return_value = body
+        return mock.patch("care_desk.meta.requests.request", return_value=response)
+
+    def test_reads_comments_with_and_without_names(self):
+        from care_desk import meta
+        feed = {"data": [{"id": "1316682498188449_122119669659430233",
+                          "permalink_url": "https://www.facebook.com/x/posts/122119669659430233",
+                          "comments": {"data": [
+                              {"id": "122119669659430233_1733430087734015", "message": "True!",
+                               "from": {"name": "Nilo Amor Urmeneta Jr.", "id": "1"},
+                               "created_time": "2026-10-16T19:28:24+0000"},
+                              {"id": "122119669659430233_2", "message": "wow", "created_time": "2026-10-15T18:19:50+0000"},
+                              {"id": "122119669659430233_3", "created_time": "2026-10-15T18:20:00+0000"}]}},
+                         {"id": "post_without_comments", "permalink_url": "https://www.facebook.com/x/2"}]}
+        with self.respond(200, feed) as call:
+            found = meta.recent_comments()
+        self.assertEqual(call.call_args.args[1], "https://graph.facebook.com/v26.0/1316682498188449/feed")
+        self.assertEqual([(c.id, c.author) for c in found],
+                         [("122119669659430233_1733430087734015", "Nilo Amor Urmeneta Jr."), ("122119669659430233_2", None)])
+        self.assertEqual(found[0].created_at, 1792178904000)
+        self.assertEqual(found[0].post_url, "https://www.facebook.com/x/posts/122119669659430233")
+
+    def test_errors_become_plain_messages(self):
+        from care_desk import meta
+        for code, words in ((190, "token stopped working"), (200, "missing a permission"), (4, "rate limiting"),
+                            (100, "could not find that comment")):
+            with self.subTest(code=code), self.respond(400, {"error": {"code": code, "message": "x"}}):
+                with self.assertRaisesRegex(MetaError, words):
+                    meta.reply("c1", "Hi")
+        with self.respond(200, {"id": "r1"}):
+            self.assertEqual(meta.reply("c1", "Hi"), "r1")
+
+
+class FacebookHTTPTest(FacebookCase):
+    def setUp(self):
+        super().setUp()
+        self._env = {k: os.environ.get(k) for k in SIGN_IN}
+        os.environ.update(SIGN_IN)
+        team.use_store(team.MemoryStore())
+        self.client = TestClient(create_app(self.desk))
+        self.client.cookies.set(team_auth.COOKIE, team_auth.make_session("owner@redefine.ph", SIGN_IN["SESSION_SECRET"].encode()))
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_send_and_pick_routes(self):
+        self.comment("c1", "Price?")
+        mid = self.add("Price?")
+        self.assertEqual(self.client.post(f"/api/desk/messages/{mid}/send", json={"text": "DM us!"}).status_code, 403)
+        r = self.client.post(f"/api/desk/messages/{mid}/send", json={"text": "DM us!"}, headers={"X-Requested-With": "desk"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.meta.replies, [("c1", "DM us!")])
+        again = self.client.post(f"/api/desk/messages/{mid}/send", json={"text": "DM us!"}, headers={"X-Requested-With": "desk"})
+        self.assertEqual(again.status_code, 400)
+        bad_pick = self.client.post(f"/api/desk/messages/{mid}/pick", json={"comment_id": "zzz"}, headers={"X-Requested-With": "desk"})
+        self.assertEqual(bad_pick.status_code, 400)
 
 
 if __name__ == "__main__":

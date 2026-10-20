@@ -19,10 +19,12 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
 
 ## What it can and cannot do
 
-- **Replies are posted in GHL, not from the desk.** GHL's API has no endpoint
-  for Social Planner comments (requested in March 2026, still open). The desk
-  drafts the reply, copies it, links to the post or GHL's comments page, and
-  records when someone marks it posted. That counts as the ticket's first reply.
+- **Facebook comments are replied to from the desk; everything else in GHL.**
+  GHL's API has no endpoint for Social Planner comments, so the desk talks to
+  Meta directly for Facebook (see "Facebook replies" below). For Instagram, DMs,
+  and any Facebook comment the desk could not find, it drafts the reply, copies
+  it and links to GHL, and records when someone marks it posted. Either way that
+  counts as the ticket's first reply.
 - **Only new comments arrive.** The GHL workflow fires on new comments, so
   anything posted before it was switched on stays in GHL.
 - **Customer emails need an email on the GHL contact.** Most commenters have
@@ -150,6 +152,42 @@ the *Customer Replied* trigger, filtered to the channels you want, with
 GHL retries a webhook that fails. The desk ignores repeats with the same
 `comment_id`, or the same person and text within a day when there is no id.
 
+## Facebook replies
+
+GHL tells the desk a comment's text and who wrote it, but not its Facebook id.
+So when a Facebook comment arrives, the desk reads the newest comments on
+Redefine Ph's 15 newest posts through Meta's Graph API and finds the one with the
+same text, posted within 15 minutes of the webhook (case and spacing ignored).
+
+- **One match:** the message gets the comment's id and link, and the detail
+  panel shows an editable reply with **Send reply**. It posts as Redefine Ph
+  under that comment, after a confirmation, and can't post twice.
+- **Several matches** (two "❤️" in the same minute): the desk lists them and
+  staff pick one. A comment already linked to another message is never reused.
+- **No match yet:** the clock looks again every minute for six minutes, then
+  offers **Search again** and the copy-into-GHL fallback.
+
+Meta's app stays in development mode, which means Meta hides who wrote a comment
+unless that person has a role on the app. That's why names still come from GHL,
+and matching leans on text and time; when Meta does show a name, it must match.
+
+**The token.** A long-lived Page token for Redefine Ph, from the "Redefine Care
+Desk" Meta app with `pages_show_list`, `pages_read_engagement`,
+`pages_read_user_content` and `pages_manage_engagement`, stored as the
+`meta-page-token` secret. The deploy script hands it to the desk. The token
+itself never expires, but Meta's data access on it lapses after 90 days without
+use of the app by its admin (shown as "data access until" in Meta's Access Token
+Debugger), and it stops working if the admin who made it loses the Page or
+changes their password. When Send reply says the token stopped working:
+
+1. Graph API Explorer → app **Redefine Care Desk** → User Token with the four
+   permissions → **Generate Access Token**, Redefine Ph only.
+2. Access Token Debugger → **Extend Access Token**, then in the Explorer with
+   that long-lived user token run `me/accounts?fields=name,access_token` (GET)
+   and copy Redefine Ph's `access_token` (starts with `EAA`).
+3. `Get-Clipboard | gcloud secrets versions add meta-page-token --data-file=-`
+4. Re-run `deploy-desk.ps1`.
+
 ## Settings
 
 Everything Redefine-specific (issue types, teams, response targets, interests
@@ -166,4 +204,6 @@ edited on the Email screen; those edits are stored in Firestore.
 | `DESK_MODEL`, `DESK_EFFORT` | Default `claude-opus-5-5` at `low` effort |
 | `RESEND_API_KEY`, `DESK_FROM_EMAIL`, `DESK_REPLY_TO` | Email sending |
 | `DESK_BRAND`, `DESK_TICKET_PREFIX`, `DESK_SIGN_OFF` | Default `Redefine`, `RD`, `The Redefine team` |
+| `META_PAGE_TOKEN` | Redefine Ph's Page token, for Facebook replies (secret `meta-page-token`) |
+| `META_PAGE_ID` | The Page to read comments from; defaults to Redefine Ph (`1316682498188449`) |
 | `DESK_STORE`, `DESK_DEV_EMAIL` | Laptop runs only, see above |
