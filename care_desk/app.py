@@ -217,10 +217,11 @@ def create_app(desk: Desk | None = None) -> FastAPI:
             raise HTTPException(503, "Email sign-in is not set up on this server. Use Google.")
 
     @app.post("/auth/email/start")
-    def email_code_start(payload: EmailCode) -> JSONResponse:
+    def email_code_start(payload: EmailCode, request: Request) -> JSONResponse:
         email_login_on()
         try:
-            email_login.request_code(payload.email, team_auth.config().secret)
+            email_login.request_code(payload.email, team_auth.config().secret, app="Care Desk",
+                                     logo_url=email_login.logo_for(request))
         except email_login.LoginError as exc:
             raise HTTPException(400, str(exc)) from exc
         return JSONResponse({"ok": True})

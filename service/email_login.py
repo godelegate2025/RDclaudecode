@@ -25,6 +25,7 @@ import os
 import re
 import secrets
 import time
+from html import escape
 
 import requests
 
@@ -96,6 +97,12 @@ def available() -> bool:
     return bool(os.environ.get("RESEND_API_KEY", "").strip() and sender())
 
 
+def logo_for(request) -> str:
+    """The logo PNG on the site this request came to (Cloud Run only routes its own hosts here)."""
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return f"{proto}://{request.headers.get('host', request.url.netloc)}/static/logo.png"
+
+
 def _digest(email: str, code: str, secret: bytes) -> str:
     return hmac.new(secret, f"{email}:{code}".encode(), hashlib.sha256).hexdigest()
 
@@ -107,7 +114,8 @@ def clean_email(email: str) -> str:
     return email
 
 
-def request_code(email: str, secret: bytes, *, send=None, now: float | None = None) -> None:
+def request_code(email: str, secret: bytes, *, app: str = "Redefine App", logo_url: str | None = None,
+                 send=None, now: float | None = None) -> None:
     """Email a code if this address is on the team. Says nothing either way."""
     email = clean_email(email)
     if not get_team().is_allowed(email):
@@ -128,7 +136,7 @@ def request_code(email: str, secret: bytes, *, send=None, now: float | None = No
     store().put(email, {"digest": _digest(email, code, secret), "expires": now + CODE_SECONDS,
                         "tries": 0, "sent": sent + [now]})
     try:
-        (send or _send)(email, code)
+        (send or _send)(email, code, app=app, logo_url=logo_url)
     except LoginError:
         store().put(email, record)  # nothing went out, so an immediate retry may send
         raise
@@ -158,22 +166,65 @@ def verify_code(email: str, code: str, secret: bytes, *, now: float | None = Non
     return email
 
 
-def _send(email: str, code: str) -> None:
-    text = (f"Your Redefine sign-in code is {code}\n\n"
-            "It works once, for the next 10 minutes.\n\n"
-            "If you didn't try to sign in, ignore this email. Nobody can sign in without the code.")
-    html = ('<div style="background:#F4F3F0;padding:24px 12px"><div style="max-width:480px;margin:0 auto;'
-            'background:#fff;border-radius:12px;padding:28px 26px;font:15px/1.6 Arial,sans-serif;color:#2C2828">'
-            '<p style="margin:0 0 10px">Your Redefine sign-in code is</p>'
-            f'<p style="margin:0 0 16px;font:700 32px/1 Arial,sans-serif;letter-spacing:.18em;color:#191616">{code}</p>'
-            '<p style="margin:0 0 10px">It works once, for the next 10 minutes.</p>'
-            '<p style="margin:0;color:#8a8580;font-size:13px">If you didn\'t try to sign in, ignore this email. '
-            'Nobody can sign in without the code.</p></div></div>')
+def message(email: str, code: str, app: str, logo_url: str | None) -> tuple[str, str, str]:
+    """Subject, plain text and HTML of the code email.
+
+    Tables and inline styles only, because that is all email programs agree
+    on. The logo is a PNG on the app's public /static/ path: email programs
+    block SVG and most strip embedded images.
+    """
+    minutes = CODE_SECONDS // 60
+    subject = f"{code} is your Redefine sign-in code"
+    text = (f"Your Redefine sign-in code\n\n{code}\n\n"
+            f"Enter this code on the {app} sign-in page to sign in as {email}. "
+            f"It expires in {minutes} minutes and can be used once.\n\n"
+            "Didn't try to sign in? You can ignore this email. Nobody can sign in without this code.\n\n"
+            f"Redefine Agency\nYou're getting this because someone asked to sign in to the {app} with this address.")
+    font = "font-family:Arial,Helvetica,sans-serif"
+    logo = (f'<img src="{escape(logo_url, quote=True)}" width="36" height="36" alt="" '
+            'style="display:block;border:0;width:36px;height:36px">' if logo_url else "")
+    html = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light">
+<title>Your Redefine sign-in code</title></head>
+<body style="margin:0;padding:0;background:#F4F3F0">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#F4F3F0">Your code is {code}. It expires in {minutes} minutes.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F3F0">
+<tr><td align="center" style="padding:36px 16px 40px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px">
+  <tr><td style="padding:0 4px 18px">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      {f'<td style="padding-right:10px;vertical-align:middle">{logo}</td>' if logo else ''}
+      <td style="vertical-align:middle;{font};font-size:20px;font-weight:900;letter-spacing:1px;color:#191616">REDEFINE</td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="background:#FFFFFF;border:1px solid #E6E3DF;border-top:4px solid #FC4452;border-radius:12px;padding:32px 32px 28px">
+    <p style="margin:0 0 8px;{font};font-size:22px;line-height:28px;font-weight:700;color:#191616">Your sign-in code</p>
+    <p style="margin:0 0 24px;{font};font-size:15px;line-height:23px;color:#4A4545">Enter this code on the {escape(app)} sign-in page to sign in as <strong style="color:#191616">{escape(email)}</strong>.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td align="center" style="background:#F4F3F0;border-radius:10px;padding:20px 12px 20px 22px;{font};font-size:34px;line-height:38px;font-weight:700;letter-spacing:10px;color:#191616">{code}</td>
+    </tr></table>
+    <p style="margin:16px 0 0;{font};font-size:13px;line-height:20px;color:#7C7773">It expires in {minutes} minutes and can be used once.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td style="padding-top:24px;border-bottom:1px solid #E6E3DF;font-size:0;line-height:0">&nbsp;</td>
+    </tr></table>
+    <p style="margin:20px 0 0;{font};font-size:13px;line-height:20px;color:#7C7773"><strong style="color:#4A4545">Didn't try to sign in?</strong> You can ignore this email. Nobody can sign in without this code.</p>
+  </td></tr>
+  <tr><td align="center" style="padding:22px 16px 0;{font};font-size:12px;line-height:18px;color:#8A8580">
+    Redefine Agency<br>You're getting this because someone asked to sign in to the {escape(app)} with this address.
+  </td></tr>
+  </table>
+</td></tr></table>
+</body></html>"""
+    return subject, text, html
+
+
+def _send(email: str, code: str, *, app: str = "Redefine App", logo_url: str | None = None) -> None:
+    subject, text, html = message(email, code, app, logo_url)
     try:
         response = requests.post(RESEND_URL, timeout=15,
                                  headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY'].strip()}"},
-                                 json={"from": sender(), "to": [email], "subject": f"{code} is your Redefine sign-in code",
-                                       "text": text, "html": html})
+                                 json={"from": sender(), "to": [email], "subject": subject, "text": text, "html": html})
     except requests.RequestException as exc:
         raise LoginError("Could not send the code. Try again in a minute.") from exc
     if response.status_code >= 400:

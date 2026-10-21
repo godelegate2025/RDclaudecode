@@ -324,10 +324,11 @@ def _email_login_on() -> None:
 
 
 @app.post("/auth/email/start")
-def email_code_start(payload: EmailCode) -> JSONResponse:
+def email_code_start(payload: EmailCode, request: Request) -> JSONResponse:
     _email_login_on()
     try:
-        email_login.request_code(payload.email, auth.config().secret)
+        email_login.request_code(payload.email, auth.config().secret, app="Redefine App",
+                                 logo_url=email_login.logo_for(request))
     except email_login.LoginError as exc:
         raise HTTPException(400, str(exc)) from exc
     return JSONResponse({"ok": True})

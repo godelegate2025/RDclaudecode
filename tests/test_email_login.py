@@ -39,7 +39,7 @@ class CodeTest(unittest.TestCase):
 
     def ask(self, email="Mia@Studio.ph", after=0):
         self.t += after
-        email_login.request_code(email, SECRET, send=lambda to, code: self.sent.append((to, code)), now=self.t)
+        email_login.request_code(email, SECRET, send=lambda to, code, **_: self.sent.append((to, code)), now=self.t)
         return self.sent[-1][1] if self.sent else None
 
     def check(self, code, email="mia@studio.ph", after=0):
@@ -88,7 +88,7 @@ class CodeTest(unittest.TestCase):
         self.assertEqual(len(self.sent), 6)
 
     def test_a_failed_send_can_be_retried_at_once(self):
-        def fail(to, code):
+        def fail(to, code, **_):
             raise email_login.LoginError("Could not send the code. Try again in a minute.")
         with self.assertRaises(email_login.LoginError):
             email_login.request_code("mia@studio.ph", SECRET, send=fail, now=self.t)
@@ -109,24 +109,35 @@ class RoutesTest(unittest.TestCase):
         use_store(MemoryStore())
         email_login.use_store(email_login.MemoryStore())
         self.codes = []
-        sender = mock.patch.object(email_login, "_send", lambda to, code: self.codes.append(code))
+        sender = mock.patch.object(email_login, "_send", lambda to, code, **kw: self.codes.append((code, kw)))
         sender.start()
         self.addCleanup(sender.stop)
 
-    def sign_in(self, client, next_path):
+    def sign_in(self, client, next_path, app_name):
         self.assertIn("'on' === 'on'", client.get("/login").text)
         self.assertEqual(client.post("/auth/email/start", json={"email": "owner@gmail.com"}).json(), {"ok": True})
+        # The email names the app and shows the logo PNG that app serves publicly.
+        self.assertEqual(self.codes[-1][1], {"app": app_name, "logo_url": "http://testserver/static/logo.png"})
+        logo = client.get("/static/logo.png")
+        self.assertEqual((logo.status_code, logo.headers["content-type"]), (200, "image/png"))
         bad = client.post("/auth/email/verify", json={"email": "owner@gmail.com", "code": "x"})
         self.assertEqual(bad.status_code, 403)
-        good = client.post("/auth/email/verify", json={"email": "owner@gmail.com", "code": self.codes[-1], "next": next_path})
+        good = client.post("/auth/email/verify", json={"email": "owner@gmail.com", "code": self.codes[-1][0], "next": next_path})
         self.assertEqual((good.status_code, good.json()["next"]), (200, next_path))
         self.assertEqual(auth.read_session(good.cookies[auth.COOKIE], auth.config()), "owner@gmail.com")
 
     def test_redefine_app(self):
-        self.sign_in(TestClient(app, follow_redirects=False), "/post-audit")
+        self.sign_in(TestClient(app, follow_redirects=False), "/post-audit", "Redefine App")
 
     def test_care_desk(self):
-        self.sign_in(TestClient(create_app(Desk(DeskStore()))), "/desk")
+        self.sign_in(TestClient(create_app(Desk(DeskStore()))), "/desk", "Care Desk")
+
+    def test_the_email_reads_well_without_html(self):
+        subject, text, html = email_login.message("mia@studio.ph", "257137", "Care Desk", "https://x.example/static/logo.png")
+        self.assertEqual(subject, "257137 is your Redefine sign-in code")
+        self.assertIn("257137", text)
+        self.assertIn("Care Desk sign-in page to sign in as mia@studio.ph", text)
+        self.assertIn('src="https://x.example/static/logo.png"', html)
 
     def test_hidden_and_refused_without_an_email_service(self):
         os.environ.pop("RESEND_API_KEY")
