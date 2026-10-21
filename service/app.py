@@ -40,7 +40,7 @@ from website_audit.collector import collect
 from website_audit.report import html_to_pdf, render_html, render_site_html, write_json
 from website_audit.site import audit_site
 
-from . import auth
+from . import auth, email_login
 from .team import StoreUnavailable, TeamError, get_team
 from .brief_view import render_brief_html
 from .history import NotFound, get_history
@@ -279,7 +279,9 @@ def login_page(request: Request, next: str = "/") -> Response:
         return RedirectResponse(auth.safe_next(next), status_code=303)
     page = LOGIN_PAGE.read_text(encoding="utf-8")
     client_id = html.escape(auth.config().client_id, quote=True)
-    return HTMLResponse(page.replace("__GOOGLE_CLIENT_ID__", client_id), headers={"Cache-Control": "no-store"})
+    page = page.replace("__GOOGLE_CLIENT_ID__", client_id)
+    page = page.replace("__EMAIL_LOGIN__", "on" if email_login.available() else "off")
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/auth/google")
@@ -290,8 +292,12 @@ def google_sign_in(payload: GoogleCredential, request: Request) -> JSONResponse:
         email = auth.verify_google_credential(payload.credential, auth.config())
     except auth.NotAllowed as exc:
         raise HTTPException(403, str(exc)) from exc
+    return _signed_in(email, payload.next, request)
+
+
+def _signed_in(email: str, next_path: str, request: Request) -> JSONResponse:
     log.info("signed in: %s", email)
-    response = JSONResponse({"ok": True, "email": email, "next": auth.safe_next(payload.next)})
+    response = JSONResponse({"ok": True, "email": email, "next": auth.safe_next(next_path)})
     response.set_cookie(
         auth.COOKIE,
         auth.make_session(email, auth.config().secret),
@@ -302,6 +308,39 @@ def google_sign_in(payload: GoogleCredential, request: Request) -> JSONResponse:
         path="/",
     )
     return response
+
+
+class EmailCode(BaseModel):
+    email: str = ""
+    code: str = ""
+    next: str = "/"
+
+
+def _email_login_on() -> None:
+    if auth.mode() != "on":
+        raise HTTPException(503, "Sign-in is not set up on this server.")
+    if not email_login.available():
+        raise HTTPException(503, "Email sign-in is not set up on this server. Use Google.")
+
+
+@app.post("/auth/email/start")
+def email_code_start(payload: EmailCode) -> JSONResponse:
+    _email_login_on()
+    try:
+        email_login.request_code(payload.email, auth.config().secret)
+    except email_login.LoginError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return JSONResponse({"ok": True})
+
+
+@app.post("/auth/email/verify")
+def email_code_verify(payload: EmailCode, request: Request) -> JSONResponse:
+    _email_login_on()
+    try:
+        email = email_login.verify_code(payload.email, payload.code, auth.config().secret)
+    except email_login.LoginError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    return _signed_in(email, payload.next, request)
 
 
 @app.api_route("/auth/logout", methods=["GET", "POST"])

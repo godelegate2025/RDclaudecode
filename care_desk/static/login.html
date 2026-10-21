@@ -28,6 +28,23 @@ p{margin:0 0 22px;color:var(--t-mid)}
 /* Google's iframe is light; matching it stops the browser painting a white box behind the button. */
 .google iframe{color-scheme:light}
 #err{min-height:22px;margin:16px 0 0;color:var(--coral);font-weight:600}
+/* Email code sign-in, shown only when the server can send email. */
+.or{display:flex;align-items:center;gap:12px;margin:20px 0 16px;font:600 11px 'Archivo',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--t-mid)}
+.or::before,.or::after{content:'';flex:1;height:1px;background:var(--line-2)}
+form{display:grid;gap:10px;margin:0}
+form[hidden]{display:none}
+input{width:100%;height:46px;padding:0 14px;border:1px solid var(--line-2);border-radius:10px;background:var(--ink);color:var(--t-hi);font:400 15px 'Archivo',sans-serif}
+input::placeholder{color:rgba(255,255,255,.4)}
+input:focus{outline:2px solid var(--coral);outline-offset:1px;border-color:transparent}
+input.code{font:600 22px 'Archivo',sans-serif;letter-spacing:.3em;text-align:center}
+.go{height:46px;border:0;border-radius:10px;background:#fff;color:var(--ink);font:700 15px 'Archivo',sans-serif;cursor:pointer}
+.go:hover{background:rgba(255,255,255,.88)}
+.go:disabled{opacity:.55;cursor:default}
+.go:focus-visible,.links button:focus-visible{outline:2px solid var(--coral);outline-offset:2px}
+.sent{margin:0 0 2px;font-size:14px;color:var(--t-mid);overflow-wrap:anywhere}
+.links{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 18px}
+.links button{border:0;background:none;padding:6px 0;font:600 13px 'Archivo',sans-serif;color:var(--t-mid);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.links button:hover{color:var(--t-hi)}
 .note{margin:6px 0 0;font-size:12px;color:var(--t-mid)}
 </style>
 </head>
@@ -40,13 +57,27 @@ p{margin:0 0 22px;color:var(--t-mid)}
     <span class="tool">Care Desk</span>
   </div>
   <h1>Sign in</h1>
-  <p>Use the Google account your team admin added in the Redefine App.</p>
+  <p id="lede">Use the Google account your team admin added in the Redefine App.</p>
 
   <!-- Google renders its own button here; the client ID is filled in by the server. -->
   <div id="g_id_onload" data-client_id="__GOOGLE_CLIENT_ID__" data-callback="onGoogleCredential"
        data-auto_prompt="false" data-ux_mode="popup"></div>
   <div class="google"><div class="g_id_signin" data-type="standard" data-theme="filled_black" data-size="large"
        data-text="signin_with" data-shape="pill" data-logo_alignment="left"></div></div>
+
+  <div id="emailLogin" hidden>
+    <div class="or">or</div>
+    <form id="emailForm" novalidate>
+      <input id="email" type="email" autocomplete="email" placeholder="Enter your email" aria-label="Email">
+      <button class="go" type="submit">Continue with email</button>
+    </form>
+    <form id="codeForm" hidden novalidate>
+      <p class="sent" id="sentTo"></p>
+      <input class="code" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="Sign-in code">
+      <button class="go" type="submit">Sign in</button>
+      <div class="links"><button type="button" id="resend">Send a new code</button><button type="button" id="change">Use a different email</button></div>
+    </form>
+  </div>
 
   <p id="err" role="alert"></p>
   <p class="note">The same team list as the Redefine App.</p>
@@ -68,6 +99,45 @@ p{margin:0 0 22px;color:var(--t-mid)}
     } catch {
       err.textContent = 'Could not reach the desk. Check your connection and try again.';
     }
+  }
+
+  // Email code sign-in: the server says whether it can send email.
+  if ('__EMAIL_LOGIN__' === 'on') {
+    const $ = (id) => document.getElementById(id);
+    const emailForm = $('emailForm'), codeForm = $('codeForm'), err = $('err');
+    $('emailLogin').hidden = false;
+    $('lede').textContent = 'Sign in with Google or your email. Only accounts your team admin added in the Redefine App can sign in.';
+    const call = async (path, body) => {
+      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Something went wrong. Try again.');
+      return data;
+    };
+    const busy = (form, on) => form.querySelectorAll('button').forEach(b => { b.disabled = on; });
+    const sendCode = async () => {
+      const email = $('email').value.trim();
+      if (!email) { $('email').focus(); err.textContent = 'Enter your email first.'; return; }
+      err.textContent = ''; busy(emailForm, true); busy(codeForm, true);
+      try {
+        await call('/auth/email/start', { email });
+        $('sentTo').textContent = `If ${email} is on the team list, a 6-digit code is on its way. Enter it here.`;
+        emailForm.hidden = true; codeForm.hidden = false; $('code').value = ''; $('code').focus();
+      } catch (e) { err.textContent = e.message; }
+      finally { busy(emailForm, false); busy(codeForm, false); }
+    };
+    emailForm.addEventListener('submit', (e) => { e.preventDefault(); sendCode(); });
+    $('resend').addEventListener('click', sendCode);
+    $('change').addEventListener('click', () => { err.textContent = ''; codeForm.hidden = true; emailForm.hidden = false; $('email').focus(); });
+    codeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = $('code').value.replace(/\s/g, '');
+      if (code.length !== 6) { $('code').focus(); err.textContent = 'Enter the 6-digit code from the email.'; return; }
+      err.textContent = ''; busy(codeForm, true);
+      try {
+        const data = await call('/auth/email/verify', { email: $('email').value.trim(), code, next: '/desk' });
+        location.replace(data.next || '/desk');
+      } catch (e2) { err.textContent = e2.message; busy(codeForm, false); $('code').select(); }
+    });
   }
 </script>
 </body>

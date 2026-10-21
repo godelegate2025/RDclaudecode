@@ -197,6 +197,7 @@ edited on the Email screen; those edits are stored in Firestore.
 | Variable | Purpose |
 |---|---|
 | `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS`, `SESSION_SECRET` | The Redefine App's sign-in, copied by the deploy script |
+| `LOGIN_FROM_EMAIL` | Sender of email sign-in codes, copied from the app; with `RESEND_API_KEY` it turns email sign-in on (DEPLOY.md, "Email sign-in") |
 | `DESK_WEBHOOK_KEY` | Must match `?key=` on the GHL webhook URL |
 | `DESK_CRON_KEY` | Lets Cloud Scheduler call the clock |
 | `DESK_PUBLIC_URL` | Base of unsubscribe links (set by the deploy script) |

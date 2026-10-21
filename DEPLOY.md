@@ -210,6 +210,35 @@ team, and can't be removed from the admin page, so nobody can lock everyone
 out from inside the app. Add everyone else on the admin page (below). Changing
 `SESSION_SECRET` signs everyone out.
 
+### Email sign-in
+
+For team members without a Google account: the login page also takes an email
+address and sends a 6-digit code (one use, 10 minutes, five tries) through
+Resend. The team list is the same one, and the Care Desk gets it too. It shows
+only once both settings below are present; until then, the page shows Google
+only.
+
+1. In Resend, verify the domain you will send from (Domains → Add domain, then
+   add the DNS records it gives you) and create an API key with sending access.
+2. Store the key as a secret and give the service the sender address. The
+   key goes through a file because Windows PowerShell adds a line break to
+   anything piped into gcloud:
+
+   ```powershell
+   $f = New-TemporaryFile; [IO.File]::WriteAllText($f, (Read-Host "Resend API key").Trim())
+   gcloud secrets create resend-api-key --data-file=$f; Remove-Item $f
+   gcloud run services update redefine-apps --region us-central1 `
+     --update-secrets RESEND_API_KEY=resend-api-key:latest `
+     --update-env-vars "LOGIN_FROM_EMAIL=Redefine <login@yourdomain>"
+   ```
+
+3. Re-run `deploy-desk.ps1`, which picks up the secret and the sender for the
+   desk.
+
+Asking for a code never says whether an email is on the team, and each member
+gets at most five codes an hour. Codes are stored only as a keyed hash in the
+Firestore collection `login_codes`.
+
 ### Team admin page
 
 Owners and admins manage everyone else at `/admin/team` (the **Team** link next

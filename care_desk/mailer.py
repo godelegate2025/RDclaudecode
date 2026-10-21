@@ -15,7 +15,7 @@ class MailError(RuntimeError):
 
 
 def configured() -> bool:
-    return bool(os.environ.get("RESEND_API_KEY") and os.environ.get("DESK_FROM_EMAIL"))
+    return bool(os.environ.get("RESEND_API_KEY", "").strip() and os.environ.get("DESK_FROM_EMAIL"))
 
 
 def render_html(body: str, footer: str, unsubscribe_url: str | None) -> str:
@@ -51,7 +51,7 @@ def send(to: str, subject: str, body: str, footer: str, unsubscribe_url: str | N
         response = requests.post(
             RESEND_URL,
             json=payload,
-            headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}"},
+            headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY'].strip()}"},
             timeout=15,
         )
     except requests.RequestException as exc:

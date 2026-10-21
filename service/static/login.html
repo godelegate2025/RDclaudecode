@@ -41,6 +41,28 @@ p.lede { margin: 0 0 24px; color: var(--charcoal); font-size: 14px; }
 .error[data-show] { display: block; }
 .error strong { display: block; color: var(--bad); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
 .note { margin: 22px 0 0; font-size: 12px; color: var(--muted); }
+/* Email code sign-in, shown only when the server can send email. */
+.or { display: flex; align-items: center; gap: 12px; margin: 20px 0 16px; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+form { display: grid; gap: 10px; margin: 0; }
+form[hidden] { display: none; }
+input {
+  width: 100%; height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; color: var(--ink); font: 400 15px var(--font-body);
+}
+input:focus { outline: 2px solid var(--coral); outline-offset: 1px; border-color: transparent; }
+input.code { font: 600 22px var(--font-body); letter-spacing: .3em; text-align: center; }
+.go {
+  height: 46px; border: 0; border-radius: 10px; background: var(--ink); color: #fff;
+  font: 600 15px var(--font-body); cursor: pointer;
+}
+.go:hover { background: var(--charcoal); }
+.go:disabled { opacity: .55; cursor: default; }
+.go:focus-visible, .links button:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+.sent { margin: 0 0 2px; font-size: 14px; color: var(--charcoal); overflow-wrap: anywhere; }
+.links { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 18px; margin-top: 2px; }
+.links button { border: 0; background: none; padding: 6px 0; font: 600 13px var(--font-body); color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.links button:hover { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -48,13 +70,27 @@ p.lede { margin: 0 0 24px; color: var(--charcoal); font-size: 14px; }
   <img class="logo" src="/static/logo.svg" alt="Redefine" width="51" height="56">
   <p class="eyebrow">Redefine Agency · Tools</p>
   <h1><span class="accent">Re</span>define<span class="accent">.</span> App</h1>
-  <p class="lede">Sign in with the Google account your team admin added.</p>
+  <p class="lede" id="lede">Sign in with the Google account your team admin added.</p>
 
   <!-- Google renders its own button here; the client ID is filled in by the server. -->
   <div id="g_id_onload" data-client_id="__GOOGLE_CLIENT_ID__" data-callback="onGoogleCredential"
        data-auto_prompt="false" data-ux_mode="popup"></div>
   <div class="google"><div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large"
        data-text="signin_with" data-shape="pill" data-logo_alignment="left"></div></div>
+
+  <div id="emailLogin" hidden>
+    <div class="or">or</div>
+    <form id="emailForm" novalidate>
+      <input id="email" type="email" autocomplete="email" placeholder="Enter your email" aria-label="Email">
+      <button class="go" type="submit">Continue with email</button>
+    </form>
+    <form id="codeForm" hidden novalidate>
+      <p class="sent" id="sentTo"></p>
+      <input class="code" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="Sign-in code">
+      <button class="go" type="submit">Sign in</button>
+      <div class="links"><button type="button" id="resend">Send a new code</button><button type="button" id="change">Use a different email</button></div>
+    </form>
+  </div>
 
   <div class="error" id="error" role="alert"><strong>Can't sign in</strong><span id="errorText"></span></div>
   <p class="note">Only approved team accounts can use these tools.</p>
@@ -65,6 +101,46 @@ p.lede { margin: 0 0 24px; color: var(--charcoal); font-size: 14px; }
     document.getElementById('errorText').textContent = text;
     document.getElementById('error').setAttribute('data-show', '');
   };
+  const clearError = () => document.getElementById('error').removeAttribute('data-show');
+
+  // Email code sign-in: the server says whether it can send email.
+  if ('__EMAIL_LOGIN__' === 'on') {
+    const $ = (id) => document.getElementById(id);
+    const emailForm = $('emailForm'), codeForm = $('codeForm');
+    $('emailLogin').hidden = false;
+    $('lede').textContent = 'Sign in with Google or your email. Only accounts your team admin added can sign in.';
+    const call = async (path, body) => {
+      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Something went wrong. Try again.');
+      return data;
+    };
+    const busy = (form, on) => form.querySelectorAll('button').forEach(b => { b.disabled = on; });
+    const sendCode = async () => {
+      const email = $('email').value.trim();
+      if (!email) { $('email').focus(); showError('Enter your email first.'); return; }
+      clearError(); busy(emailForm, true); busy(codeForm, true);
+      try {
+        await call('/auth/email/start', { email });
+        $('sentTo').textContent = `If ${email} is on the team list, a 6-digit code is on its way. Enter it here.`;
+        emailForm.hidden = true; codeForm.hidden = false; $('code').value = ''; $('code').focus();
+      } catch (e) { showError(e.message); }
+      finally { busy(emailForm, false); busy(codeForm, false); }
+    };
+    emailForm.addEventListener('submit', (e) => { e.preventDefault(); sendCode(); });
+    $('resend').addEventListener('click', sendCode);
+    $('change').addEventListener('click', () => { clearError(); codeForm.hidden = true; emailForm.hidden = false; $('email').focus(); });
+    codeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = $('code').value.replace(/\s/g, '');
+      if (code.length !== 6) { $('code').focus(); showError('Enter the 6-digit code from the email.'); return; }
+      clearError(); busy(codeForm, true);
+      try {
+        const data = await call('/auth/email/verify', { email: $('email').value.trim(), code, next });
+        location.replace(data.next || '/');
+      } catch (err) { showError(err.message); busy(codeForm, false); $('code').select(); }
+    });
+  }
   // Google hands over a signed token; the server checks it and the team list.
   async function onGoogleCredential(response) {
     try {

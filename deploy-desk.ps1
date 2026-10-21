@@ -106,6 +106,8 @@ Write-Step "4/6  Deploying"
 $vars = @("GOOGLE_CLIENT_ID=$($appEnv['GOOGLE_CLIENT_ID'])", "ALLOWED_EMAILS=$($appEnv['ALLOWED_EMAILS'])",
           "SESSION_SECRET=$($appEnv['SESSION_SECRET'])")
 if ($appEnv["FIRESTORE_DATABASE"]) { $vars += "FIRESTORE_DATABASE=$($appEnv['FIRESTORE_DATABASE'])" }
+# Email sign-in codes (with the resend-api-key secret): same sender as the app.
+if ($appEnv["LOGIN_FROM_EMAIL"]) { $vars += "LOGIN_FROM_EMAIL=$($appEnv['LOGIN_FROM_EMAIL'])" }
 if ($copyClaudeKey) { $vars += "ANTHROPIC_API_KEY=$($appEnv['ANTHROPIC_API_KEY'])" }
 if ($FromEmail) { $vars += "DESK_FROM_EMAIL=$FromEmail" }
 if ($ReplyTo) { $vars += "DESK_REPLY_TO=$ReplyTo" }

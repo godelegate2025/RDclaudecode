@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from service import auth as team_auth
+from service import email_login
 from service.firestore_db import StoreUnavailable
 
 from . import auth, intake
@@ -41,6 +42,12 @@ STATIC = Path(__file__).parent / "static"
 
 class GoogleCredential(BaseModel):
     credential: str = ""
+    next: str = "/desk"
+
+
+class EmailCode(BaseModel):
+    email: str = ""
+    code: str = ""
     next: str = "/desk"
 
 
@@ -157,7 +164,9 @@ def create_app(desk: Desk | None = None) -> FastAPI:
             return RedirectResponse("/desk", status_code=303)
         page = (STATIC / "login.html").read_text(encoding="utf-8")
         client_id = html.escape(team_auth.config().client_id, quote=True)
-        return HTMLResponse(page.replace("__GOOGLE_CLIENT_ID__", client_id), headers={"Cache-Control": "no-store"})
+        page = page.replace("__GOOGLE_CLIENT_ID__", client_id)
+        page = page.replace("__EMAIL_LOGIN__", "on" if email_login.available() else "off")
+        return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
     @app.get("/desk", response_class=HTMLResponse)
     def desk_page(request: Request) -> Response:
@@ -189,14 +198,41 @@ def create_app(desk: Desk | None = None) -> FastAPI:
             email = team_auth.verify_google_credential(payload.credential, team_auth.config())
         except team_auth.NotAllowed as exc:
             raise HTTPException(403, str(exc)) from exc
+        return signed_in_response(email, payload.next, request)
+
+    def signed_in_response(email: str, next_path: str, request: Request) -> JSONResponse:
         log.info("signed in: %s", email)
-        response = JSONResponse({"ok": True, "email": email, "next": team_auth.safe_next(payload.next)})
+        response = JSONResponse({"ok": True, "email": email, "next": team_auth.safe_next(next_path)})
         response.set_cookie(
             team_auth.COOKIE, team_auth.make_session(email, team_auth.config().secret),
             max_age=team_auth.SESSION_DAYS * 86400, httponly=True, samesite="lax", path="/",
             secure=request.headers.get("x-forwarded-proto", request.url.scheme) == "https",
         )
         return response
+
+    def email_login_on() -> None:
+        if team_auth.mode() != "on":
+            raise HTTPException(503, "Sign-in is not set up on this server.")
+        if not email_login.available():
+            raise HTTPException(503, "Email sign-in is not set up on this server. Use Google.")
+
+    @app.post("/auth/email/start")
+    def email_code_start(payload: EmailCode) -> JSONResponse:
+        email_login_on()
+        try:
+            email_login.request_code(payload.email, team_auth.config().secret)
+        except email_login.LoginError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return JSONResponse({"ok": True})
+
+    @app.post("/auth/email/verify")
+    def email_code_verify(payload: EmailCode, request: Request) -> JSONResponse:
+        email_login_on()
+        try:
+            email = email_login.verify_code(payload.email, payload.code, team_auth.config().secret)
+        except email_login.LoginError as exc:
+            raise HTTPException(403, str(exc)) from exc
+        return signed_in_response(email, payload.next, request)
 
     @app.api_route("/auth/logout", methods=["GET", "POST"])
     def sign_out() -> Response:
