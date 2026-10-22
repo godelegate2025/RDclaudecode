@@ -57,7 +57,7 @@ input.code{font:600 22px 'Archivo',sans-serif;letter-spacing:.3em;text-align:cen
     <span class="tool">Care Desk</span>
   </div>
   <h1>Sign in</h1>
-  <p id="lede">Use the Google account your team admin added in the Redefine App.</p>
+  <p id="lede">Use the Google account a Care Desk admin added to the team.</p>
 
   <!-- Google renders its own button here; the client ID is filled in by the server. -->
   <div id="g_id_onload" data-client_id="__GOOGLE_CLIENT_ID__" data-callback="onGoogleCredential"
@@ -80,7 +80,6 @@ input.code{font:600 22px 'Archivo',sans-serif;letter-spacing:.3em;text-align:cen
   </div>
 
   <p id="err" role="alert"></p>
-  <p class="note">The same team list as the Redefine App.</p>
 </main>
 <script>
   // Google hands over a signed token; the server checks it and the team list.
@@ -106,7 +105,7 @@ input.code{font:600 22px 'Archivo',sans-serif;letter-spacing:.3em;text-align:cen
     const $ = (id) => document.getElementById(id);
     const emailForm = $('emailForm'), codeForm = $('codeForm'), err = $('err');
     $('emailLogin').hidden = false;
-    $('lede').textContent = 'Sign in with Google or your email. Only accounts your team admin added in the Redefine App can sign in.';
+    $('lede').textContent = 'Sign in with Google or your email. Only people a Care Desk admin added to the team can sign in.';
     const call = async (path, body) => {
       const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
