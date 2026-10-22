@@ -64,6 +64,14 @@ were invited or first signed in. Pending people have **Resend invite** (at most
 once a minute per person). A failed or switched-off invite never undoes the
 add: being on the list is what grants access.
 
+**Names.** Google sign-in takes the name from the Google account; someone who
+signs in with an emailed code is asked for their name on their first visit.
+The desk shows names instead of emails in the top bar, on the Team page, as
+ticket owners, on notes and in Activity (records still store the email).
+Clicking your name in the top bar changes it. Names are shared with the
+Redefine App, in the Firestore collection `user_profiles`, and a name someone
+typed is never replaced by their Google name.
+
 Removing someone signs them out within a minute. The list is the Firestore
 collection `desk_team`. The first time it was read it was filled from the
 app's team (app admins as desk Admins, everyone else as Agents); after that the

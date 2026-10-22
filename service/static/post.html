@@ -380,7 +380,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   <div class="spacer"></div>
   <div class="tagline">Build. Realize. Redefine</div>
   <a class="nav" href="/history">Audit history</a>
-  <div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
+  <div class="account" id="account" hidden><a id="accountEmail" href="/welcome" title="Change your name"></a><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
 <main id="main-content">
@@ -943,7 +943,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   // Shows who is signed in, once sign-in is switched on; hidden otherwise.
   fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((me) => {
     if (!me.signed_in) return;
-    document.getElementById('accountEmail').textContent = me.email;
+    { const who = document.getElementById('accountEmail'); who.textContent = me.name || me.email; who.title = `${me.email} · change your name`; who.href = '/welcome?next=' + encodeURIComponent(location.pathname + location.search); }
     const account = document.getElementById('account');
     if (me.can_manage_team) {
       // Owners and admins get a way into the team page.

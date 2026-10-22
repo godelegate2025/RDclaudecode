@@ -43,6 +43,8 @@ p{margin:0}
 .brand .divider{width:1px;height:24px;background:var(--line-2)}
 .brand .tool{font:600 12px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--t-mid);white-space:nowrap}
 .who{font:600 13px var(--body);color:var(--t-mid);white-space:nowrap}
+a.who{text-decoration:none;border-radius:6px}
+a.who:hover{color:var(--t-hi);text-decoration:underline;text-underline-offset:3px}
 .pill{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--line-2);font:700 11px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--t-mid);white-space:nowrap}
 .pill.ok .dot{color:var(--green)}
 .pill.warn .dot{color:var(--amber)}
@@ -344,7 +346,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     <span class="pill" id="pSort"></span>
     <span class="pill" id="pMail"></span>
     <div class="controls">
-      <span class="who" id="who"></span>
+      <a class="who" id="who" href="/welcome" title="Change your name"></a>
       <button class="btn sm" data-act="refresh" id="bRefresh"></button>
       <button class="btn sm ghost" data-act="logout" id="bLogout"></button>
     </div>
@@ -511,6 +513,17 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     } catch (e) { toast(e.message, 'u', 'alert'); return null; }
   }
 
+  /* ================================================================ people */
+  // Records keep emails; pages show the name each person gave, where there is one.
+  const nm = e => (D && D.people && D.people[e]) || e || '';
+  let nameRe = null, nameKey = '';
+  const withNames = text => {
+    const ppl = (D && D.people) || {}, key = Object.keys(ppl).join('|');
+    if (!key) return text;
+    if (key !== nameKey) { nameKey = key; nameRe = new RegExp(Object.keys(ppl).map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi'); }
+    return String(text).replace(nameRe, m => ppl[m.toLowerCase()] || m);
+  };
+
   /* ================================================================ derived */
   const sla = t => D.config.sla[t.priority] || D.config.sla.Normal;
   const firstOver = t => !t.first_reply_at && t.status !== 'Resolved' && now() - t.created_at > sla(t).first * MIN;
@@ -592,7 +605,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   function replyBlock(m, link) {
     const openLink = link ? `<a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${ic('ext', 14)}${m.post_url ? 'Open on Facebook' : 'Open GHL comments'}</a>` : '';
     if (m.replied_at) {
-      return `<div class="draft"><span class="eyebrow">${m.fb_reply_id ? 'Replied on Facebook' : 'Reply marked posted'} · ${esc(m.replied_by)} · ${fmtTime(m.replied_at)}</span>${m.reply_text ? esc(m.reply_text) : 'Posted outside the desk.'}</div>
+      return `<div class="draft"><span class="eyebrow">${m.fb_reply_id ? 'Replied on Facebook' : 'Reply marked posted'} · ${esc(nm(m.replied_by))} · ${fmtTime(m.replied_at)}</span>${m.reply_text ? esc(m.reply_text) : 'Posted outside the desk.'}</div>
         <div class="acts">${openLink}</div>`;
     }
     const manual = `${m.suggested_reply ? `<div class="draft"><span class="eyebrow">Suggested public reply · check it, then post it in GHL</span>${esc(m.suggested_reply)}</div>` : ''}
@@ -644,7 +657,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
           ${m.interest ? `<dt>Interested in</dt><dd>${esc(m.interest)}</dd>` : ''}
           <dt>Summary</dt><dd style="font-weight:500">${esc(m.summary)}</dd>
           <dt>Confidence</dt><dd class="conf"><i><b style="width:${Math.round((m.confidence || 0) * 100)}%"></b></i><span class="num">${Math.round((m.confidence || 0) * 100)}%</span>${m.sorted_by === 'rules' ? '<span class="chip a">Keyword rules</span>' : ''}</dd>
-          <dt>Routed to</dt><dd>${t ? `<button class="btn sm" data-act="openticket" data-id="${t.id}">${ic('ticket', 14)}${esc(t.code)} · ${esc(t.owner || t.team)}</button>`
+          <dt>Routed to</dt><dd>${t ? `<button class="btn sm" data-act="openticket" data-id="${t.id}">${ic('ticket', 14)}${esc(t.code)} · ${esc(t.owner ? nm(t.owner) : t.team)}</button>`
             : l ? `<button class="btn sm" data-act="openlead" data-id="${l.id}">${ic('users', 14)}${esc(l.name)}</button>` : m.route === 'logged' ? 'Logged, nothing to do' : 'Not routed'}</dd>
         </dl>
         ${replyBlock(m, link)}
@@ -700,7 +713,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
           <td><span class="id">${esc(t.code)}</span><span class="sub"><span class="chip ${PRI[t.priority]}" style="height:22px;margin-top:4px">${esc(t.priority)}</span></span>${t.escalated_at && t.status !== 'Resolved' ? `<span class="esc">${ic('up', 12, 2.6)}Escalated</span>` : ''}</td>
           <td>${esc(t.customer)}<span class="sub">${chOf(t.channel).label}</span></td>
           <td>${esc(t.category)}</td>
-          <td>${esc(t.team)}<span class="sub">${t.owner ? esc(t.owner) : 'Unassigned'}</span></td>
+          <td>${esc(t.team)}<span class="sub">${t.owner ? esc(nm(t.owner)) : 'Unassigned'}</span></td>
           <td><span class="chip ${STC[t.status]}">${esc(t.status)}</span></td>
           <td>${tm.first}</td><td>${tm.res}</td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">No tickets here.</td></tr>'}</tbody>
       </table></div>
@@ -708,7 +721,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   }
 
   function history(list) {
-    return `<ul class="hist">${(list || []).map(h => `<li><span class="t">${fmtClock(h.at)}</span><b>${esc(h.label)}</b>${h.detail ? '. ' + esc(h.detail) : ''}</li>`).join('') || '<li>Nothing yet.</li>'}</ul>`;
+    return `<ul class="hist">${(list || []).map(h => `<li><span class="t">${fmtClock(h.at)}</span><b>${esc(h.label)}</b>${h.detail ? '. ' + esc(withNames(h.detail)) : ''}</li>`).join('') || '<li>Nothing yet.</li>'}</ul>`;
   }
 
   function drawerTicket(t) {
@@ -725,7 +738,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       <div class="clocks"><div class="card"><div class="eyebrow">First reply</div>${tm.first}</div><div class="card"><div class="eyebrow">Resolution</div>${tm.res}</div></div>
       <dl class="kv">
         <dt>Team</dt><dd>${esc(t.team)}${t.escalated_at && t.status !== 'Resolved' ? ' <span class="chip r">Escalated</span>' : ''}</dd>
-        <dt>Owner</dt><dd>${t.owner ? esc(t.owner) : '<span style="color:var(--t-lo)">Unassigned</span>'}</dd>
+        <dt>Owner</dt><dd>${t.owner ? esc(nm(t.owner)) : '<span style="color:var(--t-lo)">Unassigned</span>'}</dd>
         <dt>Customer email</dt><dd>${t.email ? esc(t.email) : '<span style="color:var(--t-lo)">Not on file. Update them in GHL instead</span>'}</dd>
       </dl>
       <div class="acts">
@@ -744,7 +757,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   function ticketNotes(t) {
     const notes = D.nT.get(t.id) || [], picked = NOTE.files.get(t.id) || [];
     const saved = f => `<a class="file" href="/api/desk/files/${f.id}" target="_blank" rel="noopener">${ic('file', 14)}<span>${esc(f.name)}</span><small>${fmtSize(f.size)}</small></a>`;
-    const list = notes.map(n => `<div class="tnote"><div class="by"><b>${esc(n.by)}</b> · ${fmtClock(n.at)}</div>
+    const list = notes.map(n => `<div class="tnote"><div class="by"><b title="${esc(n.by)}">${esc(nm(n.by))}</b> · ${fmtClock(n.at)}</div>
       ${n.text ? `<p>${esc(n.text)}</p>` : ''}${n.files.length ? `<div class="files">${n.files.map(saved).join('')}</div>` : ''}</div>`).join('');
     // Notes and files go on open tickets only; a resolved one shows what it has.
     if (t.status === 'Resolved') {
@@ -891,7 +904,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
         <section class="card panel"><h3>Where messages come from</h3><p class="ps">By channel</p>${bars(chs, chMax) || '<p class="empty">Nothing yet.</p>'}</section>
         <section class="card panel"><h3>Resolution time by team</h3><p class="ps">Median, resolved tickets. Slowest first</p>${tr.map(([k, v], i) => `<div class="hbar${i === 0 && tr.length > 1 ? ' c' : ''}"><span>${esc(k)}</span><span class="b"><i style="width:${v / tMax * 100}%"></i></span><span class="n">${fmtDur(v)}</span></div>`).join('') || '<p class="empty">No resolved tickets yet.</p>'}</section>
         <section class="card panel"><h3>Stuck cases</h3><p class="ps">Past target first, then the oldest open</p>
-          ${stuck.map(t => `<button class="stuck" data-act="openticket" data-id="${t.id}"><span><b>${esc(t.code)} · ${esc(t.customer)}</b><small>${esc(t.category)} · ${esc(t.owner || t.team)} · open ${fmtDur(now() - t.created_at)}</small></span><span class="chip ${isOverdue(t) ? 'u' : 'o'}">${isOverdue(t) ? 'Past target' : esc(t.status)}</span></button>`).join('') || '<p class="empty">Nothing stuck.</p>'}</section>
+          ${stuck.map(t => `<button class="stuck" data-act="openticket" data-id="${t.id}"><span><b>${esc(t.code)} · ${esc(t.customer)}</b><small>${esc(t.category)} · ${esc(t.owner ? nm(t.owner) : t.team)} · open ${fmtDur(now() - t.created_at)}</small></span><span class="chip ${isOverdue(t) ? 'u' : 'o'}">${isOverdue(t) ? 'Past target' : esc(t.status)}</span></button>`).join('') || '<p class="empty">Nothing stuck.</p>'}</section>
         <section class="card panel" style="grid-column:1/-1"><h3>Leads in follow-up</h3><p class="ps">New and old leads by stage</p>
           <div class="funnel">
             <div><b class="num">${D.leads.filter(l => l.kind === 'new' && ['active', 'queued', 'manual'].includes(l.status)).length}</b><span>New leads open</span></div>
@@ -980,10 +993,10 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       const resend = p.status === 'pending' && !owner
         ? `<button class="btn sm" data-act="team-invite" data-v="${esc(p.email)}">${ic('send', 14)}${p.invited_at ? 'Resend invite' : 'Send invite'}</button>` : '';
       return `<tr>
-        <td><span class="id">${esc(p.email)}</span>${self ? '<span class="you">You</span>' : ''}</td>
+        <td><span class="id">${esc(p.name || p.email)}</span>${self ? '<span class="you">You</span>' : ''}${p.name ? `<span class="sub">${esc(p.email)}</span>` : ''}</td>
         <td>${role}</td>
         <td>${status}</td>
-        <td>${esc(p.added_by || '')}<span class="sub">${owner ? 'Owner of the Redefine App' : fmtDay(p.added_at)}</span></td>
+        <td>${esc(withNames(p.added_by || ''))}<span class="sub">${owner ? 'Owner of the Redefine App' : fmtDay(p.added_at)}</span></td>
         <td><div class="rowacts">${resend}${locked ? '' : `<button class="btn sm" data-act="team-remove" data-v="${esc(p.email)}">${ic('x', 14)}Remove</button>`}</div></td></tr>`;
     }).join('');
     const counts = (T.people || []).reduce((n, p) => (n[p.role] = (n[p.role] || 0) + 1, n), {});
@@ -1024,7 +1037,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     $$('.nav').forEach(n => n.setAttribute('aria-current', n.dataset.view === U.view ? 'page' : 'false'));
     $('#bdInbox').textContent = D.messages.filter(m => m.sort_status === 'failed' || m.sort_status === 'unparsed').length || '';
     $('#bdTickets').textContent = openTickets().filter(isOverdue).length || '';
-    $('#who').textContent = D.user.email;
+    $('#who').textContent = D.user.name || D.user.email;
+    $('#who').title = `${D.user.email} · change your name`;
     const pS = $('#pSort'); pS.className = 'pill ' + (D.status.sorting === 'claude' ? 'ok' : 'warn');
     pS.innerHTML = `<span class="dot"></span>${D.status.sorting === 'claude' ? 'Claude sorting' : 'Keyword sorting'}`;
     const pM = $('#pMail'); pM.className = 'pill ' + (D.status.email ? 'ok' : 'warn');

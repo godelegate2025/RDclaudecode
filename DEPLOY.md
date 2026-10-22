@@ -210,6 +210,16 @@ team, and can't be removed from the admin page, so nobody can lock everyone
 out from inside the app. Add everyone else on the admin page (below). Changing
 `SESSION_SECRET` signs everyone out.
 
+### Names
+
+Both apps show people by name. Google sign-in fills it from the Google
+account; anyone signed in without one (for example with an emailed code) is
+sent to `/welcome` once to type it, and can change it there later by clicking
+their name in the header. Names live in the Firestore collection
+`user_profiles`, one per email, shared by the app and the Care Desk; a typed
+name is never replaced by a Google name. If Firestore can't be reached, nobody
+is asked and pages show emails.
+
 ### Email sign-in
 
 For team members without a Google account: the login page also takes an email

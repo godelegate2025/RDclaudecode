@@ -10,7 +10,9 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
-from service import auth, history, team
+from service import auth
+from service import history, team
+from service.profiles import get_profiles
 from service.app import app
 from service.firestore_db import StoreUnavailable
 
@@ -125,6 +127,7 @@ class HistoryApiTest(unittest.TestCase):
     def client(self, email):
         client = TestClient(app, follow_redirects=False)
         client.cookies.set(auth.COOKIE, auth.make_session(email, SETTINGS["SESSION_SECRET"].encode()))
+        get_profiles().set_name(email, "Test Person")  # past the first-visit name step
         return client
 
     def test_a_new_audit_is_saved_with_who_ran_it(self):

@@ -23,6 +23,7 @@ from html import escape
 
 from service.email_login import DIVIDER, button, heading, layout, para
 from service.firestore_db import StoreUnavailable
+from service.profiles import get_profiles
 from service.team import EMAIL, get_team
 
 log = logging.getLogger("care-desk")
@@ -125,6 +126,10 @@ class DeskTeam:
             return None
         return data.get("role") if data.get("role") in ROLES else "agent"
 
+    def emails(self) -> list[str]:
+        """Everyone who may use the desk, from the cache (cheap enough for every page refresh)."""
+        return sorted(set(self.owners()) | set(self._members()))
+
     def is_allowed(self, email: str) -> bool:
         return self.role_of(email) is not None
 
@@ -146,6 +151,9 @@ class DeskTeam:
                     "invited_at": d.get("invited_at"), "invites": d.get("invites", 0),
                     "invite_error": d.get("invite_error")}
                    for e, d in sorted(members.items()) if e not in owners]
+        names = get_profiles().names()
+        for person in people:
+            person["name"] = names.get(person["email"])
         return people
 
     # ------------------------------------------------------------ changing

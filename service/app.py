@@ -18,7 +18,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
@@ -41,6 +41,7 @@ from website_audit.report import html_to_pdf, render_html, render_site_html, wri
 from website_audit.site import audit_site
 
 from . import auth, email_login
+from .profiles import NameError_, get_profiles
 from .team import StoreUnavailable, TeamError, get_team
 from .brief_view import render_brief_html
 from .history import NotFound, get_history
@@ -88,6 +89,7 @@ SERVICE_WORKER = STATIC / "sw.js"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 LOGIN_PAGE = STATIC / "login.html"
 TEAM_PAGE = STATIC / "team.html"
+WELCOME_PAGE = STATIC / "welcome.html"
 HISTORY_PAGE = STATIC / "history.html"
 
 
@@ -111,6 +113,10 @@ async def require_sign_in(request: Request, call_next):
         target = path + (f"?{request.url.query}" if request.url.query else "")
         return RedirectResponse(auth.login_url(target), status_code=303)
     request.state.user = email
+    # First visit after signing in with an emailed code (or before names existed): ask for a name once.
+    if not is_api and request.method == "GET" and path != "/welcome" and get_profiles().needs_name(email):
+        target = path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse("/welcome?next=" + quote(auth.safe_next(target), safe="/"), status_code=303)
     return await call_next(request)
 
 
@@ -351,10 +357,45 @@ def sign_out() -> Response:
     return response
 
 
+class NewName(BaseModel):
+    name: str = ""
+
+
+@app.get("/welcome", response_class=HTMLResponse)
+def welcome_page(request: Request) -> Response:
+    """Ask for (or change) the signed-in person's name. Signed-in only, via the middleware."""
+    email = getattr(request.state, "user", None)
+    if not email:
+        return RedirectResponse("/", status_code=303)
+    name = get_profiles().name_of(email) or ""
+    page = WELCOME_PAGE.read_text(encoding="utf-8")
+    page = (page.replace("__NAME__", html.escape(name, quote=True)).replace("__EMAIL__", html.escape(email))
+            .replace("__EDIT__", "on" if name else "off"))
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/name")
+def save_name(payload: NewName, request: Request) -> JSONResponse:
+    email = auth.read_session(request.cookies.get(auth.COOKIE), auth.config()) if auth.mode() == "on" else None
+    if not email:
+        raise HTTPException(401, "Your session has ended. Sign in again.")
+    if request.headers.get("x-requested-with") != "redefine":
+        raise HTTPException(403, "Missing request header.")
+    try:
+        name = get_profiles().set_name(email, payload.name)
+    except NameError_ as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except StoreUnavailable as exc:
+        raise HTTPException(503, "Your name could not be saved right now. Try again in a minute.") from exc
+    log.info("%s set their name", email)
+    return JSONResponse({"ok": True, "name": name})
+
+
 @app.get("/auth/me")
 def who_am_i(request: Request) -> JSONResponse:
     email = auth.read_session(request.cookies.get(auth.COOKIE), auth.config()) if auth.mode() == "on" else None
     return JSONResponse({"signed_in": bool(email), "email": email, "sign_in": auth.mode(),
+                         "name": get_profiles().name_of(email) if email else None,
                          "can_manage_team": bool(email) and get_team().can_manage(email)},
                         headers={"Cache-Control": "no-store"})
 
@@ -396,6 +437,9 @@ def team_list(request: Request) -> JSONResponse:
         people = [{"email": e, "role": "owner", "owner": True, "added_by": "Server setting", "added_at": ""}
                   for e in team.owners()]
         ready, problem = False, str(exc)
+    names = get_profiles().names()
+    for person in people:
+        person["name"] = names.get(person["email"])
     return JSONResponse({"me": me, "me_role": team.role_of(me), "members": people,
                          "store_ready": ready, "problem": problem},
                         headers={"Cache-Control": "no-store"})

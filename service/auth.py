@@ -26,6 +26,7 @@ import time
 from dataclasses import dataclass
 from urllib.parse import quote
 
+from .profiles import get_profiles
 from .team import get_team
 
 log = logging.getLogger("auth")
@@ -133,6 +134,7 @@ def verify_google_credential(credential: str, cfg: Config, allowed=None,
     if not (allowed or get_team().is_allowed)(email):
         log.info("sign-in refused for %s", email)
         raise NotAllowed(refused.format(email=email))
+    get_profiles().from_google(email, claims.get("name"))
     return email
 
 

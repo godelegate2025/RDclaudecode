@@ -389,7 +389,7 @@ class HTTPTest(DeskTestCase):
         self.client.app.state.team.add("agent@redefine.ph", "agent", by="owner@redefine.ph")
         self.sign_in("agent@redefine.ph")
         state = self.client.get("/api/desk/state").json()
-        self.assertEqual(state["user"], {"email": "agent@redefine.ph", "role": "agent"})
+        self.assertEqual(state["user"], {"email": "agent@redefine.ph", "role": "agent", "name": None})
         self.assertFalse(team.get_team().is_allowed("agent@redefine.ph"))
         self.client.app.state.team.remove("agent@redefine.ph", by="owner@redefine.ph")
         self.assertEqual(self.client.get("/api/desk/state").status_code, 401)

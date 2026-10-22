@@ -28,7 +28,9 @@ from pydantic import BaseModel
 
 from service import auth as team_auth
 from service import email_login
+from service import profiles
 from service import team as app_team
+from service.profiles import NameError_, get_profiles
 from service.firestore_db import StoreUnavailable
 
 from . import auth, intake
@@ -100,6 +102,10 @@ SHOW_INLINE = {"image/png", "image/jpeg", "image/gif", "image/webp", "applicatio
 NOT_ON_TEAM = "{email} isn't on the Care Desk team. Ask a desk admin to add it on the desk's Team page."
 
 
+class NewName(BaseModel):
+    name: str = ""
+
+
 class TeamChange(BaseModel):
     email: str = ""
     role: str = "agent"
@@ -134,6 +140,7 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     app.state.desk = desk or Desk(MemoryStore() if os.environ.get("DESK_STORE") == "memory" else FirestoreStore())
     if os.environ.get("DESK_STORE") == "memory":
         app_team.use_store(app_team.MemoryStore())  # nor the app's team list, which the desk team is filled from
+        profiles.use_store(profiles.MemoryStore())
 
     app.state.team = DeskTeam(app.state.desk.db)
 
@@ -199,9 +206,38 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         problem = not_set_up()
         if problem:
             return HTMLResponse(_note("Sign-in is not set up", problem), 503)
-        if not signed_in(request, team()):
+        email = signed_in(request, team())
+        if not email:
             return RedirectResponse("/login", status_code=303)
+        if get_profiles().needs_name(email):  # first visit: ask for a name once
+            return RedirectResponse("/welcome", status_code=303)
         return HTMLResponse((STATIC / "desk.html").read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+    @app.get("/welcome", response_class=HTMLResponse)
+    def welcome_page(request: Request) -> Response:
+        problem = not_set_up()
+        if problem:
+            return HTMLResponse(_note("Sign-in is not set up", problem), 503)
+        email = signed_in(request, team())
+        if not email:
+            return RedirectResponse("/login", status_code=303)
+        name = get_profiles().name_of(email) or ""
+        page = (STATIC / "welcome.html").read_text(encoding="utf-8")
+        page = (page.replace("__NAME__", html.escape(name, quote=True)).replace("__EMAIL__", html.escape(email))
+                .replace("__EDIT__", "on" if name else "off"))
+        return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+    @app.post("/auth/name")
+    def save_name(payload: NewName, request: Request) -> JSONResponse:
+        email = staff(request, mutating=True)
+        try:
+            name = get_profiles().set_name(email, payload.name)
+        except NameError_ as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except StoreUnavailable as exc:
+            raise HTTPException(503, "Your name could not be saved right now. Try again in a minute.") from exc
+        log.info("%s set their name", email)
+        return JSONResponse({"ok": True, "name": name})
 
     # The Redefine App's logo and icons, copied from service/static.
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -274,7 +310,10 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     @app.get("/api/desk/state")
     def state(request: Request, since: int = 0) -> JSONResponse:
         email = staff(request)
-        return JSONResponse({**the_desk().state(since), "user": {"email": email, "role": role_of(email)}},
+        names = get_profiles().names()
+        people = {e: names[e] for e in team().emails() if e in names}  # only the desk's own people
+        return JSONResponse({**the_desk().state(since), "people": people,
+                             "user": {"email": email, "role": role_of(email), "name": names.get(email)}},
                             headers={"Cache-Control": "no-store"})
 
     @app.post("/api/desk/messages")

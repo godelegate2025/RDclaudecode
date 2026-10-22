@@ -123,7 +123,7 @@ a.tool.alt:hover p { color: #fff; }
 </style>
 </head>
 <body>
-<div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
+<div class="account" id="account" hidden><a id="accountEmail" href="/welcome" title="Change your name"></a><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 <main>
   <img class="logo" src="/static/logo.svg" alt="Redefine" width="58" height="64">
   <p class="eyebrow">Redefine Agency · Tools</p>
@@ -154,7 +154,7 @@ a.tool.alt:hover p { color: #fff; }
   // Shows who is signed in, once sign-in is switched on; hidden otherwise.
   fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((me) => {
     if (!me.signed_in) return;
-    document.getElementById('accountEmail').textContent = me.email;
+    { const who = document.getElementById('accountEmail'); who.textContent = me.name || me.email; who.title = `${me.email} · change your name`; who.href = '/welcome?next=' + encodeURIComponent(location.pathname + location.search); }
     const account = document.getElementById('account');
     if (me.can_manage_team) {
       // Owners and admins get a way into the team page.

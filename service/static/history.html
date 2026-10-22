@@ -115,7 +115,7 @@ button.ghost:disabled { opacity: .5; }
     <span class="tool">History</span>
   </a>
   <div class="spacer"></div>
-  <div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
+  <div class="account" id="account" hidden><a id="accountEmail" href="/welcome" title="Change your name"></a><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
 <main>
@@ -267,7 +267,7 @@ button.ghost:disabled { opacity: .5; }
 
   fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((info) => {
     if (!info.signed_in) return;
-    document.getElementById('accountEmail').textContent = info.email;
+    { const who = document.getElementById('accountEmail'); who.textContent = info.name || info.email; who.title = `${info.email} · change your name`; who.href = '/welcome?next=' + encodeURIComponent(location.pathname + location.search); }
     document.getElementById('account').hidden = false;
   }).catch(() => {});
   load();

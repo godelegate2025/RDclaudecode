@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your name · Redefine App</title>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --coral: #FC4452; --ink: #191616; --charcoal: #2C2828; --paper: #F4F3F0;
+  --line: #D8D5CE; --muted: #7C7773; --bad: #C3281C;
+  --font-display: 'Anton', 'Arial Narrow', sans-serif;
+  --font-body: 'Archivo', system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 48px 16px; background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+}
+main {
+  width: 100%; max-width: 400px; text-align: center; background: #fff;
+  border: 1px solid var(--line); border-radius: 14px; padding: 40px 32px 32px;
+}
+.logo { display: block; margin: 0 auto 16px; height: 56px; width: auto; }
+.eyebrow { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0 0 10px; font-family: var(--font-display); font-weight: 400; font-size: 40px; line-height: 1; text-transform: uppercase; }
+p.lede { margin: 0 0 22px; color: var(--charcoal); font-size: 14px; }
+form { display: grid; gap: 10px; margin: 0; text-align: left; }
+label { font-size: 13px; font-weight: 600; }
+input {
+  width: 100%; height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; color: var(--ink); font: 400 15px var(--font-body);
+}
+input:focus { outline: 2px solid var(--coral); outline-offset: 1px; border-color: transparent; }
+.go { height: 46px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; font: 600 15px var(--font-body); cursor: pointer; }
+.go:hover { background: var(--charcoal); }
+.go:disabled { opacity: .55; cursor: default; }
+.go:focus-visible, .back:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+.back { display: inline-block; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
+.back[hidden] { display: none; }
+.error { min-height: 20px; margin: 4px 0 0; font-size: 13.5px; font-weight: 600; color: var(--bad); text-align: left; }
+.note { margin: 18px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="/static/logo.svg" alt="Redefine" width="51" height="56">
+  <p class="eyebrow">Redefine Agency · Tools</p>
+  <h1 id="title">What's your name?</h1>
+  <p class="lede" id="lede">Your teammates see it instead of your email. You can change it any time.</p>
+  <form id="form" novalidate>
+    <label for="name">Your name</label>
+    <input id="name" name="name" autocomplete="name" maxlength="80" placeholder="e.g. Maria Santos" value="__NAME__">
+    <button class="go" type="submit" id="save">Continue</button>
+    <a class="back" id="back" href="/" hidden>Cancel</a>
+    <p class="error" id="error" role="alert"></p>
+  </form>
+  <p class="note">Signed in as __EMAIL__</p>
+</main>
+<script>
+  const params = new URLSearchParams(location.search);
+  const raw = params.get('next') || '/';
+  const next = raw.startsWith('/') && !raw.startsWith('//') && !raw.includes('\\') ? raw : '/';
+  const editing = '__EDIT__' === 'on';
+  const $ = (id) => document.getElementById(id);
+  if (editing) {
+    $('title').textContent = 'Your name';
+    $('lede').textContent = 'This is what your teammates see instead of your email.';
+    $('save').textContent = 'Save';
+    $('back').href = next; $('back').hidden = false;
+  }
+  $('name').focus();
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('name').value.trim();
+    if (!name) { $('error').textContent = 'Enter your name.'; $('name').focus(); return; }
+    $('error').textContent = ''; $('save').disabled = true;
+    try {
+      const res = await fetch('/auth/name', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'redefine' }, body: JSON.stringify({ name }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { location.href = '/login'; return; }
+      if (!res.ok) throw new Error(data.detail || 'Could not save your name. Try again.');
+      location.replace(next);
+    } catch (err) { $('error').textContent = err.message; $('save').disabled = false; }
+  });
+</script>
+</body>
+</html>

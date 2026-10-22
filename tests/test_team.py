@@ -6,7 +6,9 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
-from service import auth, team
+from service import auth
+from service import team
+from service.profiles import get_profiles
 from service.app import app
 from service.team import MemoryStore, StoreUnavailable, TeamError
 
@@ -27,6 +29,7 @@ class BrokenStore:
 def client_for(email):
     client = TestClient(app, follow_redirects=False)
     client.cookies.set(auth.COOKIE, auth.make_session(email, SETTINGS["SESSION_SECRET"].encode()))
+    get_profiles().set_name(email, "Test Person")  # past the first-visit name step
     return client
 
 

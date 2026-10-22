@@ -8,6 +8,7 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from service import auth
+from service.profiles import get_profiles
 from service.app import app
 from service.team import MemoryStore, use_store
 
@@ -25,6 +26,7 @@ OFF = {name: "" for name in SETTINGS}
 def signed_in_client(email="owner@gmail.com"):
     client = TestClient(app, follow_redirects=False)
     client.cookies.set(auth.COOKIE, auth.make_session(email, SETTINGS["SESSION_SECRET"].encode()))
+    get_profiles().set_name(email, "Test Person")  # past the first-visit name step
     return client
 
 

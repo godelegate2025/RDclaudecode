@@ -13,7 +13,7 @@ COPY requirements-desk.txt ./
 RUN pip install --no-cache-dir -r requirements-desk.txt
 
 # Sign-in is the Redefine App's own: its team list, sessions and Firestore client.
-COPY service/__init__.py service/auth.py service/team.py service/firestore_db.py service/email_login.py ./service/
+COPY service/__init__.py service/auth.py service/team.py service/firestore_db.py service/email_login.py service/profiles.py ./service/
 COPY care_desk/ ./care_desk/
 
 RUN useradd --create-home desk

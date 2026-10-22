@@ -76,6 +76,7 @@ th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .12em;
 td { padding: 11px 8px 11px 0; border-bottom: 1px solid var(--paper-2); vertical-align: middle; }
 tr:last-child td { border-bottom: 0; }
 td.email { font-weight: 600; word-break: break-all; }
+td.email .addr { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted); }
 td.meta { color: var(--muted); font-size: 13px; }
 td.actions { text-align: right; white-space: nowrap; }
 .chip { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
@@ -107,7 +108,7 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
     <span class="tool">Team</span>
   </a>
   <div class="spacer"></div>
-  <div class="account" id="account" hidden><span id="accountEmail"></span><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
+  <div class="account" id="account" hidden><a id="accountEmail" href="/welcome" title="Change your name"></a><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
 <main>
@@ -175,8 +176,10 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
     }
     for (const p of people) {
       const tr = el('tr');
-      const email = el('td', 'email', p.email);
+      // Name first when we know it, with the email underneath.
+      const email = el('td', 'email', p.name || p.email);
       if (p.email === me) email.appendChild(el('span', 'you', '(you)'));
+      if (p.name) email.appendChild(el('span', 'addr', p.email));
       const role = el('td');
       if (meRole === 'owner' && !p.owner && storeReady) {
         // Owners can switch anyone else between member and admin in place.
@@ -291,7 +294,7 @@ button.ghost:hover:not(:disabled) { background: #FCF0EF; border-color: var(--bad
 
   fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((info) => {
     if (!info.signed_in) return;
-    document.getElementById('accountEmail').textContent = info.email;
+    { const who = document.getElementById('accountEmail'); who.textContent = info.name || info.email; who.title = `${info.email} · change your name`; who.href = '/welcome?next=' + encodeURIComponent(location.pathname + location.search); }
     document.getElementById('account').hidden = false;
   }).catch(() => {});
   load();
