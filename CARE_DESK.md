@@ -10,7 +10,7 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
 
 | Piece | What it uses |
 |---|---|
-| Staff | The Redefine App's team sign-in: the same Google accounts, team list and admin page |
+| Staff | The Redefine App's sign-in (Google or an emailed code), checked against the desk's own team list |
 | Data | The app's Firestore database, in collections named `desk_…` |
 | Messages in | A GHL workflow posts each new comment or message to `/hooks/ghl` |
 | Sorting | Claude (`ANTHROPIC_API_KEY`, the Post Auditor's key), or keyword rules without one |
@@ -45,9 +45,29 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
 
 ## Who can use it
 
-Whoever can sign in to the Redefine App: the owners in `ALLOWED_EMAILS` and the
-people on the app's team page (`/admin/team`). Removing someone there signs them
-out of the desk too. The desk needs no user list of its own.
+The desk keeps its own team, managed on its **Team** page, separate from the
+Redefine App's: being on one does not give access to the other. Everyone signs
+in the same way (Google, or an emailed code) with the address on the list.
+
+- **Admins** work the desk and manage the Team page: add people, switch them
+  between Admin and Agent, remove them. Only admins see the page; the server
+  refuses its API to anyone else.
+- **Agents** work tickets, leads and email, but cannot see or change the team.
+- **Owners** (the app's `ALLOWED_EMAILS`) are always desk admins and cannot be
+  changed or removed here, so nobody can lock everyone out. Nobody can change
+  their own role or remove themselves.
+
+When an admin adds someone, they get an invite email from the sign-in sender
+(`LOGIN_FROM_EMAIL`) with a button to the desk. The Team page shows each person
+as **Pending** until they first use the desk, then **Approved**, with when they
+were invited or first signed in. Pending people have **Resend invite** (at most
+once a minute per person). A failed or switched-off invite never undoes the
+add: being on the list is what grants access.
+
+Removing someone signs them out within a minute. The list is the Firestore
+collection `desk_team`. The first time it was read it was filled from the
+app's team (app admins as desk Admins, everyone else as Agents); after that the
+two lists are independent.
 
 ## Run it on a laptop
 

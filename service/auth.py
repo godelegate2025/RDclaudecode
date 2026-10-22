@@ -92,8 +92,11 @@ def make_session(email: str, secret: bytes, now: float | None = None) -> str:
     return f"{payload}.{signature}"
 
 
-def read_session(value: str | None, cfg: Config, now: float | None = None) -> str | None:
-    """The signed-in email, or None for a missing, forged, expired or no-longer-allowed session."""
+def read_session(value: str | None, cfg: Config, now: float | None = None, allowed=None) -> str | None:
+    """The signed-in email, or None for a missing, forged, expired or no-longer-allowed session.
+
+    `allowed` replaces the team list check; the Care Desk passes its own list.
+    """
     if not value or "." not in value:
         return None
     payload, signature = value.rsplit(".", 1)
@@ -109,13 +112,14 @@ def read_session(value: str | None, cfg: Config, now: float | None = None) -> st
     email = str(data.get("email", "")).lower()
     # Re-checked on every request, so removing someone from the team signs
     # them out at once rather than when their cookie expires.
-    return email if get_team().is_allowed(email) else None
+    return email if (allowed or get_team().is_allowed)(email) else None
 
 
 # ------------------------------------------------------------------ Google
 
-def verify_google_credential(credential: str, cfg: Config) -> str:
-    """Check Google's signed ID token and the team list; return the email."""
+def verify_google_credential(credential: str, cfg: Config, allowed=None,
+                             refused: str = "{email} isn't on the Redefine team list. Ask the admin to add it.") -> str:
+    """Check Google's signed ID token and the team list (or `allowed`); return the email."""
     from google.auth.transport import requests as google_requests
     from google.oauth2 import id_token
 
@@ -126,9 +130,9 @@ def verify_google_credential(credential: str, cfg: Config) -> str:
     email = str(claims.get("email", "")).lower()
     if not email or not claims.get("email_verified"):
         raise NotAllowed("That Google account has no verified email address.")
-    if not get_team().is_allowed(email):
+    if not (allowed or get_team().is_allowed)(email):
         log.info("sign-in refused for %s", email)
-        raise NotAllowed(f"{email} isn't on the Redefine team list. Ask the admin to add it.")
+        raise NotAllowed(refused.format(email=email))
     return email
 
 

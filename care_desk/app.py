@@ -28,11 +28,13 @@ from pydantic import BaseModel
 
 from service import auth as team_auth
 from service import email_login
+from service import team as app_team
 from service.firestore_db import StoreUnavailable
 
 from . import auth, intake
 from .desk import Desk, DeskError, NotFound
 from .store import FirestoreStore, MemoryStore
+from .team import DeskTeam, TeamError, invite_message
 
 log = logging.getLogger("care-desk")
 logging.basicConfig(level=logging.INFO)
@@ -95,14 +97,24 @@ class NewNote(BaseModel):
 SHOW_INLINE = {"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"}
 
 
+NOT_ON_TEAM = "{email} isn't on the Care Desk team. Ask a desk admin to add it on the desk's Team page."
+
+
+class TeamChange(BaseModel):
+    email: str = ""
+    role: str = "agent"
+
+
 def dev_email() -> str:
     """Local runs only: with sign-in off, DESK_DEV_EMAIL acts as the signed-in person."""
     return os.environ.get("DESK_DEV_EMAIL", "").strip().lower() if team_auth.mode() == "off" else ""
 
 
-def signed_in(request: Request) -> str | None:
+def signed_in(request: Request, team: DeskTeam) -> str | None:
+    """The signed-in email, if it is on the desk's own team (not the app's)."""
     if team_auth.mode() == "on":
-        return team_auth.read_session(request.cookies.get(team_auth.COOKIE), team_auth.config())
+        return team_auth.read_session(request.cookies.get(team_auth.COOKIE), team_auth.config(),
+                                      allowed=team.is_allowed)
     return dev_email() or None
 
 
@@ -120,21 +132,35 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     app = FastAPI(title="Care Desk", docs_url=None, redoc_url=None)
     # DESK_STORE=memory is for trying it on a laptop: nothing is saved past a restart.
     app.state.desk = desk or Desk(MemoryStore() if os.environ.get("DESK_STORE") == "memory" else FirestoreStore())
+    if os.environ.get("DESK_STORE") == "memory":
+        app_team.use_store(app_team.MemoryStore())  # nor the app's team list, which the desk team is filled from
+
+    app.state.team = DeskTeam(app.state.desk.db)
 
     def the_desk() -> Desk:
         return app.state.desk
+
+    def team() -> DeskTeam:
+        return app.state.team
+
+    def role_of(email: str) -> str | None:
+        return "owner" if dev_email() else team().role_of(email)
 
     @app.exception_handler(StoreUnavailable)
     async def no_firestore(_request: Request, exc: StoreUnavailable) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=503)
 
-    def staff(request: Request, mutating: bool = False) -> str:
+    def staff(request: Request, mutating: bool = False, admin: bool = False) -> str:
         problem = not_set_up()
         if problem:
             raise HTTPException(503, problem)
-        email = signed_in(request)
+        email = signed_in(request, team())
         if not email:
             raise HTTPException(401, "Your session has ended. Refresh the page and sign in again.")
+        if admin and role_of(email) not in ("owner", "admin"):
+            raise HTTPException(403, "Only Care Desk admins can manage the team.")
+        if not dev_email():
+            team().mark_joined(email)  # turns an invite from pending to approved
         # A custom header cannot be sent cross-site without a CORS preflight,
         # which this app never grants: together with SameSite cookies it stops CSRF.
         if mutating and request.headers.get("x-requested-with") != "desk":
@@ -160,7 +186,7 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         problem = not_set_up()
         if problem:
             return HTMLResponse(_note("Sign-in is not set up", problem), 503)
-        if signed_in(request):
+        if signed_in(request, team()):
             return RedirectResponse("/desk", status_code=303)
         page = (STATIC / "login.html").read_text(encoding="utf-8")
         client_id = html.escape(team_auth.config().client_id, quote=True)
@@ -173,7 +199,7 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         problem = not_set_up()
         if problem:
             return HTMLResponse(_note("Sign-in is not set up", problem), 503)
-        if not signed_in(request):
+        if not signed_in(request, team()):
             return RedirectResponse("/login", status_code=303)
         return HTMLResponse((STATIC / "desk.html").read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
 
@@ -195,7 +221,8 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         if team_auth.mode() != "on":
             raise HTTPException(503, "Sign-in is not set up on this server.")
         try:
-            email = team_auth.verify_google_credential(payload.credential, team_auth.config())
+            email = team_auth.verify_google_credential(payload.credential, team_auth.config(),
+                                                       allowed=team().is_allowed, refused=NOT_ON_TEAM)
         except team_auth.NotAllowed as exc:
             raise HTTPException(403, str(exc)) from exc
         return signed_in_response(email, payload.next, request)
@@ -221,7 +248,7 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         email_login_on()
         try:
             email_login.request_code(payload.email, team_auth.config().secret, app="Care Desk",
-                                     logo_url=email_login.logo_for(request))
+                                     logo_url=email_login.logo_for(request), allowed=team().is_allowed)
         except email_login.LoginError as exc:
             raise HTTPException(400, str(exc)) from exc
         return JSONResponse({"ok": True})
@@ -230,7 +257,8 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     def email_code_verify(payload: EmailCode, request: Request) -> JSONResponse:
         email_login_on()
         try:
-            email = email_login.verify_code(payload.email, payload.code, team_auth.config().secret)
+            email = email_login.verify_code(payload.email, payload.code, team_auth.config().secret,
+                                            allowed=team().is_allowed, refused=NOT_ON_TEAM)
         except email_login.LoginError as exc:
             raise HTTPException(403, str(exc)) from exc
         return signed_in_response(email, payload.next, request)
@@ -246,7 +274,7 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     @app.get("/api/desk/state")
     def state(request: Request, since: int = 0) -> JSONResponse:
         email = staff(request)
-        return JSONResponse({**the_desk().state(since), "user": {"email": email}},
+        return JSONResponse({**the_desk().state(since), "user": {"email": email, "role": role_of(email)}},
                             headers={"Cache-Control": "no-store"})
 
     @app.post("/api/desk/messages")
@@ -325,6 +353,73 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         staff(request, mutating=True)
         run(the_desk().save_journey_step, key, index, payload.subject, payload.body)
         return JSONResponse({"ok": True})
+
+    # ------------------------------------------------------------ the desk's own team (admins only)
+
+    def team_change(fn, *args) -> JSONResponse:
+        try:
+            fn(*args)
+        except TeamError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return JSONResponse({"people": team().listing()})
+
+    @app.get("/api/desk/team")
+    def team_list(request: Request) -> JSONResponse:
+        staff(request, admin=True)
+        return JSONResponse({"people": team().listing()}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/desk/team")
+    def team_add(change: TeamChange, request: Request) -> JSONResponse:
+        me = staff(request, mutating=True, admin=True)
+        try:
+            team().add(change.email, change.role, me)
+        except TeamError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        email = change.email.strip().lower()
+        log.info("%s added %s to the desk team as %s", me, email, change.role)
+        invited, note = send_invite(email, change.role, me, request)
+        if note:
+            note = "Added, but " + note[0].lower() + note[1:]
+        return JSONResponse({"people": team().listing(), "invited": invited, "note": note})
+
+    def send_invite(email: str, role: str, me: str, request: Request) -> tuple[bool, str | None]:
+        """Email the invite and record how it went. Being on the list is what grants access;
+        the invite only tells them, so a failed send is reported, never undone."""
+        if not email_login.available():
+            return False, "Invite emails are off on this server, so send them the desk link yourself."
+        site = email_login.site_for(request)
+        try:
+            email_login.deliver(email, *invite_message(email, role, me, f"{site}/login", f"{site}/static/logo.png"))
+        except email_login.LoginError:
+            team().record_invite(email, "Could not be sent")
+            return False, "The invite email could not be sent. Try again, or send them the desk link yourself."
+        team().record_invite(email, None)
+        log.info("%s invited %s to the desk", me, email)
+        return True, None
+
+    @app.post("/api/desk/team/{email}/invite")
+    def team_resend_invite(email: str, request: Request) -> JSONResponse:
+        me = staff(request, mutating=True, admin=True)
+        try:
+            person = team().check_invite(email)
+        except TeamError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        invited, note = send_invite(person["email"], person.get("role", "agent"), me, request)
+        if not invited:
+            raise HTTPException(502 if email_login.available() else 503, note)
+        return JSONResponse({"people": team().listing(), "invited": True})
+
+    @app.patch("/api/desk/team/{email}")
+    def team_set_role(email: str, change: TeamChange, request: Request) -> JSONResponse:
+        me = staff(request, mutating=True, admin=True)
+        log.info("%s made %s a desk %s", me, email, change.role)
+        return team_change(team().set_role, email, change.role, me)
+
+    @app.delete("/api/desk/team/{email}")
+    def team_remove(email: str, request: Request) -> JSONResponse:
+        me = staff(request, mutating=True, admin=True)
+        log.info("%s removed %s from the desk team", me, email)
+        return team_change(team().remove, email, me)
 
     @app.post("/api/desk/tick")
     def tick(request: Request) -> JSONResponse:

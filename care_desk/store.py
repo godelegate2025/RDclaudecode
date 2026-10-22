@@ -68,6 +68,10 @@ class MemoryStore:
         with self._lock:
             self._coll(coll)[key] = {**data, "updated_at": self.clock()}
 
+    def delete(self, coll: str, key: str) -> None:
+        with self._lock:
+            self._coll(coll).pop(str(key), None)
+
     def where(self, coll: str, field: str, op: str, value, *, order: str | None = None,
               desc: bool = False, limit: int | None = None) -> list[dict]:
         rows = [dict(d) for d in self._coll(coll).values() if OPS[op](d.get(field), value)]
@@ -121,6 +125,9 @@ class FirestoreStore:
 
     def put(self, coll: str, key: str, data: dict) -> None:
         self._c(coll).document(key).set({**data, "updated_at": self.clock()})
+
+    def delete(self, coll: str, key: str) -> None:
+        self._c(coll).document(str(key)).delete()
 
     def where(self, coll: str, field: str, op: str, value, *, order: str | None = None,
               desc: bool = False, limit: int | None = None) -> list[dict]:

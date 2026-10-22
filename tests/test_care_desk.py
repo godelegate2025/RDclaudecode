@@ -379,14 +379,113 @@ class HTTPTest(DeskTestCase):
         login = self.client.get("/login")
         self.assertIn(SIGN_IN["GOOGLE_CLIENT_ID"], login.text)
 
-    def test_someone_off_the_team_list_is_refused(self):
+    def test_the_desk_keeps_its_own_team(self):
         self.sign_in("stranger@gmail.com")
         self.assertEqual(self.client.get("/api/desk/state").status_code, 401)
-        team.get_team().add("member@redefine.ph", "member", by="owner@redefine.ph")
-        self.sign_in("member@redefine.ph")
-        self.assertEqual(self.client.get("/api/desk/state").status_code, 200)
-        team.get_team().remove("member@redefine.ph", by="owner@redefine.ph")
+        # On the app's team only: no desk access, and the reverse.
+        team.get_team().add("app-only@redefine.ph", "member", by="owner@redefine.ph")
+        self.sign_in("app-only@redefine.ph")
         self.assertEqual(self.client.get("/api/desk/state").status_code, 401)
+        self.client.app.state.team.add("agent@redefine.ph", "agent", by="owner@redefine.ph")
+        self.sign_in("agent@redefine.ph")
+        state = self.client.get("/api/desk/state").json()
+        self.assertEqual(state["user"], {"email": "agent@redefine.ph", "role": "agent"})
+        self.assertFalse(team.get_team().is_allowed("agent@redefine.ph"))
+        self.client.app.state.team.remove("agent@redefine.ph", by="owner@redefine.ph")
+        self.assertEqual(self.client.get("/api/desk/state").status_code, 401)
+
+    def test_first_read_copies_the_apps_team_so_nobody_loses_access(self):
+        team.get_team().add("lead@redefine.ph", "admin", by="owner@redefine.ph")
+        team.get_team().add("helper@redefine.ph", "member", by="owner@redefine.ph")
+        desk_team = self.client.app.state.team
+        self.assertEqual([(p["email"], p["role"]) for p in desk_team.listing()],
+                         [("owner@redefine.ph", "owner"), ("helper@redefine.ph", "agent"), ("lead@redefine.ph", "admin")])
+        team.get_team().add("later@redefine.ph", "member", by="owner@redefine.ph")
+        self.assertFalse(desk_team.is_allowed("later@redefine.ph"))  # copied once, then separate
+
+    def test_adding_someone_emails_them_an_invite(self):
+        from unittest import mock
+        from service import email_login
+        h = {"X-Requested-With": "desk"}
+        self.sign_in("owner@redefine.ph")
+        # Email off: they are added, and the admin is told to share the link.
+        r = self.client.post("/api/desk/team", json={"email": "a@y.ph", "role": "agent"}, headers=h).json()
+        self.assertEqual((r["invited"], "send them the desk link" in r["note"]), (False, True))
+
+        sent = []
+        with mock.patch.dict(os.environ, {"RESEND_API_KEY": "re_test", "LOGIN_FROM_EMAIL": "Redefine <login@x.ph>"}), \
+                mock.patch.object(email_login, "deliver", lambda *a: sent.append(a)):
+            r = self.client.post("/api/desk/team", json={"email": "B@y.ph", "role": "admin"}, headers=h).json()
+        self.assertTrue(r["invited"])
+        to, subject, text, html = sent[0]
+        self.assertEqual((to, subject), ("b@y.ph", "You're invited to the Redefine Care Desk"))
+        self.assertIn("owner@redefine.ph added you to Redefine's Care Desk as an admin", text)
+        self.assertIn('href="http://testserver/login"', html)
+        self.assertIn('src="http://testserver/static/logo.png"', html)
+
+        def fail(*a):
+            raise email_login.LoginError("down")
+        with mock.patch.dict(os.environ, {"RESEND_API_KEY": "re_test", "LOGIN_FROM_EMAIL": "x@x.ph"}), \
+                mock.patch.object(email_login, "deliver", fail):
+            r = self.client.post("/api/desk/team", json={"email": "c@y.ph", "role": "agent"}, headers=h).json()
+        self.assertEqual((r["invited"], "could not be sent" in r["note"]), (False, True))
+        self.assertTrue(self.client.app.state.team.is_allowed("c@y.ph"))  # still added
+
+    def test_invites_stay_pending_until_first_sign_in_and_can_be_resent(self):
+        from unittest import mock
+        from service import email_login
+        h, sent, now = {"X-Requested-With": "desk"}, [], [1_800_000_000.0]
+        desk_team = self.client.app.state.team
+        desk_team.clock = lambda: now[0]
+        person = lambda: next(p for p in desk_team.listing() if p["email"] == "new@y.ph")  # noqa: E731
+        with mock.patch.dict(os.environ, {"RESEND_API_KEY": "re_test", "LOGIN_FROM_EMAIL": "x@x.ph"}), \
+                mock.patch.object(email_login, "deliver", lambda *a: sent.append(a)):
+            self.sign_in("owner@redefine.ph")
+            self.client.post("/api/desk/team", json={"email": "new@y.ph", "role": "agent"}, headers=h)
+            self.assertEqual((person()["status"], person()["invites"]), ("pending", 1))
+            again = self.client.post("/api/desk/team/new@y.ph/invite", headers=h)
+            self.assertEqual((again.status_code, "Wait a minute" in again.text), (400, True))
+            now[0] += 61
+            self.assertEqual(self.client.post("/api/desk/team/new@y.ph/invite", headers=h).status_code, 200)
+            self.assertEqual((len(sent), person()["invites"]), (2, 2))
+            self.assertEqual(self.client.post("/api/desk/team/owner@redefine.ph/invite", headers=h).status_code, 400)
+
+            self.sign_in("new@y.ph")  # first visit approves the invite
+            self.assertEqual(self.client.post("/api/desk/team/new@y.ph/invite", headers=h).status_code, 403)
+            self.client.get("/api/desk/state")
+            self.assertEqual(person()["status"], "approved")
+            self.assertIsNotNone(person()["joined_at"])
+            self.sign_in("owner@redefine.ph")
+            now[0] += 61
+            done = self.client.post("/api/desk/team/new@y.ph/invite", headers=h)
+            self.assertEqual((done.status_code, "already uses the desk" in done.text), (400, True))
+
+    def test_only_desk_admins_manage_the_team(self):
+        desk_team, h = self.client.app.state.team, {"X-Requested-With": "desk"}
+        desk_team.add("boss@redefine.ph", "admin", by="owner@redefine.ph")
+        desk_team.add("agent@redefine.ph", "agent", by="owner@redefine.ph")
+        self.sign_in("agent@redefine.ph")
+        self.assertEqual(self.client.get("/api/desk/team").status_code, 403)
+        self.assertEqual(self.client.post("/api/desk/team", json={"email": "x@y.ph", "role": "agent"}, headers=h).status_code, 403)
+
+        self.sign_in("boss@redefine.ph")
+        self.assertEqual(self.client.post("/api/desk/team", json={"email": "new@y.ph", "role": "agent"}).status_code, 403)
+        r = self.client.post("/api/desk/team", json={"email": " New@Y.ph ", "role": "agent"}, headers=h)
+        self.assertIn(("new@y.ph", "agent"), [(p["email"], p["role"]) for p in r.json()["people"]])
+        self.assertEqual(self.client.patch("/api/desk/team/new@y.ph", json={"role": "admin"}, headers=h).status_code, 200)
+        self.assertTrue(desk_team.is_admin("new@y.ph"))
+        for bad in (self.client.patch("/api/desk/team/boss@redefine.ph", json={"role": "agent"}, headers=h),
+                    self.client.delete("/api/desk/team/boss@redefine.ph", headers=h),
+                    self.client.delete("/api/desk/team/owner@redefine.ph", headers=h),
+                    self.client.post("/api/desk/team", json={"email": "new@y.ph", "role": "agent"}, headers=h),
+                    self.client.post("/api/desk/team", json={"email": "nope", "role": "agent"}, headers=h),
+                    self.client.post("/api/desk/team", json={"email": "a@b.ph", "role": "owner"}, headers=h)):
+            self.assertEqual(bad.status_code, 400, bad.text)
+        self.assertEqual(self.client.delete("/api/desk/team/new@y.ph", headers=h).status_code, 200)
+        self.assertFalse(desk_team.is_allowed("new@y.ph"))
+        self.sign_in("owner@redefine.ph")  # owners are always desk admins
+        self.assertEqual(self.client.get("/api/desk/state").json()["user"]["role"], "owner")
+        self.assertEqual(self.client.get("/api/desk/team").status_code, 200)
 
     def test_never_runs_open_without_sign_in(self):
         for name in SIGN_IN:

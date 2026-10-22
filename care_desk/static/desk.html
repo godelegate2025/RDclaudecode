@@ -59,6 +59,7 @@ p{margin:0}
 .side{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;position:sticky;top:65px;height:calc(100vh - 65px)}
 .nav{position:relative;width:60px;min-height:58px;border-radius:12px;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--t-lo);font:700 10px var(--body);letter-spacing:.04em}
 .nav:hover{color:var(--t-hi);background:rgba(255,255,255,.04)}
+.nav[hidden]{display:none}
 .nav[aria-current="page"]{color:var(--t-hi);background:rgba(255,255,255,.09)}
 .nav[aria-current="page"]::before{content:'';position:absolute;left:-8px;top:14px;bottom:14px;width:3px;border-radius:2px;background:var(--coral)}
 .nav .badge{position:absolute;top:6px;right:8px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--coral);color:var(--on-coral);font:800 10px/18px var(--body);text-align:center}
@@ -173,6 +174,13 @@ td .sub{display:block;font:500 12px var(--body);color:var(--t-lo)}
 .timer.over{color:var(--coral)}
 .esc{display:inline-flex;align-items:center;gap:4px;font:700 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--coral);margin-top:4px}
 .rowacts{display:flex;gap:6px;justify-content:flex-end}
+/* team */
+.tablewrap table.team{min-width:760px}
+table.team .sub.bad{color:var(--coral)}
+table.team td .sub{white-space:nowrap}
+table.team .sel{min-height:36px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.team .you{display:inline-block;margin-left:6px;font:600 11px var(--body);color:var(--t-lo)}
 
 /* drawer */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40}
@@ -348,6 +356,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     <button class="nav" data-view="tickets"><span data-icon="ticket"></span>Tickets<span class="badge" id="bdTickets"></span></button>
     <button class="nav" data-view="leads"><span data-icon="users"></span>Leads</button>
     <button class="nav" data-view="email"><span data-icon="mail"></span>Email</button>
+    <button class="nav" data-view="team" id="navTeam" hidden><span data-icon="shield"></span>Team</button>
   </nav>
 
   <main id="view"><p class="loading">Loading the desk</p></main>
@@ -939,14 +948,76 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       <div class="acts"><button class="btn" data-act="closemodal">Close</button></div></div></div>`;
   }
 
+  /* ================================================================ team (desk admins only) */
+  // Loaded on its own when the page opens, not with the desk's state: only admins may read it.
+  const T = { people: null, error: null };
+  const isAdmin = () => !!D && ['owner', 'admin'].includes(D.user.role);
+  const ROLE = { owner: 'Owner', admin: 'Admin', agent: 'Agent' };
+  async function teamCall(method, path, body) {
+    const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'desk' }, body: body ? JSON.stringify(body) : undefined });
+    if (r.status === 401) { location.href = '/login'; throw new Error('Signed out'); }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Request failed (${r.status})`);
+    return data;
+  }
+  async function loadTeam() {
+    try { T.people = (await api('/api/desk/team')).people; T.error = null; }
+    catch (e) { T.error = e.message; }
+    if (U.view === 'team') render();
+  }
+  function vTeam() {
+    const me = D.user.email;
+    const fmtDay = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    const rows = (T.people || []).map(p => {
+      const self = p.email === me, owner = p.role === 'owner', locked = owner || self;
+      const role = locked ? `<span class="chip ${owner ? 'w' : 'o'}">${ROLE[p.role] || p.role}</span>`
+        : `<select class="sel" data-team-role="${esc(p.email)}" aria-label="Role for ${esc(p.email)}">${['agent', 'admin'].map(r => `<option value="${r}"${p.role === r ? ' selected' : ''}>${ROLE[r]}</option>`).join('')}</select>`;
+      // Approved: has used the desk. Pending: on the list, not signed in yet.
+      const status = p.status === 'approved'
+        ? `<span class="chip g">${ic('check', 12, 2.6)}Approved</span><span class="sub">${owner ? 'Owner' : p.joined_at ? 'Signed in ' + fmtDay(p.joined_at) : ''}</span>`
+        : `<span class="chip a">Pending</span><span class="sub${p.invite_error ? ' bad' : ''}">${p.invite_error ? 'Invite not sent'
+          : p.invited_at ? `Invited ${fmtDay(p.invited_at)}${p.invites > 1 ? ` · ${p.invites} invites` : ''}` : 'Not invited yet'}</span>`;
+      const resend = p.status === 'pending' && !owner
+        ? `<button class="btn sm" data-act="team-invite" data-v="${esc(p.email)}">${ic('send', 14)}${p.invited_at ? 'Resend invite' : 'Send invite'}</button>` : '';
+      return `<tr>
+        <td><span class="id">${esc(p.email)}</span>${self ? '<span class="you">You</span>' : ''}</td>
+        <td>${role}</td>
+        <td>${status}</td>
+        <td>${esc(p.added_by || '')}<span class="sub">${owner ? 'Owner of the Redefine App' : fmtDay(p.added_at)}</span></td>
+        <td><div class="rowacts">${resend}${locked ? '' : `<button class="btn sm" data-act="team-remove" data-v="${esc(p.email)}">${ic('x', 14)}Remove</button>`}</div></td></tr>`;
+    }).join('');
+    const counts = (T.people || []).reduce((n, p) => (n[p.role] = (n[p.role] || 0) + 1, n), {});
+    const pending = (T.people || []).filter(p => p.status === 'pending').length;
+    return `
+      <div class="vh"><div><div class="eyebrow">05 · Desk access</div><h1>Team</h1></div>
+        <p>Who can use the Care Desk. Admins manage this list; agents work tickets and leads. It is separate from the Redefine App's team, so adding someone here does not give them the app.</p></div>
+      <div class="card try">
+        <label for="teamEmail">Add someone</label>
+        <div class="row">
+          <input id="teamEmail" data-keep type="email" placeholder="name@example.com" autocomplete="off">
+          <select id="teamRole" data-keep aria-label="Role"><option value="agent">Agent</option><option value="admin">Admin</option></select>
+          <button class="btn primary" data-act="team-add">${ic('user', 16)}Add to the desk</button>
+        </div>
+        <p class="note">They get an email inviting them to the desk, and sign in with Google or an emailed code using this address. Removing someone signs them out within a minute.</p>
+      </div>
+      ${T.error ? `<p class="err">${esc(T.error)}</p>` : !T.people ? '<p class="loading">Loading the team</p>' : `
+      <div class="tablewrap"><table class="team">
+        <thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Added by</th><th><span class="sr">Actions</span></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <p class="note">${T.people.length} ${T.people.length === 1 ? 'person' : 'people'}: ${['owner', 'admin', 'agent'].filter(r => counts[r]).map(r => `${counts[r]} ${ROLE[r].toLowerCase()}${counts[r] > 1 ? 's' : ''}`).join(', ')}. ${pending ? `${pending} pending. ` : ''}Pending means they haven't signed in to the desk yet; it turns to Approved the first time they do. Owners are set on the server and are always admins.</p>`}`;
+  }
+
   /* ================================================================ render */
-  const VIEWS = { inbox: vInbox, tickets: vTickets, leads: vLeads, email: vEmail, dash: vDash };
+  const VIEWS = { inbox: vInbox, tickets: vTickets, leads: vLeads, email: vEmail, dash: vDash, team: vTeam };
   function render() {
     if (!D) return;
     // Keep anything half-typed across a refresh.
     const kept = {}; let focus = null;
     $$('[data-keep], #edSubj, #edBody').forEach(el => { kept[el.id] = el.value; if (el === document.activeElement) focus = el.id; });
     const scrollY = window.scrollY;
+    $('#navTeam').hidden = !isAdmin();
+    if (U.view === 'team' && !isAdmin()) U.view = 'dash';
     $('#view').innerHTML = VIEWS[U.view]();
     Object.entries(kept).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
     if (focus) { const el = document.getElementById(focus); if (el) el.focus(); }
@@ -1004,7 +1075,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   /* ================================================================ actions */
   const id = el => +el.dataset.id;
   const A = {
-    nav: v => { U.view = v; U.drawer = null; U.editing = false; window.scrollTo(0, 0); },
+    nav: v => { U.view = v; U.drawer = null; U.editing = false; window.scrollTo(0, 0); if (v === 'team') loadTeam(); },
     refresh: async () => { await load(); toast('Up to date'); return false; },
     logout: () => { location.href = '/auth/logout'; return false; },
     addtoggle: () => { U.addOpen = !U.addOpen; render(); if (U.addOpen) $('#tryText').focus(); return false; },
@@ -1092,6 +1163,41 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       return false;
     },
     viewsent: el => { U.modal = { sent: id(el) }; },
+    'team-add': async el => {
+      const input = $('#teamEmail'), email = input.value.trim(), role = $('#teamRole').value;
+      if (!email) { input.focus(); toast('Enter their email first.'); return false; }
+      el.disabled = true;
+      try {
+        const r = await api('/api/desk/team', { email, role });
+        T.people = r.people;
+        input.value = '';
+        if (r.invited) toast(`${email} added as ${ROLE[role].toLowerCase()} and invited by email`);
+        else toast(r.note || `${email} added`, 'u', 'alert');
+        render();
+      } catch (e) { toast(e.message, 'u', 'alert'); el.disabled = false; }
+      return false;
+    },
+    'team-invite': async el => {
+      const email = el.dataset.v;
+      el.disabled = true;
+      try {
+        T.people = (await api(`/api/desk/team/${encodeURIComponent(email)}/invite`, {})).people;
+        toast(`Invite sent to ${email}`);
+        render();
+      } catch (e) { toast(e.message, 'u', 'alert'); el.disabled = false; }
+      return false;
+    },
+    'team-remove': async el => {
+      const email = el.dataset.v;
+      if (!confirm(`Remove ${email} from the Care Desk? They lose access within a minute.`)) return false;
+      el.disabled = true;
+      try {
+        T.people = (await teamCall('DELETE', `/api/desk/team/${encodeURIComponent(email)}`)).people;
+        toast(`${email} removed`);
+        render();
+      } catch (e) { toast(e.message, 'u', 'alert'); el.disabled = false; }
+      return false;
+    },
   };
   document.addEventListener('click', async e => {
     const nav = e.target.closest('[data-view]');
@@ -1111,6 +1217,16 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   });
   document.addEventListener('input', e => { if (e.target.id === 'noteText') NOTE.draft[+e.target.dataset.id] = e.target.value; });
   document.addEventListener('change', async e => {
+    if (e.target.dataset.teamRole) {
+      const email = e.target.dataset.teamRole, role = e.target.value;
+      e.target.disabled = true;
+      try {
+        T.people = (await teamCall('PATCH', `/api/desk/team/${encodeURIComponent(email)}`, { role })).people;
+        toast(`${email} is now ${role === 'admin' ? 'an admin' : 'an agent'}`);
+      } catch (err) { toast(err.message, 'u', 'alert'); }
+      render();
+      return;
+    }
     if (e.target.id === 'noteFile') {
       const tid = +e.target.dataset.id, files = (NOTE.files.get(tid) || []).concat(Array.from(e.target.files));
       e.target.value = '';
