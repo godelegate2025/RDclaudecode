@@ -30,9 +30,16 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
 - **Customer emails need an email on the GHL contact.** Most commenters have
   none, so their tickets are updated through GHL instead and their leads are
   marked "follow up by DM".
-- **Lead journeys stop on a reply only if the lead writes in again.** A new
-  message from the same email stops the journey automatically. A reply to a
-  journey email goes to `DESK_REPLY_TO`; mark the lead "Replied" by hand.
+- **Emails are answered from the desk.** An email that came in to info@ has a
+  "Reply by email" box in the Inbox, pre-filled with Claude's draft. It goes
+  from `DESK_FROM_EMAIL` as a reply in the customer's thread (In-Reply-To set,
+  their message quoted), and counts as the ticket's first reply. On Contacts,
+  "Send email" sends one email per selected contact with `{first_name}` filled
+  in, at most 50 at a time; sent to two or more it carries an unsubscribe link
+  and skips anyone unsubscribed. SMS and WhatsApp are still previews only.
+- **Lead journeys stop when the lead writes back.** A new message from the same
+  email stops the journey, including a reply to a journey email, which reaches
+  info@ and comes in through the n8n workflow (see "Emails to info@").
 - **A placeholder can never be emailed.** Templates with `[SQUARE BRACKETS]`
   cannot go live. The new lead journey ships with `[PORTFOLIO LINK]` and
   `[BOOKING LINK]` to fill in on the Email screen.
@@ -261,7 +268,9 @@ It needs two credentials before it is published:
    `gcloud secrets versions access latest --secret desk-webhook-key`.
 4. **Publish** the workflow and send a test email to info@ from another address.
 
-n8n leaves emails unread, skips our own domain, bounces, no-reply senders and
+The trigger reconnects to the mailbox every minute (Force Reconnect = 1): Hostinger's
+IMAP doesn't push new-mail notifications to n8n, so without it nothing ever fires.
+Emails reach the desk within about a minute. n8n leaves emails unread, skips our own domain, bounces, no-reply senders and
 newsletters, and retries a failed send three times. The desk also ignores mail
 from our sending domains and automatic senders, files only the new part of a
 reply (quoted history cut off), and ignores repeats of the same Message-ID.

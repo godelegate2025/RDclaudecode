@@ -87,6 +87,12 @@ class Reply(BaseModel):
     text: str = ""
 
 
+class ContactEmail(BaseModel):
+    ids: list[int] = []
+    subject: str = ""
+    body: str = ""
+
+
 class Pick(BaseModel):
     comment_id: str = ""
 
@@ -343,6 +349,11 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         run(the_desk().send_reply, message_id, payload.text, staff(request, mutating=True))
         return JSONResponse({"ok": True})
 
+    @app.post("/api/desk/messages/{message_id}/email")
+    def email_reply(message_id: int, payload: Reply, request: Request) -> JSONResponse:
+        run(the_desk().email_reply, message_id, payload.text, staff(request, mutating=True))
+        return JSONResponse({"ok": True})
+
     @app.post("/api/desk/messages/{message_id}/pick")
     def pick_comment(message_id: int, payload: Pick, request: Request) -> JSONResponse:
         staff(request, mutating=True)
@@ -383,6 +394,12 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     def ticket_action(ticket_id: int, action: str, request: Request) -> JSONResponse:
         run(the_desk().ticket_action, ticket_id, action, staff(request, mutating=True))
         return JSONResponse({"ok": True})
+
+    @app.post("/api/desk/leads/email")
+    def email_contacts(payload: ContactEmail, request: Request) -> JSONResponse:
+        email = staff(request, mutating=True)
+        result = run(the_desk().email_contacts, payload.ids[:LOAD["leads"]], payload.subject, payload.body, email)
+        return JSONResponse({"ok": True, **result})
 
     @app.post("/api/desk/leads/bulk")
     def bulk_contacts(payload: BulkContacts, request: Request) -> JSONResponse:

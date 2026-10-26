@@ -12,6 +12,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable
 from urllib.parse import quote
 
@@ -37,6 +38,8 @@ MATCH_BEFORE = 15 * MIN   # how long before the webhook the comment may have bee
 MATCH_AFTER = 3 * MIN     # and after, for clock differences
 MATCH_ATTEMPTS = 6        # Meta can lag a little; tick() keeps looking for a few minutes
 REPLY_CHARS = 8000
+EMAIL_CHARS = 8000
+EMAIL_BATCH = 50  # per send; Resend's free plan allows 100 emails a day in all
 
 # How much the page loads on first open; later refreshes only fetch changes.
 MAX_TAGS = 20        # per contact
@@ -69,6 +72,7 @@ class Outgoing:
     marketing: bool
     ticket_id: int | None = None
     lead_id: int | None = None
+    headers: dict | None = None
 
 
 def code(ticket_id: int) -> str:
@@ -128,8 +132,9 @@ class Desk:
                  sort: Callable[..., sorter.Sorting] | None = None,
                  send: Callable[..., str] | None = None,
                  mail_ready: Callable[[], bool] | None = None,
-                 public_url: str | None = None, meta=None):
+                 public_url: str | None = None, meta=None, pause: Callable[[float], None] | None = None):
         self.db = store
+        self.pause = pause or time.sleep
         self.meta = meta or meta_api  # anything with configured(), recent_comments() and reply()
         self.now = now or (lambda: int(time.time() * 1000))
         self.sort = sort or sorter.sort_message
@@ -194,12 +199,15 @@ class Desk:
     def _blocked(self, email: str) -> bool:
         return self.db.get("suppressions", email.lower()) is not None
 
-    def _flush(self, out: list[Outgoing]) -> None:
-        """Send what a change queued, then record each result."""
+    def _flush(self, out: list[Outgoing]) -> list[tuple[str, str | None]]:
+        """Send what a change queued, then record each result. Returns (status, error) per email."""
+        results: list[tuple[str, str | None]] = []
         if not out:
-            return
+            return results
         ready = self.mail_ready()
-        for o in out:
+        for k, o in enumerate(out):
+            if k and len(out) > 1:
+                self.pause(0.6)  # Resend allows about two sends a second
             status, error, provider_id = "sent", None, None
             if o.marketing and self._blocked(o.to):
                 status, error = "not_sent", "Unsubscribed"
@@ -209,8 +217,9 @@ class Desk:
                 footer = (f"You are getting this because you contacted {config.BRAND}."
                           if o.marketing else f"This is about a message you sent {config.BRAND}.")
                 try:
+                    extra = {"headers": o.headers} if o.headers else {}
                     provider_id = self.send(o.to, o.subject, o.body, footer,
-                                            self.unsubscribe_url(o.to) if o.marketing else None)
+                                            self.unsubscribe_url(o.to) if o.marketing else None, **extra)
                 except mailer.MailError as exc:
                     status, error = "failed", str(exc)
                 except Exception as exc:  # noqa: BLE001 - one bad send must not lose the record
@@ -223,6 +232,8 @@ class Desk:
             label = "Email sent" if status == "sent" else "Email not sent"
             detail = o.subject if status == "sent" else f"{o.subject} ({error})"
             self._event(label, detail, ticket_id=o.ticket_id, lead_id=o.lead_id)
+            results.append((status, error))
+        return results
 
     # ------------------------------------------------------------ intake
 
@@ -548,6 +559,73 @@ class Desk:
         if m.get("lead_id"):
             self._event("Replied on Facebook", f"By {user}: {text[:300]}", lead_id=m["lead_id"])
 
+    # ------------------------------------------------------------ email from the desk
+
+    def email_reply(self, message_id: int, text: str, user: str) -> None:
+        """Answer an email that came in to info@, in the customer's own thread. Can be sent more than once."""
+        m = self._one("messages", message_id)
+        text = (text or "").strip()
+        if m["channel"] != "email" or not m.get("email"):
+            raise DeskError("Only emails can be answered by email.")
+        if not self.mail_ready():
+            raise DeskError("Email isn't set up on the server, so the desk can't send this.")
+        if not text:
+            raise DeskError("Write the reply first.")
+        if len(text) > EMAIL_CHARS:
+            raise DeskError(f"Keep the reply under {EMAIL_CHARS:,} characters.")
+        subject = m.get("subject") or f"Your message to {config.BRAND}"
+        if not re.match(r"(?i)^re:", subject):
+            subject = "Re: " + subject
+        when = datetime.fromtimestamp(m["received_at"] / 1000, timezone.utc).strftime("%a, %b %d, %Y")
+        quoted = "\n".join("> " + line for line in (m.get("text") or "").splitlines())
+        body = f"{text}\n\nOn {when}, {m['author']} wrote:\n{quoted}"
+        original = (m.get("external_id") or "").removeprefix("email:")
+        headers = {"In-Reply-To": f"<{original}>", "References": f"<{original}>"} if original else None
+        status, error = self._flush([Outgoing("reply", 0, m["email"], subject[:300], body, marketing=False,
+                                              ticket_id=m.get("ticket_id"), lead_id=m.get("lead_id"),
+                                              headers=headers)])[0]
+        if status != "sent":
+            raise DeskError(f"The email wasn't sent: {error}")
+        now = self.now()
+        self.db.update("messages", message_id, {"replied_at": m.get("replied_at") or now, "replied_by": user,
+                                                "reply_text": text, "emailed_at": now})
+        log.info("%s replied by email to message %s", user, message_id)
+        if m.get("ticket_id"):
+            t = self._one("tickets", m["ticket_id"])
+            if not t["first_reply_at"]:
+                self._mark_first_reply(t, user, now)
+
+    def email_contacts(self, lead_ids: list[int], subject: str, body: str, user: str) -> dict:
+        """One email per selected contact, with their first name filled in.
+
+        Sent to several people at once it counts as marketing: each email gets
+        an unsubscribe link and anyone who unsubscribed is skipped. Sent to one
+        person it is a plain personal email.
+        """
+        subject, body = (subject or "").strip(), (body or "").strip()
+        if not subject or not body:
+            raise DeskError("An email needs a subject and a message.")
+        if len(body) > EMAIL_CHARS:
+            raise DeskError(f"Keep the message under {EMAIL_CHARS:,} characters.")
+        if not self.mail_ready():
+            raise DeskError("Email isn't set up on the server, so the desk can't send this.")
+        people = [lead for lead in self._picked(lead_ids) if lead.get("email")]
+        if not people:
+            raise DeskError("None of the selected contacts has an email address.")
+        if len(people) > EMAIL_BATCH:
+            raise DeskError(f"Send to at most {EMAIL_BATCH} contacts at a time. Resend's free plan allows "
+                            "100 emails a day in all, sign-in codes included.")
+        group = len(people) > 1
+        out = [Outgoing("direct", 0, lead["email"], fill(subject, {"first_name": first_name(lead["name"])})[:300],
+                        fill(body, {"first_name": first_name(lead["name"])}), marketing=group, lead_id=lead["id"])
+               for lead in people]
+        results = self._flush(out)
+        sent = sum(1 for status, _ in results if status == "sent")
+        unsubscribed = sum(1 for _, error in results if error == "Unsubscribed")
+        log.info("%s emailed %s contacts (%s sent)", user, len(people), sent)
+        return {"sent": sent, "unsubscribed": unsubscribed, "failed": len(results) - sent - unsubscribed,
+                "no_email": len(dict.fromkeys(lead_ids)) - len(people)}
+
     # ------------------------------------------------------------ leads
 
     def _create_lead_from(self, msg: dict) -> int:
@@ -819,6 +897,8 @@ class Desk:
             "status": {
                 "sorting": "claude" if os.environ.get("ANTHROPIC_API_KEY") else "rules",
                 "email": self.mail_ready(),
+                # Shown next to the reply box, so staff know which address the customer sees.
+                "email_from": (re.findall(r"[^<>\s]+@[^<>\s]+", os.environ.get("DESK_FROM_EMAIL", "")) or [None])[0],
                 "webhook": bool(os.environ.get("DESK_WEBHOOK_KEY")),
                 "facebook_replies": self.meta.configured(),
                 "ghl_location": location,

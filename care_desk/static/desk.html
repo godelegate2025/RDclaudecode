@@ -86,6 +86,7 @@ main{min-width:0;padding-block:22px 60px;padding-inline:clamp(16px,2.4vw,32px)}
 .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
 .banner{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:rgba(233,162,59,.1);border:1px solid rgba(233,162,59,.35);font:600 14px/1.45 var(--body);margin-bottom:14px}
 .banner span{flex:1 1 260px}
+.banner.ok{background:rgba(88,184,138,.1);border-color:rgba(88,184,138,.35)}
 
 /* tiles */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
@@ -621,7 +622,24 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   }
 
   /* The reply: sent from here when the comment is matched to Facebook, otherwise copied into GHL. */
+  // Emails to info@ are answered from the desk, in the customer's own thread.
+  function emailReplyBlock(m) {
+    const last = m.replied_at ? `<div class="draft"><span class="eyebrow">${m.emailed_at ? 'Replied by email' : 'Marked replied'} · ${esc(nm(m.replied_by))} · ${fmtTime(m.emailed_at || m.replied_at)}</span>${m.reply_text ? esc(m.reply_text) : 'Replied outside the desk.'}</div>` : '';
+    if (!D.status.email) {
+      return `${last}<p class="note">Email sending isn't set up on the server, so reply from the info@ inbox for now.</p>
+        ${m.replied_at ? '' : `<div class="acts"><button class="btn sm ghost" data-act="replied" data-id="${m.id}">Mark replied</button></div>`}`;
+    }
+    return `${last}<div class="replybox"><label class="eyebrow" for="ereply-${m.id}">${m.replied_at ? 'Send another reply' : 'Reply by email'} · to ${esc(m.email)}${D.status.email_from ? ` from ${esc(D.status.email_from)}` : ''}</label>
+        <textarea id="ereply-${m.id}" data-keep maxlength="8000">${m.replied_at ? '' : esc(m.suggested_reply || '')}</textarea></div>
+      <div class="acts">
+        <button class="btn sm primary" data-act="ereply" data-id="${m.id}">${ic('send', 14)}Send email</button>
+        ${m.replied_at ? '' : `<button class="btn sm ghost" data-act="replied" data-id="${m.id}">Replied elsewhere</button>`}
+      </div>
+      <p class="note">It goes as a reply in their email thread, with their message quoted underneath.</p>`;
+  }
+
   function replyBlock(m, link) {
+    if (m.channel === 'email' && m.email) return emailReplyBlock(m);
     const openLink = link ? `<a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${ic('ext', 14)}${m.post_url ? 'Open on Facebook' : 'Open GHL comments'}</a>` : '';
     if (m.replied_at) {
       return `<div class="draft"><span class="eyebrow">${m.fb_reply_id ? 'Replied on Facebook' : 'Reply marked posted'} · ${esc(nm(m.replied_by))} · ${fmtTime(m.replied_at)}</span>${m.reply_text ? esc(m.reply_text) : 'Posted outside the desk.'}</div>
@@ -991,7 +1009,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       <div class="acts"><button class="btn primary" data-act="doimport"${ok ? '' : ' disabled'}>${ic('upload', 16)}Enroll ${ok} contact${ok === 1 ? '' : 's'}</button><button class="btn ghost" data-act="closemodal">Cancel</button></div>` : ''}
     </div></div>`;
   }
-  // Sending from the desk is not connected yet: these windows let people write the message, and say so.
+  // Email sends for real once the server can send it; SMS and WhatsApp aren't connected yet, so their
+  // windows let people write the message and say so.
   const BULK = {
     sms: { label: 'Send SMS', title: 'New text message', icon: 'dm', has: l => !!l.phone, what: 'a phone number', off: 'Texting' },
     email: { label: 'Send email', title: 'New email', icon: 'mail', has: l => !!l.email, what: 'an email address', off: 'Email' },
@@ -1004,14 +1023,18 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       <div class="eyebrow">${eyebrow}</div><h2>${title}</h2>${body}</div></div>`;
     const cancel = '<button class="btn ghost" data-act="closemodal">Cancel</button>';
     if (BULK[kind]) {
-      const b = BULK[kind], reach = people.filter(b.has).length;
+      const b = BULK[kind], reach = people.filter(b.has).length, live = kind === 'email' && D.status.email;
+      const sendBtn = live
+        ? `<button class="btn primary" data-act="sendmail"${reach ? '' : ' disabled'}>${ic('send', 16)}Send to ${reach}</button>`
+        : `<button class="btn primary" disabled title="Not connected yet">${ic('send', 16)}Send to ${reach}</button>`;
       return box(`${b.label} · ${n} contact${s}`, b.title, `
-        <div class="banner">${ic('alert', 18)}<span>${b.off} from the desk isn't connected yet, so nothing will be sent.</span></div>
+        ${live ? (reach > 1 ? `<div class="banner ok">${ic('mail', 18)}<span>Each person gets their own email${D.status.email_from ? ` from ${esc(D.status.email_from)}` : ''}, with an unsubscribe link. Anyone who unsubscribed is skipped.</span></div>` : '')
+          : `<div class="banner">${ic('alert', 18)}<span>${b.off} from the desk isn't connected yet, so nothing will be sent.</span></div>`}
         <p class="note">${reach} of ${n} selected ${n === 1 ? 'has' : 'have'} ${b.what}.${reach < n ? ` The other ${n - reach} would be skipped.` : ''}</p>
         ${kind === 'email' ? '<div class="field"><label for="bSubj">Subject</label><input id="bSubj" maxlength="300"></div>' : ''}
         <div class="field"><label for="bBody">Message</label><textarea id="bBody" maxlength="${kind === 'email' ? 8000 : 1600}" placeholder="Hi {first_name}, "></textarea></div>
         <p class="note">Write {first_name} where each person's first name should go.</p>
-        <div class="acts"><button class="btn primary" disabled title="Not connected yet">${ic('send', 16)}Send to ${reach}</button>${cancel}</div>`);
+        <div class="acts">${sendBtn}${cancel}</div>`);
     }
     if (kind === 'tag') {
       const known = [...new Set(D.leads.flatMap(l => l.tags || []))].sort((a, b) => a.localeCompare(b));
@@ -1213,6 +1236,15 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       if (!r) el.disabled = false;
       return false;
     },
+    ereply: async el => {
+      const k = id(el), box = document.getElementById(`ereply-${k}`), text = box ? box.value.trim() : '';
+      if (!text) { if (box) box.focus(); toast('Write the reply first.'); return false; }
+      el.disabled = true;
+      const r = await post(`/api/desk/messages/${k}/email`, { text }, 'Email sent');
+      if (r) { const b = document.getElementById(`ereply-${k}`); if (b) b.value = ''; render(); }
+      else el.disabled = false;
+      return false;
+    },
     pick: el => { post(`/api/desk/messages/${id(el)}/pick`, { comment_id: el.dataset.cid }, 'Matched. You can reply from here now.'); return false; },
     rematch: el => { toast('Searching Facebook'); post(`/api/desk/messages/${id(el)}/rematch`, {}); return false; },
     mkticket: el => { post(`/api/desk/messages/${id(el)}/ticket`, {}, 'Ticket created'); return false; },
@@ -1277,6 +1309,21 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       el.disabled = true;
       const r = await post('/api/desk/leads/bulk', body, done);
       if (r) { U.modal = null; if (kind === 'delete') U.picked = new Set(); render(); }
+      else el.disabled = false;
+      return false;
+    },
+    sendmail: async el => {
+      const subject = ($('#bSubj') || {}).value || '', body = ($('#bBody') || {}).value || '';
+      if (!subject.trim()) { $('#bSubj').focus(); toast('Write a subject first.'); return false; }
+      if (!body.trim()) { $('#bBody').focus(); toast('Write the message first.'); return false; }
+      const n = pickedLeads().filter(l => l.email).length;
+      if (n > 1 && !confirm(`Send this email to ${n} contacts? Each gets their own copy.`)) return false;
+      el.disabled = true;
+      const r = await post('/api/desk/leads/email', { ids: [...U.picked], subject, body }, r => {
+        const extra = [r.unsubscribed && `${r.unsubscribed} unsubscribed`, r.failed && `${r.failed} failed`].filter(Boolean).join(', ');
+        return `Sent to ${r.sent} contact${r.sent === 1 ? '' : 's'}${extra ? ` (${extra})` : ''}`;
+      });
+      if (r) { U.modal = null; render(); }
       else el.disabled = false;
       return false;
     },

@@ -34,7 +34,8 @@ def render_html(body: str, footer: str, unsubscribe_url: str | None) -> str:
     )
 
 
-def send(to: str, subject: str, body: str, footer: str, unsubscribe_url: str | None = None) -> str:
+def send(to: str, subject: str, body: str, footer: str, unsubscribe_url: str | None = None,
+         headers: dict | None = None) -> str:
     """Send one email and return the provider's id."""
     payload = {
         "from": os.environ["DESK_FROM_EMAIL"],
@@ -47,6 +48,8 @@ def send(to: str, subject: str, body: str, footer: str, unsubscribe_url: str | N
         payload["reply_to"] = os.environ["DESK_REPLY_TO"]
     if unsubscribe_url:
         payload["headers"] = {"List-Unsubscribe": f"<{unsubscribe_url}>"}
+    if headers:  # e.g. In-Reply-To, so a reply lands in the customer's thread
+        payload["headers"] = {**payload.get("headers", {}), **headers}
     try:
         response = requests.post(
             RESEND_URL,

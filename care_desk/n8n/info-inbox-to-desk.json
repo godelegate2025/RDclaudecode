@@ -15,10 +15,11 @@
         "postProcessAction": "nothing",
         "format": "resolved",
         "options": {
-          "trackLastMessageId": true
+          "trackLastMessageId": true,
+          "forceReconnect": 1
         }
       },
-      "notes": "Watches info@redefineph.com. Leaves emails unread so the team still sees them as new in the inbox."
+      "notes": "Watches info@redefineph.com. Leaves emails unread so the team still sees them as new. Reconnects every minute because Hostinger doesn't push new-mail notifications, so each reconnect is what picks up new mail."
     },
     {
       "id": "a1b2c3d4-0002-4000-8000-000000000002",

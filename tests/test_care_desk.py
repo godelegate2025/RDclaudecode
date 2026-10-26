@@ -66,12 +66,14 @@ class DeskTestCase(unittest.TestCase):
                 raise self.next_sort
             return self.next_sort
 
-        def send(to, subject, body, footer, unsubscribe_url=None):
-            self.sent.append({"to": to, "subject": subject, "body": body, "unsubscribe": unsubscribe_url})
+        def send(to, subject, body, footer, unsubscribe_url=None, headers=None):
+            self.sent.append({"to": to, "subject": subject, "body": body, "unsubscribe": unsubscribe_url,
+                              "headers": headers})
             return "msg_1"
 
         self.desk = Desk(self.store, now=self.clock, sort=sort, send=send,
-                         mail_ready=lambda: self.mail_on, public_url="https://desk.example")
+                         mail_ready=lambda: self.mail_on, public_url="https://desk.example",
+                         pause=lambda seconds: None)
 
     def rows(self, coll):
         return sorted(self.store.all(coll), key=lambda d: d["id"])
@@ -287,6 +289,66 @@ class TicketTest(DeskTestCase):
         self.desk.ticket_action(self.ticket_id, "reopen", "mia@redefine.ph")
         self.desk.add_note(self.ticket_id, "mia@redefine.ph", "back on it", [])
         self.assertEqual(self.store.all("files"), [])
+
+
+class EmailFromDeskTest(DeskTestCase):
+    def email_in(self, text="My site is down since yesterday", category="Client concern"):
+        self.next_sort = sorting(category)
+        return self.desk.ingest(parse_email({"from_email": "ana@example.com", "from_name": "Ana Cruz",
+                                             "subject": "Site down", "text": text, "message_id": "<abc@mail>"}))["id"]
+
+    def test_replies_land_in_the_customers_thread_and_count_as_first_reply(self):
+        self.mail_on = True
+        message_id = self.email_in()
+        self.sent.clear()  # the "we received your concern" email
+        self.desk.email_reply(message_id, "Sorry Ana, we're on it.", "mia@redefine.ph")
+        reply = self.sent[-1]
+        self.assertEqual((reply["to"], reply["subject"], reply["unsubscribe"]), ("ana@example.com", "Re: Site down", None))
+        self.assertEqual(reply["headers"], {"In-Reply-To": "<abc@mail>", "References": "<abc@mail>"})
+        self.assertTrue(reply["body"].startswith("Sorry Ana, we're on it.\n\nOn "))
+        self.assertIn("Ana Cruz wrote:\n> My site is down since yesterday", reply["body"])
+        msg, ticket = self.rows("messages")[0], self.rows("tickets")[0]
+        self.assertEqual((msg["reply_text"], msg["replied_by"]), ("Sorry Ana, we're on it.", "mia@redefine.ph"))
+        self.assertIsNotNone(ticket["first_reply_at"])
+        self.desk.email_reply(message_id, "Fixed now.", "mia@redefine.ph")  # a second reply is fine
+        self.assertEqual(self.sent[-1]["subject"], "Re: Site down")
+
+    def test_reply_refusals(self):
+        message_id = self.email_in()
+        with self.assertRaisesRegex(DeskError, "isn't set up"):
+            self.desk.email_reply(message_id, "hi", "mia@redefine.ph")
+        self.mail_on = True
+        with self.assertRaisesRegex(DeskError, "Write the reply"):
+            self.desk.email_reply(message_id, "  ", "mia@redefine.ph")
+        facebook = self.add("Nice work!")
+        with self.assertRaisesRegex(DeskError, "Only emails"):
+            self.desk.email_reply(facebook, "thanks", "mia@redefine.ph")
+
+    def test_contacts_get_their_own_email_with_their_first_name(self):
+        self.mail_on = True
+        self.next_sort = sorting("Pricing question", interest="Website")
+        self.add("How much?", email="ana@example.com", author="Ana Cruz")
+        self.add("Rates?", email="ben@example.com", author="Ben Reyes")
+        self.add("Price?", author="No Email")
+        ids = [l["id"] for l in self.rows("leads")]
+        self.desk.unsubscribe("ben@example.com")
+        self.sent.clear()
+        result = self.desk.email_contacts(ids, "Hi {first_name}", "Hello {first_name}, here are our rates.", "mia@redefine.ph")
+        self.assertEqual(result, {"sent": 1, "unsubscribed": 1, "failed": 0, "no_email": 1})
+        self.assertEqual([(m["to"], m["subject"]) for m in self.sent], [("ana@example.com", "Hi Ana")])
+        self.assertTrue(self.sent[0]["unsubscribe"].startswith("https://desk.example/unsubscribe"))  # a group send
+
+        self.sent.clear()
+        one = self.desk.email_contacts([ids[0]], "Quick one", "Hi {first_name}", "mia@redefine.ph")
+        self.assertEqual((one["sent"], self.sent[0]["unsubscribe"], self.sent[0]["body"]), (1, None, "Hi Ana"))
+
+        with self.assertRaisesRegex(DeskError, "subject and a message"):
+            self.desk.email_contacts(ids, "", "body", "mia@redefine.ph")
+        with self.assertRaisesRegex(DeskError, "None of the selected"):
+            self.desk.email_contacts([ids[2]], "s", "b", "mia@redefine.ph")
+        self.mail_on = False
+        with self.assertRaisesRegex(DeskError, "isn't set up"):
+            self.desk.email_contacts(ids, "s", "b", "mia@redefine.ph")
 
 
 class JourneyTest(DeskTestCase):
@@ -684,6 +746,20 @@ class HTTPTest(DeskTestCase):
         self.assertEqual(len(self.rows("messages")), 1)
         empty = {**body, "text": "", "message_id": "<m3@mail>"}
         self.assertEqual(self.client.post("/hooks/email?key=hook-secret", json=empty).status_code, 400)
+
+    def test_email_routes_need_staff_and_the_header(self):
+        self.mail_on = True
+        self.next_sort = sorting("Pricing question", interest="Website")
+        message_id = self.desk.ingest(parse_email({"from_email": "cara@example.com", "text": "Rates?", "message_id": "<x@m>"}))["id"]
+        lead_id = self.rows("leads")[0]["id"]
+        h = {"X-Requested-With": "desk"}
+        self.assertEqual(self.client.post(f"/api/desk/messages/{message_id}/email", json={"text": "hi"}, headers=h).status_code, 401)
+        self.sign_in()
+        self.assertEqual(self.client.post(f"/api/desk/messages/{message_id}/email", json={"text": "hi"}).status_code, 403)
+        self.assertEqual(self.client.post(f"/api/desk/messages/{message_id}/email", json={"text": "Here you go"}, headers=h).status_code, 200)
+        r = self.client.post("/api/desk/leads/email", json={"ids": [lead_id], "subject": "Rates", "body": "Hi {first_name}"}, headers=h)
+        self.assertEqual((r.status_code, r.json()["sent"]), (200, 1))
+        self.assertEqual(self.client.post("/api/desk/leads/email", json={"ids": [lead_id], "subject": "", "body": "x"}, headers=h).status_code, 400)
 
     def test_webhook_needs_its_key(self):
         body = {"full_name": "Kian", "customData": {"comment": "wow", "channel": "facebook", "comment_id": "c9"}}
