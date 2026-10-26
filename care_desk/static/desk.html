@@ -158,7 +158,8 @@ pre.raw{margin:12px 0 0;max-height:260px;overflow:auto;padding:12px;border-radiu
 .field textarea{min-height:220px;max-height:none;font:400 14px/1.55 var(--body)}
 
 /* tables */
-.tablewrap{overflow-x:auto;border-radius:16px;border:1px solid var(--line);background:var(--panel)}
+/* relative: the screen-reader-only .sr labels inside are absolute and would otherwise escape the scroll box */
+.tablewrap{position:relative;overflow-x:auto;border-radius:16px;border:1px solid var(--line);background:var(--panel)}
 table{width:100%;border-collapse:collapse;min-width:860px}
 th{font:700 11px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--t-lo);text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:12px 14px;border-bottom:1px solid var(--line);font:500 14px var(--body);vertical-align:middle}
@@ -318,8 +319,9 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   .detail{position:static}
 }
 @media (max-width:720px){
-  .app{grid-template-columns:1fr}
+  .app{grid-template-columns:minmax(0,1fr)}
   .side{position:sticky;top:auto;bottom:0;height:auto;flex-direction:row;justify-content:space-around;order:3;grid-column:1;border-right:0;border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));z-index:20}
+  .nav{width:auto;flex:1 1 0;min-width:0;max-width:72px}  /* six fixed 60px tabs (admins see Team) are wider than a phone */
   main{order:2}
   .nav[aria-current="page"]::before{left:14px;right:14px;top:-6px;bottom:auto;width:auto;height:3px}
   .top{position:static}
