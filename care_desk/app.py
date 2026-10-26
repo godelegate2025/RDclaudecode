@@ -17,6 +17,7 @@ import hmac
 import html
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -520,6 +521,47 @@ def create_app(desk: Desk | None = None) -> FastAPI:
                  time.time() - started)
         # Always 200 once stored: a sorting failure is retried here, not by GHL.
         return JSONResponse({"ok": True, **result})
+
+    @app.post("/hooks/email")
+    async def email_hook(request: Request) -> JSONResponse:
+        """Emails to info@, forwarded by the n8n workflow that watches that inbox.
+
+        Same key as the GHL webhook. Every email is sorted like any other
+        message (sales questions become contacts, concerns tickets), so n8n
+        does no sorting of its own. Repeats of the same Message-ID are ignored.
+        """
+        key = os.environ.get("DESK_WEBHOOK_KEY", "")
+        if not key:
+            raise HTTPException(503, "The webhook is not set up: DESK_WEBHOOK_KEY is missing on the server.")
+        given = request.query_params.get("key") or request.headers.get("x-desk-key") or ""
+        if not hmac.compare_digest(given, key):
+            raise HTTPException(401, "Wrong webhook key.")
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(400, "Send JSON.") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "Send a JSON object.")
+        incoming = intake.parse_email(payload, own_domains())
+        if incoming is None:
+            log.info("email webhook: ignored mail from %s", payload.get("from_email"))
+            return JSONResponse({"ok": True, "ignored": True})
+        if not incoming.text:
+            raise HTTPException(400, "The email has no text.")
+        started = time.time()
+        result = the_desk().ingest(incoming)
+        log.info("email webhook: message %s%s in %.1fs", result["id"], " (duplicate)" if result["duplicate"] else "",
+                 time.time() - started)
+        return JSONResponse({"ok": True, "ignored": False, **result})
+
+    def own_domains() -> tuple[str, ...]:
+        """Our sending domains (from the sender settings), so the desk never files its own mail."""
+        found = set()
+        for name in ("DESK_FROM_EMAIL", "LOGIN_FROM_EMAIL", "DESK_REPLY_TO"):
+            match = re.search(r"@([\w.-]+)", os.environ.get(name, ""))
+            if match:
+                found.add(match.group(1).lower())
+        return tuple(found)
 
     # ------------------------------------------------------------ unsubscribe
 

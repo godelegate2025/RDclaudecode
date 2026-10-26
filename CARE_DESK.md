@@ -239,6 +239,33 @@ the *Customer Replied* trigger, filtered to the channels you want, with
 GHL retries a webhook that fails. The desk ignores repeats with the same
 `comment_id`, or the same person and text within a day when there is no id.
 
+## Emails to info@
+
+An n8n workflow watches the info@redefineph.com inbox and forwards each email
+to `/hooks/email`. The desk sorts it like any other message: sales questions
+become Contacts with the sender's email, concerns become Tickets, the rest is
+logged. A reply from someone in a contact journey stops their journey, the
+same as a message through GHL.
+
+The workflow is "Care Desk: info@ inbox to desk" in n8n (redefine.app.n8n.cloud,
+workflow `VldAWUdg4OL5b2Rd`); `care_desk/n8n/info-inbox-to-desk.json` is a copy to
+re-import if it is ever lost (Workflows → Create workflow → ⋯ → Import from File).
+It needs two credentials before it is published:
+
+1. **Open it** in n8n.
+2. **Mailbox credential** on *New email to info@*: IMAP, user
+   `info@redefineph.com`, its Hostinger password, host `imap.hostinger.com`,
+   port 993, SSL on.
+3. **Desk key credential** on *Send to Care Desk*: Header Auth, name
+   `X-Desk-Key`, value from
+   `gcloud secrets versions access latest --secret desk-webhook-key`.
+4. **Publish** the workflow and send a test email to info@ from another address.
+
+n8n leaves emails unread, skips our own domain, bounces, no-reply senders and
+newsletters, and retries a failed send three times. The desk also ignores mail
+from our sending domains and automatic senders, files only the new part of a
+reply (quoted history cut off), and ignores repeats of the same Message-ID.
+
 ## Facebook replies
 
 GHL tells the desk a comment's text and who wrote it, but not its Facebook id.

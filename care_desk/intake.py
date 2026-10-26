@@ -10,7 +10,9 @@ exactly what GHL sent and fix the mapping.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
+from html import unescape
 
 from . import config
 
@@ -93,6 +95,56 @@ def parse_ghl(payload: dict) -> Incoming:
         location_id=(_str(location.get("id")) or _str(payload.get("locationId")) or None),
         external_id=(_first(custom, ID_KEYS) or None),
         raw=_small(payload),
+    )
+
+
+# ------------------------------------------------------------------ email (n8n watching info@)
+
+# Senders that are never a person writing in: bounces, auto-replies, notifications.
+AUTO_SENDER = re.compile(r"^(mailer-daemon|postmaster|no-?reply|do-?not-?reply|bounces?|notifications?)[@+.]", re.I)
+# Where a reply's quoted history starts, in the common mail apps.
+QUOTE_START = [
+    re.compile(r"^\s*On .{0,300}wrote:\s*$", re.I | re.M),                    # Gmail, Apple Mail
+    re.compile(r"^\s*-{2,}\s*Original Message\s*-{2,}", re.I | re.M),        # Outlook
+    re.compile(r"^\s*From:\s.+\n\s*(Sent|Date):\s", re.I | re.M),            # Outlook, forwarded headers
+    re.compile(r"^\s*_{20,}\s*$", re.M),                                      # Outlook web divider
+    re.compile(r"^\s*Sent from my (iPhone|iPad|Android|mobile)", re.I | re.M),
+]
+
+
+def new_text_of(body: str) -> str:
+    """The part of an email the sender just wrote: quoted history and signatures cut off."""
+    text = (body or "").replace("\r\n", "\n")
+    cut = min((m.start() for p in QUOTE_START if (m := p.search(text))), default=len(text))
+    fresh = "\n".join(line for line in text[:cut].split("\n") if not line.lstrip().startswith(">"))
+    fresh = re.sub(r"\n{3,}", "\n\n", fresh).strip()
+    return fresh or text.strip()  # a reply that is all quote: keep everything rather than nothing
+
+
+def html_to_text(html: str) -> str:
+    html = re.sub(r"(?is)<(script|style|head)\b.*?</\1>", " ", html or "")
+    html = re.sub(r"(?i)<br\s*/?>|</(p|div|li|tr|h\d)>", "\n", html)
+    return unescape(re.sub(r"<[^>]+>", "", html))
+
+
+def parse_email(payload: dict, own_domains: tuple[str, ...] = ()) -> Incoming | None:
+    """One email forwarded by n8n, or None for one that isn't from a customer:
+    bounces and no-reply senders, and mail from our own domain."""
+    sender = _str(payload.get("from_email")).lower()
+    if not sender or AUTO_SENDER.match(sender) or sender.rsplit("@", 1)[-1] in own_domains:
+        return None
+    body = _str(payload.get("text")) or html_to_text(_str(payload.get("html")))
+    name = _str(payload.get("from_name")).strip('"\' ') or sender.split("@")[0]
+    message_id = _str(payload.get("message_id")).strip("<>")
+    return Incoming(
+        text=new_text_of(body)[:5000],
+        channel="email",
+        author=name[:200],
+        source="email",
+        email=sender,
+        subject=(_str(payload.get("subject")) or None),
+        external_id=f"email:{message_id}" if message_id else None,
+        raw=_small({k: v for k, v in payload.items() if k not in ("html",)}),
     )
 
 

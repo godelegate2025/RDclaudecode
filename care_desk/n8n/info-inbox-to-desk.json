@@ -1,0 +1,130 @@
+{
+  "name": "Care Desk: info@ inbox to desk",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "New email to info@",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "nothing",
+        "format": "resolved",
+        "options": {
+          "trackLastMessageId": true
+        }
+      },
+      "notes": "Watches info@redefineph.com. Leaves emails unread so the team still sees them as new in the inbox."
+    },
+    {
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Only real people",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ ($json.from?.value?.[0]?.address || '').toLowerCase() }}",
+              "rightValue": "@redefineph.com",
+              "operator": {
+                "type": "string",
+                "operation": "notEndsWith"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ ($json.from?.value?.[0]?.address || '').toLowerCase() }}",
+              "rightValue": "^(mailer-daemon|postmaster|no-?reply|do-?not-?reply|bounces?|notifications?)[@+.]",
+              "operator": {
+                "type": "string",
+                "operation": "notRegex"
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.headers?.['list-unsubscribe'] ?? '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Skips our own domain, bounces and no-reply senders, and newsletters (anything with a List-Unsubscribe header). The desk also ignores the first two."
+    },
+    {
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Send to Care Desk",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "https://care-desk-1015165980124.us-central1.run.app/hooks/email",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from_email: $json.from?.value?.[0]?.address ?? '', from_name: $json.from?.value?.[0]?.name ?? '', subject: $json.subject ?? '', text: $json.text ?? '', html: $json.text ? '' : ($json.html || ''), message_id: $json.messageId ?? '' }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "notes": "The desk sorts each email: sales questions become Contacts, concerns become Tickets, the rest is logged. Repeats of the same Message-ID are ignored."
+    }
+  ],
+  "connections": {
+    "New email to info@": {
+      "main": [
+        [
+          {
+            "node": "Only real people",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only real people": {
+      "main": [
+        [
+          {
+            "node": "Send to Care Desk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

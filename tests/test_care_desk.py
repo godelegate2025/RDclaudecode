@@ -12,7 +12,7 @@ from care_desk import auth, config
 from care_desk.app import create_app
 from care_desk.meta import Comment, MetaError
 from care_desk.desk import MIN, Desk, DeskError
-from care_desk.intake import manual, parse_ghl
+from care_desk.intake import manual, new_text_of, parse_email, parse_ghl
 from care_desk.sorter import SortError, Sorting, sort_with_rules
 from care_desk.store import MemoryStore, SupabaseStore
 from service import auth as team_auth
@@ -85,6 +85,31 @@ class DeskTestCase(unittest.TestCase):
                                .replace("[BOOKING LINK]", "https://redefine.example/call")
             self.desk.save_journey_step("newlead", i, step["subject"], body)
         return self.desk.set_journey_status("newlead", "live", "tester@redefine.ph")
+
+
+class EmailIntakeTest(unittest.TestCase):
+    def test_keeps_only_what_the_sender_just_wrote(self):
+        gmail = ("How much is a website?\n\nThanks,\nAna\n\n"
+                 "On Mon, Oct 26, 2026 at 9:00 AM Redefine <info@redefineph.com> wrote:\n> Hi Ana,\n> old text")
+        self.assertEqual(new_text_of(gmail), "How much is a website?\n\nThanks,\nAna")
+        outlook = "Yes please send rates\r\n\r\n-----Original Message-----\r\nFrom: Redefine\r\nSent: Monday"
+        self.assertEqual(new_text_of(outlook), "Yes please send rates")
+        self.assertEqual(new_text_of("Call me tomorrow\n\nSent from my iPhone"), "Call me tomorrow")
+        self.assertEqual(new_text_of("> only a quote"), "> only a quote")  # never empty
+
+    def test_reads_the_fields_n8n_sends(self):
+        msg = parse_email({"from_email": "Ana@Example.com", "from_name": '"Ana Cruz"', "subject": "Website",
+                           "html": "<p>Hello&nbsp;there</p><style>x{}</style><p>Rates?</p>", "message_id": "<abc@mail>"})
+        self.assertEqual((msg.channel, msg.source, msg.email, msg.author, msg.subject, msg.external_id),
+                         ("email", "email", "ana@example.com", "Ana Cruz", "Website", "email:abc@mail"))
+        self.assertIn("Rates?", msg.text)
+        self.assertNotIn("<p>", msg.text)
+
+    def test_ignores_bounces_no_reply_and_our_own_domain(self):
+        for sender in ("MAILER-DAEMON@mx.example.com", "no-reply@shop.com", "noreply@x.com", "postmaster@x.com"):
+            self.assertIsNone(parse_email({"from_email": sender, "text": "hi"}), sender)
+        self.assertIsNone(parse_email({"from_email": "info@redefineph.com", "text": "hi"}, ("redefineph.com",)))
+        self.assertIsNone(parse_email({"text": "no sender"}))
 
 
 class IntakeTest(unittest.TestCase):
@@ -636,6 +661,29 @@ class HTTPTest(DeskTestCase):
         self.assertEqual(self.client.get("/api/desk/files/999").status_code, 404)
         self.client.cookies.clear()
         self.assertEqual(self.client.get(f"/api/desk/files/{files[0]['id']}").status_code, 401)
+
+    def test_email_webhook_files_emails_like_any_message(self):
+        os.environ["DESK_FROM_EMAIL"] = "Redefine <info@redefineph.com>"
+        self.addCleanup(os.environ.pop, "DESK_FROM_EMAIL", None)
+        body = {"from_email": "cara@example.com", "from_name": "Cara", "subject": "Rates",
+                "text": "How much for a product video?", "message_id": "<m1@mail>"}
+        self.assertEqual(self.client.post("/hooks/email", json=body).status_code, 401)
+        self.assertEqual(self.client.post("/hooks/email?key=wrong", json=body).status_code, 401)
+        self.next_sort = sorting("Pricing question", interest="Video production")
+        r = self.client.post("/hooks/email", json=body, headers={"X-Desk-Key": "hook-secret"}).json()
+        self.assertEqual((r["ignored"], r["duplicate"]), (False, False))
+        msg, lead = self.rows("messages")[0], self.rows("leads")[0]
+        self.assertEqual((msg["channel"], msg["source"], msg["route"]), ("email", "email", "lead"))
+        self.assertEqual((lead["email"], lead["name"]), ("cara@example.com", "Cara"))
+        # n8n retries and re-reads are ignored by Message-ID.
+        again = self.client.post("/hooks/email?key=hook-secret", json=body).json()
+        self.assertTrue(again["duplicate"])
+        # Our own mail and bounces never land in the desk.
+        own = {**body, "from_email": "info@redefineph.com", "message_id": "<m2@mail>"}
+        self.assertTrue(self.client.post("/hooks/email?key=hook-secret", json=own).json()["ignored"])
+        self.assertEqual(len(self.rows("messages")), 1)
+        empty = {**body, "text": "", "message_id": "<m3@mail>"}
+        self.assertEqual(self.client.post("/hooks/email?key=hook-secret", json=empty).status_code, 400)
 
     def test_webhook_needs_its_key(self):
         body = {"full_name": "Kian", "customData": {"comment": "wow", "channel": "facebook", "comment_id": "c9"}}
