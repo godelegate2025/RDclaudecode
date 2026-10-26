@@ -11,7 +11,7 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
 | Piece | What it uses |
 |---|---|
 | Staff | The Redefine App's sign-in (Google or an emailed code), checked against the desk's own team list |
-| Data | The app's Firestore database, in collections named `desk_…` |
+| Data | Supabase (Postgres), schema `care_desk`, when `SUPABASE_DB_URL` is set; otherwise the app's Firestore database, in collections named `desk_…` |
 | Messages in | A GHL workflow posts each new comment or message to `/hooks/ghl` |
 | Sorting | Claude (`ANTHROPIC_API_KEY`, the Post Auditor's key), or keyword rules without one |
 | Email out | Resend (`RESEND_API_KEY`, `DESK_FROM_EMAIL`); without them nothing is sent |
@@ -140,6 +140,65 @@ a day if left open around the clock. Firestore's free tier is 50,000 reads and
 writes, plus two per attached file and one per 700 KB of it; opening a file
 reads one document per 700 KB.
 
+## Move to Supabase
+
+The desk can keep its records in Supabase (Postgres) instead of Firestore. Each
+`desk_<name>` collection becomes the table `care_desk.<name>`, with the record's
+id in `key` and the record itself in `data` (jsonb), so SQL reads any field:
+
+```sql
+select data->>'category' as issue, count(*) from care_desk.messages group by 1 order by 2 desc;
+```
+
+The `care_desk` schema is not exposed through Supabase's Data API, so the
+project's API keys can't reach it, and row level security is on with no
+policies as a second lock; only the database login in the connection string
+reads it. Only the desk moves:
+sign-in, the app's team list and profiles stay in Firestore, and the desk keeps
+reading them there.
+
+1. **Make the project.** supabase.com → New project. The desk runs in Google's
+   `us-central1` (Iowa) and calls the database several times per page and per
+   message, so the project must be close to it: choose **Americas**, then under
+   *Need a specific region?* pick **East US (Ohio)**, or **East US (North
+   Virginia)** if Ohio isn't offered. A project in Asia would add about 0.2 s
+   to every call. The region can't be changed later; a project made in the
+   wrong one has to be deleted and made again. Keep the database password;
+   one of letters and numbers only saves percent-encoding it in step 2. Untick
+   *Automatically expose new tables*; the desk doesn't need the Data API.
+2. **Store the connection string.** Project → **Connect** → *Transaction
+   pooler* (port 6543; Cloud Run can't reach the direct address). Copy the URI,
+   put the password in place of `[YOUR-PASSWORD]`, then:
+
+   ```powershell
+   Get-Clipboard | gcloud secrets create supabase-db-url --data-file=-
+   ```
+
+3. **Copy the records**, from the repo folder, in a quiet moment:
+
+   ```powershell
+   pip install -r requirements-desk.txt
+   $env:SUPABASE_DB_URL = (gcloud secrets versions access latest --secret supabase-db-url)
+   $env:FIRESTORE_DATABASE = "redefine-team"   # the app's Firestore database
+   python -m care_desk.move_to_supabase
+   ```
+
+   It creates the tables and copies every record with its id. New ids on
+   Supabase start 100 past Firestore's, so ticket numbers jump ahead once (say
+   RD-1050 to RD-1151). That gap keeps anything the desk records on Firestore
+   before the switch (step 4) from clashing with records made on Supabase.
+4. **Switch the desk over:** re-run `deploy-desk.ps1`. It sees the
+   `supabase-db-url` secret and hands it to the desk. The desk keeps its
+   address, so GHL, Google sign-in and unsubscribe links need no changes.
+5. **Catch stragglers:** run `python -m care_desk.move_to_supabase` once more,
+   then `python -m care_desk.move_to_supabase --check`; the two columns should
+   match. Re-runs only bring over records that are newer in Firestore, so
+   nothing done on Supabase is undone.
+
+The `desk_` collections stay in Firestore untouched, as a backup. To go back,
+delete the `supabase-db-url` secret and re-run `deploy-desk.ps1`; anything
+recorded on Supabase in the meantime stays there and is not copied back.
+
 ## Connect GHL
 
 Get the webhook address:
@@ -235,4 +294,5 @@ edited on the Email screen; those edits are stored in Firestore.
 | `DESK_BRAND`, `DESK_TICKET_PREFIX`, `DESK_SIGN_OFF` | Default `Redefine`, `RD`, `The Redefine team` |
 | `META_PAGE_TOKEN` | Redefine Ph's Page token, for Facebook replies (secret `meta-page-token`) |
 | `META_PAGE_ID` | The Page to read comments from; defaults to Redefine Ph (`1316682498188449`) |
+| `SUPABASE_DB_URL` | Keeps the desk's data in Supabase (secret `supabase-db-url`); without it, Firestore |
 | `DESK_STORE`, `DESK_DEV_EMAIL` | Laptop runs only, see above |

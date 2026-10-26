@@ -35,7 +35,7 @@ from service.firestore_db import StoreUnavailable
 
 from . import auth, intake
 from .desk import LOAD, Desk, DeskError, NotFound
-from .store import FirestoreStore, MemoryStore
+from .store import FirestoreStore, MemoryStore, SupabaseStore
 from .team import DeskTeam, TeamError, invite_message
 
 log = logging.getLogger("care-desk")
@@ -140,10 +140,17 @@ def not_set_up() -> str | None:
     return None
 
 
+def _store():
+    # DESK_STORE=memory is for trying it on a laptop: nothing is saved past a restart.
+    if os.environ.get("DESK_STORE") == "memory":
+        return MemoryStore()
+    url = os.environ.get("SUPABASE_DB_URL", "").strip()
+    return SupabaseStore(url) if url else FirestoreStore()
+
+
 def create_app(desk: Desk | None = None) -> FastAPI:
     app = FastAPI(title="Care Desk", docs_url=None, redoc_url=None)
-    # DESK_STORE=memory is for trying it on a laptop: nothing is saved past a restart.
-    app.state.desk = desk or Desk(MemoryStore() if os.environ.get("DESK_STORE") == "memory" else FirestoreStore())
+    app.state.desk = desk or Desk(_store())
     if os.environ.get("DESK_STORE") == "memory":
         app_team.use_store(app_team.MemoryStore())  # nor the app's team list, which the desk team is filled from
         profiles.use_store(profiles.MemoryStore())

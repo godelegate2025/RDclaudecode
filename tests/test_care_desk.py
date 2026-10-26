@@ -14,9 +14,25 @@ from care_desk.meta import Comment, MetaError
 from care_desk.desk import MIN, Desk, DeskError
 from care_desk.intake import manual, parse_ghl
 from care_desk.sorter import SortError, Sorting, sort_with_rules
-from care_desk.store import MemoryStore
+from care_desk.store import MemoryStore, SupabaseStore
 from service import auth as team_auth
 from service import team
+
+
+# With a Postgres URL (any empty database will do), every desk test also runs on
+# the Supabase store, in a throwaway schema that is dropped before each test.
+PG_URL = os.environ.get("DESK_TEST_PG_URL", "").strip()
+PG_SCHEMA = "care_desk_test"
+
+
+def make_store(clock):
+    if not PG_URL:
+        return MemoryStore(clock=clock)
+    import psycopg
+
+    with psycopg.connect(PG_URL, autocommit=True) as conn:
+        conn.execute(f"drop schema if exists {PG_SCHEMA} cascade")
+    return SupabaseStore(PG_URL, clock=clock, schema=PG_SCHEMA)
 
 
 class Clock:
@@ -38,7 +54,9 @@ def sorting(category, priority="Normal", interest=None):
 class DeskTestCase(unittest.TestCase):
     def setUp(self):
         self.clock = Clock()
-        self.store = MemoryStore(clock=self.clock)
+        self.store = make_store(self.clock)
+        if PG_URL:
+            self.addCleanup(self.store.close)
         self.next_sort = sorting("General question")
         self.sent = []
         self.mail_on = False
@@ -848,6 +866,146 @@ class FacebookHTTPTest(FacebookCase):
         self.assertEqual(again.status_code, 400)
         bad_pick = self.client.post(f"/api/desk/messages/{mid}/pick", json={"comment_id": "zzz"}, headers={"X-Requested-With": "desk"})
         self.assertEqual(bad_pick.status_code, 400)
+
+
+
+@unittest.skipUnless(PG_URL, "set DESK_TEST_PG_URL to test the Supabase store")
+class SupabaseStoreTest(unittest.TestCase):
+    def setUp(self):
+        self.clock = Clock()
+        self.store = make_store(self.clock)
+        self.addCleanup(self.store.close)
+
+    def test_ids_count_up_per_collection(self):
+        self.assertEqual([self.store.insert("tickets", {}) for _ in range(3)], [1, 2, 3])
+        self.assertEqual(self.store.insert("leads", {}), 1)
+        self.assertEqual(self.store.get("tickets", 2)["id"], 2)
+
+    def test_bytes_come_back_as_bytes(self):
+        data = bytes(range(256)) * 10
+        self.store.put("file_parts", "1-0", {"file_id": 1, "data": data})
+        self.assertEqual(self.store.get("file_parts", "1-0")["data"], data)
+
+    def test_update_merges_and_stamps(self):
+        i = self.store.insert("messages", {"text": "hi", "route": None})
+        self.clock.advance(1)
+        self.store.update("messages", i, {"route": "ticket"})
+        doc = self.store.get("messages", i)
+        self.assertEqual((doc["text"], doc["route"], doc["updated_at"]), ("hi", "ticket", self.clock()))
+        with self.assertRaises(KeyError):
+            self.store.update("messages", 99, {"route": "x"})
+
+    def test_ranges_skip_nulls_and_other_types(self):
+        for at in (5, None, "7", 9):
+            self.store.insert("leads", {"next_at": at})
+        self.assertEqual([d["next_at"] for d in self.store.where("leads", "next_at", "<=", 10, order="next_at")], [5, 9])
+        self.assertEqual([d["next_at"] for d in self.store.where("leads", "next_at", ">", 5)], [9])
+
+    def test_equality_and_in_respect_types(self):
+        self.store.insert("events", {"ticket_id": 1})
+        self.store.insert("events", {"ticket_id": "1"})
+        self.store.insert("events", {"ticket_id": 2})
+        self.assertEqual(len(self.store.where("events", "ticket_id", "==", 1)), 1)
+        self.assertEqual(len(self.store.where("events", "ticket_id", "in", [1, 2])), 2)
+        self.assertEqual(self.store.where("events", "ticket_id", "in", []), [])
+
+    def test_recent_is_newest_first_and_skips_records_without_the_field(self):
+        for at in (3, 1, 2):
+            self.store.insert("emails", {"at": at})
+        self.store.insert("emails", {})
+        self.assertEqual([d["at"] for d in self.store.recent("emails", "at", 2)], [3, 2])
+
+    def test_copy_in_keeps_the_newer_copy_and_counters_only_go_up(self):
+        self.assertEqual(self.store.copy_in("tickets", "4", {"id": 4, "status": "Open", "updated_at": 10}), "added")
+        self.assertEqual(self.store.copy_in("tickets", "4", {"id": 4, "status": "Old", "updated_at": 5}), "kept")
+        self.assertEqual(self.store.copy_in("tickets", "4", {"id": 4, "status": "Resolved", "updated_at": 20}), "updated")
+        self.assertEqual(self.store.get("tickets", 4)["status"], "Resolved")
+        self.store.raise_counter("tickets", 4)
+        self.store.raise_counter("tickets", 2)
+        self.assertEqual(self.store.insert("tickets", {}), 5)
+
+    def test_rejects_names_that_are_not_plain_words(self):
+        with self.assertRaises(ValueError):
+            self.store.get("tickets; drop table x", 1)
+        with self.assertRaises(ValueError):
+            self.store.where("tickets", "status' or '1", "==", 1)
+
+
+
+class FakeSnap:
+    def __init__(self, key, data):
+        self.id, self._data = key, data
+
+    def to_dict(self):
+        return self._data
+
+
+class FakeCollection:
+    def __init__(self, name, docs):
+        self.id, self.docs = name, docs
+
+    def stream(self):
+        return [FakeSnap(k, v) for k, v in self.docs.items()]
+
+
+class FakeFirestore:
+    project = "redefine-test"
+
+    def __init__(self, collections):
+        self.data = collections
+
+    def collections(self):
+        return [FakeCollection(name, docs) for name, docs in self.data.items()]
+
+
+@unittest.skipUnless(PG_URL, "set DESK_TEST_PG_URL to test the move to Supabase")
+class MoveToSupabaseTest(unittest.TestCase):
+    def setUp(self):
+        from datetime import datetime, timezone
+
+        self.clock = Clock()
+        self.store = make_store(self.clock)
+        self.addCleanup(self.store.close)
+        self.firestore = FakeFirestore({
+            "desk_tickets": {"7": {"id": 7, "status": "Open", "updated_at": 10},
+                             "8": {"id": 8, "status": "Open", "updated_at": 10}},
+            "desk_file_parts": {"1-0": {"file_id": 1, "data": b"\x00\xffpdf", "updated_at": 10}},
+            "desk_team": {"ana@redefine.ph": {"email": "ana@redefine.ph", "role": "agent",
+                                              "seen": datetime(2026, 10, 1, tzinfo=timezone.utc)}},
+            "desk_counters": {"tickets": {"next": 9}},
+            "team_members": {"x@redefine.ph": {"role": "admin"}},  # the app's, not the desk's
+        })
+
+    def move(self):
+        from care_desk import move_to_supabase
+
+        move_to_supabase.move(self.firestore, self.store, out=lambda _line: None)
+
+    def test_copies_the_desk_and_leaves_the_app_alone(self):
+        self.move()
+        self.assertEqual(self.store.get("tickets", 7)["status"], "Open")
+        self.assertEqual(self.store.get("file_parts", "1-0")["data"], b"\x00\xffpdf")
+        self.assertEqual(self.store.get("team", "ana@redefine.ph")["seen"], "2026-10-01T00:00:00+00:00")
+        from care_desk.move_to_supabase import _collections
+
+        self.assertEqual(list(_collections(self.firestore)), ["counters", "file_parts", "team", "tickets"])
+        self.assertEqual(self.store.insert("tickets", {}), 110)  # ID_GAP past Firestore's counter
+
+    def test_records_the_old_desk_adds_meanwhile_get_ids_the_new_desk_never_uses(self):
+        self.move()
+        new = self.store.insert("tickets", {"status": "Open"})  # the new desk, after the switch
+        self.firestore.data["desk_tickets"]["9"] = {"id": 9, "status": "Late arrival", "updated_at": 30}
+        self.move()
+        self.assertEqual(self.store.get("tickets", 9)["status"], "Late arrival")
+        self.assertEqual(self.store.get("tickets", new)["status"], "Open")
+
+    def test_a_second_run_brings_only_newer_changes(self):
+        self.move()
+        self.store.update("tickets", 7, {"status": "Resolved"})  # worked on Supabase after the first run
+        self.firestore.data["desk_tickets"]["8"] = {"id": 8, "status": "In progress", "updated_at": 20}
+        self.move()
+        self.assertEqual(self.store.get("tickets", 7)["status"], "Resolved")
+        self.assertEqual(self.store.get("tickets", 8)["status"], "In progress")
 
 
 if __name__ == "__main__":

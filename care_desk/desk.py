@@ -43,7 +43,7 @@ MAX_TAGS = 20        # per contact
 TAG_CHARS = 40
 LOAD = {"messages": 400, "tickets": 600, "leads": 2000, "emails": 150}
 
-# Ticket notes. Files live in Firestore next to everything else, split into
+# Ticket notes. Files live in the database next to everything else, split into
 # parts because one Firestore document holds at most 1 MiB.
 NOTE_CHARS = 5000
 NOTE_FILES = 5

@@ -16,6 +16,10 @@
   Optional, for real emails:
     "re_..." | gcloud secrets create resend-api-key --data-file=-
 
+  Optional, to keep the desk's data in Supabase instead of Firestore
+  (CARE_DESK.md, "Move to Supabase"):
+    Get-Clipboard | gcloud secrets create supabase-db-url --data-file=-
+
 .EXAMPLE
   .\deploy-desk.ps1 -FromEmail "Redefine <hello@redefine.ph>" -ReplyTo "hello@redefine.ph"
 #>
@@ -81,6 +85,8 @@ elseif ($appEnv["ANTHROPIC_API_KEY"]) { $copyClaudeKey = $true; Write-Host "  us
 else { Write-Host "  no Claude key found: messages will be sorted by keyword rules" -ForegroundColor Yellow }
 if (Test-Secret "resend-api-key") { $secrets += ",RESEND_API_KEY=resend-api-key:latest" }
 else { Write-Host "  resend-api-key not found: emails are logged, not sent" -ForegroundColor Yellow }
+if (Test-Secret "supabase-db-url") { $secrets += ",SUPABASE_DB_URL=supabase-db-url:latest"; Write-Host "  desk data: Supabase" }
+else { Write-Host "  desk data: Firestore (no supabase-db-url secret)" }
 if (Test-Secret "meta-page-token") { $secrets += ",META_PAGE_TOKEN=meta-page-token:latest" }
 else { Write-Host "  meta-page-token not found: Facebook replies are posted in GHL, not from the desk" -ForegroundColor Yellow }
 
