@@ -45,11 +45,11 @@ def invite_message(email: str, role: str, by: str, desk_url: str, logo_url: str 
     """Subject, plain text and HTML of the email someone gets when an admin adds them."""
     as_role = "an admin" if role == "admin" else "an agent"
     can = ("As an admin you can also manage who has access to the desk."
-           if role == "admin" else "You'll work support tickets, leads and follow-up emails.")
+           if role == "admin" else "You'll work support tickets, contacts and follow-up emails.")
     subject = "You're invited to the Redefine Care Desk"
     text = (f"You're invited to the Redefine Care Desk\n\n"
             f"{by} added you to Redefine's Care Desk as {as_role}. The Care Desk is where the team answers "
-            f"comments, works support tickets and follows up leads. {can}\n\n"
+            f"comments, works support tickets and follows up contacts. {can}\n\n"
             f"Open the Care Desk: {desk_url}\n\n"
             f"Sign in with Google, or choose \"Continue with email\" and we'll send a code to {email}. "
             "Use this address: the desk only lets in the people on its team.\n\n"
@@ -58,7 +58,7 @@ def invite_message(email: str, role: str, by: str, desk_url: str, logo_url: str 
     body = (heading("You're invited to the Care Desk")
             + para(f'<strong style="color:#191616">{escape(by)}</strong> added you to Redefine\'s Care Desk as '
                    f"{as_role}. The Care Desk is where the team answers comments, works support tickets and "
-                   f"follows up leads. {escape(can)}", margin="0 0 22px")
+                   f"follows up contacts. {escape(can)}", margin="0 0 22px")
             + button("Open the Care Desk", desk_url)
             + para('Sign in with Google, or choose <strong style="color:#4A4545">Continue with email</strong> and '
                    f'we\'ll send a code to <strong style="color:#4A4545">{escape(email)}</strong>. Use this address: '

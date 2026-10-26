@@ -84,6 +84,10 @@ class IntakeTest(unittest.TestCase):
                          "message": {"body": "#highlight", "type": "Instagram"}})
         self.assertEqual((msg.text, msg.author, msg.channel), ("#highlight", "Nicole Abrenica", "instagram"))
 
+    def test_keeps_the_contacts_phone_for_texting_later(self):
+        self.assertEqual(parse_ghl({"phone": " +1 678 541 1468 ", "customData": {"comment": "hi"}}).phone, "+1 678 541 1468")
+        self.assertIsNone(parse_ghl({"customData": {"comment": "hi"}}).phone)
+
     def test_payload_without_text_is_kept_for_debugging(self):
         msg = parse_ghl({"contact_id": "c2", "customData": {"something": "else"}})
         self.assertEqual(msg.text, "")
@@ -313,12 +317,70 @@ class ImportTest(DeskTestCase):
             {"name": "Ok Twice", "email": "ok@example.com", "consent": "yes"},
         ]
         reasons = [v["reason"] for v in self.desk.check_import(rows)]
-        self.assertEqual(reasons, [None, "No email consent", "Already a lead", "Unsubscribed",
-                                   "Contacted in the last 90 days", "No valid email", "Already a lead"])
+        self.assertEqual(reasons, [None, "No email consent", "Already a contact", "Unsubscribed",
+                                   "Contacted in the last 90 days", "No valid email", "Already a contact"])
         result = self.desk.import_leads(rows, "tester@redefine.ph")
         self.assertEqual(result, {"enrolled": 1, "skipped": 6})
         old = [l for l in self.rows("leads") if l["kind"] == "old"]
         self.assertEqual((old[0]["interest"], old[0]["status"]), ("Branding", "queued"))
+
+
+class ContactsTest(DeskTestCase):
+    def setUp(self):
+        super().setUp()
+        self.next_sort = sorting("Pricing question", interest="Website")
+        for name in ("Ben Cruz", "Carla Santos", "Dan Reyes"):
+            self.add(f"How much for a website? - {name}", email=f"{name.split()[0].lower()}@example.com", author=name)
+        self.ids = [l["id"] for l in self.rows("leads")]
+
+    def tags(self):
+        return [l["tags"] for l in self.rows("leads")]
+
+    def test_new_contacts_start_with_no_tags_and_keep_a_phone_from_ghl(self):
+        self.desk.ingest(parse_ghl({"full_name": "Eve Lim", "phone": "+639171234567",
+                                    "customData": {"comment": "Rates for ads?", "channel": "Facebook"}}))
+        lead = self.rows("leads")[-1]
+        self.assertEqual((lead["name"], lead["phone"], lead["tags"]), ("Eve Lim", "+639171234567", []))
+
+    def test_tags_are_added_once_and_removed_ignoring_case(self):
+        self.assertEqual(self.desk.tag_leads(self.ids[:2], [" VIP ", "Cebu", "vip", ""], "mia@redefine.ph"), 2)
+        self.assertEqual(self.tags(), [["VIP", "Cebu"], ["VIP", "Cebu"], []])
+        self.assertEqual(self.desk.tag_leads(self.ids, ["vip", "Hot  lead"], "mia@redefine.ph"), 3)
+        self.assertEqual(self.tags(), [["VIP", "Cebu", "Hot lead"], ["VIP", "Cebu", "Hot lead"], ["vip", "Hot lead"]])
+        self.assertEqual(self.desk.tag_leads(self.ids, ["VIP"], "mia@redefine.ph", True), 3)
+        self.assertEqual(self.tags(), [["Cebu", "Hot lead"], ["Cebu", "Hot lead"], ["Hot lead"]])
+        self.assertEqual(self.desk.tag_leads(self.ids, ["Hot lead"], "mia@redefine.ph"), 0)  # nothing new
+        labels = [e["label"] for e in self.rows("events") if e["lead_id"] == self.ids[0]]
+        self.assertEqual(labels[-3:], ["Tagged", "Tagged", "Tags removed"])
+
+    def test_tags_must_be_given_and_fit(self):
+        with self.assertRaises(DeskError):
+            self.desk.tag_leads(self.ids, [" ", ""], "mia@redefine.ph")
+        self.desk.tag_leads(self.ids[:1], [f"t{i}" for i in range(20)], "mia@redefine.ph")
+        with self.assertRaises(DeskError):  # one contact would go over: nobody is changed
+            self.desk.tag_leads(self.ids, ["one more"], "mia@redefine.ph")
+        self.assertEqual(self.tags()[1:], [[], []])
+
+    def test_delete_keeps_the_message_but_not_the_contact(self):
+        since = self.desk.state()["now"]
+        self.clock.advance(1)
+        self.assertEqual(self.desk.delete_leads([self.ids[0], self.ids[0], 999], "boss@redefine.ph"), 1)
+
+        gone = self.store.get("leads", self.ids[0])
+        self.assertEqual(gone, {"id": self.ids[0], "deleted": True, "updated_at": self.clock()})  # no name, email or phone
+        self.assertFalse([e for e in self.rows("events") if e["lead_id"] == self.ids[0]])
+        msg = self.rows("messages")[0]
+        self.assertEqual((msg["text"], msg["lead_id"], msg["route"]), ("How much for a website? - Ben Cruz", None, None))
+
+        self.assertEqual(sorted(l["id"] for l in self.desk.state()["leads"]), self.ids[1:])  # full load leaves it out
+        self.assertIn({"id": self.ids[0], "deleted": True, "updated_at": self.clock()},
+                      self.desk.state(since)["leads"])  # open pages are told it went
+        with self.assertRaises(Exception):
+            self.desk.lead_action(self.ids[0], "won", "boss@redefine.ph")
+        self.assertEqual(self.desk.tag_leads([self.ids[0]], ["VIP"], "boss@redefine.ph"), 0)
+
+        self.desk.message_action(msg["id"], "lead", "boss@redefine.ph")  # the message can become a contact again
+        self.assertEqual(len([l for l in self.rows("leads") if not l.get("deleted")]), 3)
 
 
 class StateTest(DeskTestCase):
@@ -486,6 +548,31 @@ class HTTPTest(DeskTestCase):
         self.sign_in("owner@redefine.ph")  # owners are always desk admins
         self.assertEqual(self.client.get("/api/desk/state").json()["user"]["role"], "owner")
         self.assertEqual(self.client.get("/api/desk/team").status_code, 200)
+
+    def test_contacts_in_bulk_over_http(self):
+        desk_team, h = self.client.app.state.team, {"X-Requested-With": "desk"}
+        desk_team.add("agent@redefine.ph", "agent", by="owner@redefine.ph")
+        self.next_sort = sorting("Pricing question", interest="Website")
+        self.add("How much?", email="ben@example.com")
+        lead_id = self.rows("leads")[0]["id"]
+
+        self.sign_in("agent@redefine.ph")
+        bulk = lambda body, headers=h: self.client.post("/api/desk/leads/bulk", json=body, headers=headers)  # noqa: E731
+        self.assertEqual(bulk({"action": "tag", "ids": [lead_id], "tags": ["VIP"]}, {}).status_code, 403)
+        r = bulk({"action": "tag", "ids": [lead_id], "tags": ["VIP"]})
+        self.assertEqual((r.status_code, r.json()["changed"]), (200, 1))
+        self.assertEqual(self.rows("leads")[0]["tags"], ["VIP"])
+        self.assertEqual(bulk({"action": "untag", "ids": [lead_id], "tags": ["vip"]}).json()["changed"], 1)
+        self.assertEqual(bulk({"action": "tag", "ids": [], "tags": ["VIP"]}).status_code, 400)
+        self.assertEqual(bulk({"action": "tag", "ids": [lead_id], "tags": []}).status_code, 400)
+        self.assertEqual(bulk({"action": "explode", "ids": [lead_id]}).status_code, 400)
+        r = bulk({"action": "delete", "ids": [lead_id]})
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("admins", r.json()["detail"])
+
+        self.sign_in("owner@redefine.ph")
+        self.assertEqual(bulk({"action": "delete", "ids": [lead_id]}).json()["changed"], 1)
+        self.assertEqual(self.client.get("/api/desk/state").json()["leads"], [])
 
     def test_never_runs_open_without_sign_in(self):
         for name in SIGN_IN:

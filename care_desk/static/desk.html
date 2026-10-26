@@ -184,6 +184,18 @@ table.team td .sub{white-space:nowrap}
 table.team .sel{min-height:36px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .team .you{display:inline-block;margin-left:6px;font:600 11px var(--body);color:var(--t-lo)}
+/* contacts: tick boxes, the bar that appears once some are ticked, and tags */
+th.pick,td.pick{width:44px;padding-right:0;cursor:pointer}
+.pick input{width:18px;height:18px;margin:0;vertical-align:middle;accent-color:var(--coral);cursor:pointer}
+tbody tr.picked td{background:rgba(252,68,82,.06)}
+.selbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 10px;margin-bottom:10px;border-radius:12px;border:1px solid var(--line-2);background:var(--panel)}
+.selbar .count{display:inline-flex;align-items:center;gap:12px;min-height:34px;padding:0 12px;border-radius:999px;background:rgba(255,255,255,.07);font:700 12px var(--body)}
+.selbar .count button{border:0;background:none;padding:0;font:inherit;color:var(--t-mid);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.selbar .count button:hover{color:var(--t-hi)}
+.selbar .sep{width:1px;height:22px;background:var(--line-2)}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tag{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,.08);font:700 11px var(--body);color:var(--t-mid);white-space:nowrap}
+.tagpick{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 
 /* drawer */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40}
@@ -358,7 +370,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     <button class="nav" data-view="dash" aria-current="page"><span data-icon="chart"></span>Dashboard</button>
     <button class="nav" data-view="inbox"><span data-icon="inbox"></span>Inbox<span class="badge" id="bdInbox"></span></button>
     <button class="nav" data-view="tickets"><span data-icon="ticket"></span>Tickets<span class="badge" id="bdTickets"></span></button>
-    <button class="nav" data-view="leads"><span data-icon="users"></span>Leads</button>
+    <button class="nav" data-view="leads"><span data-icon="users"></span>Contacts</button>
     <button class="nav" data-view="email"><span data-icon="mail"></span>Email</button>
     <button class="nav" data-view="team" id="navTeam" hidden><span data-icon="shield"></span>Team</button>
   </nav>
@@ -402,6 +414,9 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     clip: '<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>',
+    tag: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
   };
   const ic = (n, s = 18, sw) => `<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24"${sw ? ` style="stroke-width:${sw}"` : ''} aria-hidden="true">${IP[n]}</svg>`;
@@ -445,7 +460,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
 
   /* ================================================================ state */
   let D = null;  // what the server says
-  const U = { view: 'dash', filter: { ch: 'all', cat: 'all' }, sel: null, tFilter: 'open', lTab: 'new', jSel: 'newlead', stepSel: 0, drawer: null, modal: null, editing: false, importRows: null };
+  const U = { view: 'dash', filter: { ch: 'all', cat: 'all' }, sel: null, tFilter: 'open', lTab: 'new', jSel: 'newlead', stepSel: 0, drawer: null, modal: null, editing: false, importRows: null, picked: new Set() };
   // Unsent ticket notes and the files picked for them, by ticket, so a refresh never loses them.
   const NOTE = { draft: {}, files: new Map(), maxFiles: 5, maxBytes: 10 * 1024 * 1024 };
 
@@ -465,7 +480,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   let since = 0;
   function prepare(s) {
     if (s.full) Object.values(R).forEach(m => m.clear());
-    Object.keys(R).forEach(k => s[k].forEach(x => R[k].set(x.id, x)));
+    // A deleted contact comes back as a bare marker, so pages that only fetch changes drop it too.
+    Object.keys(R).forEach(k => s[k].forEach(x => x.deleted ? R[k].delete(x.id) : R[k].set(x.id, x)));
     const newest = (k, f) => [...R[k].values()].sort((a, b) => b[f] - a[f]);
     s.messages = newest('messages', 'received_at');
     s.tickets = newest('tickets', 'created_at');
@@ -500,6 +516,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       skew = s.now - Date.now();
       since = s.now - 5000;  // a little overlap, so a write landing mid-request is not missed
       D = prepare(s);
+      U.picked.forEach(k => { if (!D.lById.has(k)) U.picked.delete(k); });
       render();
     } catch (e) {
       if (!D) $('#view').innerHTML = `<p class="loading">Could not load the desk: ${esc(e.message)}</p>`;
@@ -556,7 +573,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   };
   const routeLabel = m => {
     if (m.route === 'ticket') { const t = D.tById.get(m.ticket_id); return `${ic('ticket', 13)}Ticket ${t ? t.code : ''}`; }
-    if (m.route === 'lead') return `${ic('users', 13)}Lead`;
+    if (m.route === 'lead') return `${ic('users', 13)}Contact`;
     if (m.route === 'logged') return `${ic('check', 13)}Logged`;
     return '';
   };
@@ -570,7 +587,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const sel = D.mById.get(U.sel) || list[0];
     return `
       <div class="vh"><div><div class="eyebrow">02 · Comment intelligence</div><h1>Inbox</h1></div>
-        <p>Every comment, message and email from Redefine's GHL lands here and is sorted by issue type. Concerns become tickets. Questions about services and prices become leads.</p></div>
+        <p>Every comment, message and email from Redefine's GHL lands here and is sorted by issue type. Concerns become tickets. Questions about services and prices become contacts.</p></div>
       ${D.status.webhook ? '' : `<div class="banner">${ic('alert', 18)}<span>The GHL webhook is not switched on yet, so only messages you add by hand arrive. Set <code>DESK_WEBHOOK_KEY</code> on the server and add the workflow in GHL.</span></div>`}
       ${U.addOpen ? `<div class="card try">
         <div class="tryhd"><label for="tryText">Add a message by hand</label><button class="btn ghost sm" data-act="addtoggle" aria-label="Close">${ic('x', 15)}</button></div>
@@ -665,7 +682,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
         ${replyBlock(m, link)}
         <div class="acts">
           ${!t ? `<button class="btn sm" data-act="mkticket" data-id="${m.id}">${ic('ticket', 14)}Make a ticket</button>` : ''}
-          ${!l && m.intent !== 'service' ? `<button class="btn sm" data-act="mklead" data-id="${m.id}">${ic('users', 14)}Add as lead</button>` : ''}
+          ${!l && m.intent !== 'service' ? `<button class="btn sm" data-act="mklead" data-id="${m.id}">${ic('users', 14)}Add as contact</button>` : ''}
         </div>`;
     } else if (m.sort_status === 'failed') {
       body = `<p class="err">${esc(m.sort_error || 'Sorting failed.')}</p>
@@ -782,44 +799,64 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
   /* ================================================================ leads */
   const LST = { active: ['g', 'In journey'], queued: ['a', 'Waiting on approval'], manual: ['o', 'No email · follow up by DM'], replied: ['w', 'Replied · follow up'], won: ['g', 'Won'], completed: ['o', 'Journey finished'], closed: ['o', 'Closed'], unsubscribed: ['o', 'Unsubscribed'] };
 
+  const leadList = () => D.leads.filter(l => l.kind === U.lTab);
+  const pickedLeads = () => [...U.picked].map(k => D.lById.get(k)).filter(Boolean);
+  const tagsHTML = tags => tags && tags.length ? `<span class="tags">${tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</span>` : '';
+  const splitTags = v => v.split(',').map(t => t.trim()).filter(Boolean);
+  function selbar(list) {
+    if (!U.picked.size) return '';
+    const n = U.picked.size, act = (v, icon, label) => `<button class="btn sm ghost" data-act="bulk" data-v="${v}">${ic(icon, 14)}${label}</button>`;
+    return `<div class="selbar" role="toolbar" aria-label="Selected contacts">
+      <span class="count">Selected: ${n}${n < list.length ? `<button data-act="pickevery">Select all: ${list.length}</button>` : ''}<button data-act="clearpick">Clear</button></span>
+      <span class="sep" aria-hidden="true"></span>${act('sms', 'dm', 'Send SMS')}${act('email', 'mail', 'Send email')}${act('whatsapp', 'phone', 'Send WhatsApp')}
+      <span class="sep" aria-hidden="true"></span>${act('tag', 'tag', 'Add tags')}${act('untag', 'tag', 'Remove tags')}
+      ${isAdmin() ? `<span class="sep" aria-hidden="true"></span>${act('delete', 'trash', 'Delete')}` : ''}
+    </div>`;
+  }
+
   function vLeads() {
-    const kind = U.lTab, list = D.leads.filter(l => l.kind === kind);
+    const kind = U.lTab, list = leadList();
+    const nPicked = list.filter(l => U.picked.has(l.id)).length, all = list.length > 0 && nPicked === list.length;
     const jk = kind === 'old' ? 'oldlead' : 'newlead', j = D.J[jk], n = j.steps.length;
     const cnt = k => D.leads.filter(l => l.kind === k).length;
     return `
-      <div class="vh"><div><div class="eyebrow">Leads</div><h1>Leads</h1></div>
-        <p>Questions about services and prices become leads. New leads get a fast answer and a short follow-up. Old inquiries you import get a reactivation sequence.</p>
-        <div class="right"><button class="btn" data-act="import">${ic('upload', 16)}Import old leads</button></div></div>
+      <div class="vh"><div><div class="eyebrow">04 · Sales follow-up</div><h1>Contacts</h1></div>
+        <p>Questions about services and prices become contacts. New contacts get a fast answer and a short follow-up. Old inquiries you import get a reactivation sequence.</p>
+        <div class="right"><button class="btn" data-act="import">${ic('upload', 16)}Import old contacts</button></div></div>
       <div class="tabs" role="tablist">
-        <button class="fbtn" role="tab" data-act="ltab" data-v="new" aria-pressed="${kind === 'new'}" aria-selected="${kind === 'new'}">New leads<span class="n num">${cnt('new')}</span></button>
-        <button class="fbtn" role="tab" data-act="ltab" data-v="old" aria-pressed="${kind === 'old'}" aria-selected="${kind === 'old'}">Old leads<span class="n num">${cnt('old')}</span></button>
+        <button class="fbtn" role="tab" data-act="ltab" data-v="new" aria-pressed="${kind === 'new'}" aria-selected="${kind === 'new'}">New contacts<span class="n num">${cnt('new')}</span></button>
+        <button class="fbtn" role="tab" data-act="ltab" data-v="old" aria-pressed="${kind === 'old'}" aria-selected="${kind === 'old'}">Old contacts<span class="n num">${cnt('old')}</span></button>
       </div>
-      ${j.status !== 'live' ? `<div class="banner">${ic('shield', 18)}<span>The ${esc(j.name)} is ${j.status === 'paused' ? 'paused' : 'waiting for approval'}. Leads with an email are queued and nothing is sent until it goes live.</span><button class="btn sm" data-act="gotoj" data-v="${jk}">Review the journey</button></div>` : ''}
+      ${j.status !== 'live' ? `<div class="banner">${ic('shield', 18)}<span>The ${esc(j.name)} is ${j.status === 'paused' ? 'paused' : 'waiting for approval'}. Contacts with an email are queued and nothing is sent until it goes live.</span><button class="btn sm" data-act="gotoj" data-v="${jk}">Review the journey</button></div>` : ''}
       ${!D.status.email ? `<div class="banner">${ic('mail', 18)}<span>No email service is set up, so journeys are on hold. Set <code>RESEND_API_KEY</code> and <code>DESK_FROM_EMAIL</code> on the server.</span></div>` : ''}
+      ${selbar(list)}
       <div class="tablewrap"><table>
-        <thead><tr><th>Lead</th><th>Interest</th><th>Source</th><th>Journey</th><th>Next email</th><th>Status</th><th></th></tr></thead>
-        <tbody>${list.map(l => { const st = LST[l.status] || ['o', l.status]; const next = j.steps[l.step]; return `<tr data-act="openlead" data-id="${l.id}" tabindex="0">
-          <td><b>${esc(l.name)}</b><span class="sub">${l.email ? esc(l.email) : 'No email'}</span></td>
+        <thead><tr><th class="pick" data-act="pickall"><input type="checkbox" aria-label="Select all ${kind} contacts"${all ? ' checked' : ''}${nPicked && !all ? ' data-indeterminate' : ''}></th><th>Contact</th><th>Interest</th><th>Source</th><th>Journey</th><th>Next email</th><th>Status</th><th></th></tr></thead>
+        <tbody>${list.map(l => { const st = LST[l.status] || ['o', l.status]; const next = j.steps[l.step]; const on = U.picked.has(l.id); return `<tr data-act="openlead" data-id="${l.id}" tabindex="0"${on ? ' class="picked"' : ''}>
+          <td class="pick" data-act="pick" data-id="${l.id}"><input type="checkbox" aria-label="Select ${esc(l.name)}"${on ? ' checked' : ''}></td>
+          <td><b>${esc(l.name)}</b><span class="sub">${esc([l.email || 'No email', l.phone].filter(Boolean).join(' · '))}</span>${tagsHTML(l.tags)}</td>
           <td>${esc(l.interest)}</td>
           <td>${esc(l.source)}<span class="sub">${l.kind === 'old' && l.last_contact_days != null ? `Last contact ${l.last_contact_days} days ago` : fmtAgo(l.created_at)}</span></td>
           <td><span class="steps" aria-label="${Math.min(l.step, n)} of ${n} emails sent">${Array.from({ length: n }, (_, k) => `<i class="${k < l.step ? 'done' : k === l.step && l.status === 'active' ? 'next' : ''}"></i>`).join('')}</span><span class="sub">${Math.min(l.step, n)} of ${n} sent</span></td>
           <td class="num">${l.status === 'active' && l.next_at != null && next ? `<span data-in="${l.next_at}">${fmtIn(l.next_at)}</span><span class="sub">${esc(fill(next.subject, { first_name: first(l.name), interest: String(l.interest).toLowerCase(), sign_off: D.config.sign_off }))}</span>` : '<span style="color:var(--t-lo)">None</span>'}</td>
           <td><span class="chip ${st[0]}">${st[1]}</span></td>
           <td><div class="rowacts">${['active', 'queued', 'manual'].includes(l.status) ? `<button class="btn sm" data-act="l-status" data-v="replied" data-id="${l.id}">Replied</button>` : ''}${!['won', 'unsubscribed'].includes(l.status) ? `<button class="btn sm" data-act="l-status" data-v="won" data-id="${l.id}">Won</button>` : ''}${!['closed', 'won', 'unsubscribed', 'completed'].includes(l.status) ? `<button class="btn sm ghost" data-act="l-status" data-v="closed" data-id="${l.id}">Close</button>` : ''}</div></td>
-        </tr>`; }).join('') || `<tr><td colspan="7" class="empty">${kind === 'old' ? 'No old leads yet. Import a list of past inquiries to start.' : 'No leads yet.'}</td></tr>`}</tbody>
+        </tr>`; }).join('') || `<tr><td colspan="8" class="empty">${kind === 'old' ? 'No old contacts yet. Import a list of past inquiries to start.' : 'No contacts yet.'}</td></tr>`}</tbody>
       </table></div>`;
   }
 
   function drawerLead(l) {
     const m = l.message_id && D.mById.get(l.message_id), st = LST[l.status] || ['o', l.status];
-    return `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="Lead ${esc(l.name)}">
+    return `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="Contact ${esc(l.name)}">
       <button class="x" data-act="close" aria-label="Close">${ic('x', 18)}</button>
-      <div class="eyebrow">${l.kind === 'old' ? 'Old lead' : 'New lead'} · ${esc(l.interest)}</div>
+      <div class="eyebrow">${l.kind === 'old' ? 'Old contact' : 'New contact'} · ${esc(l.interest)}</div>
       <h2>${esc(l.name)}</h2>
       <div style="margin:14px 0"><span class="chip ${st[0]}">${st[1]}</span></div>
       ${m ? `<div class="quote">${esc(m.text)}<div class="note" style="margin-top:6px">${chOf(m.channel).label} · ${fmtTime(m.received_at)}</div></div>` : ''}
       <dl class="kv" style="margin-top:16px">
         <dt>Email</dt><dd>${l.email ? esc(l.email) : '<span style="color:var(--t-lo)">None. Follow up by direct message</span>'}</dd>
+        <dt>Phone</dt><dd>${l.phone ? esc(l.phone) : '<span style="color:var(--t-lo)">None</span>'}</dd>
+        <dt>Tags</dt><dd>${tagsHTML(l.tags) || '<span style="color:var(--t-lo)">None</span>'}</dd>
         <dt>Source</dt><dd>${esc(l.source)}</dd>
         <dt>Added</dt><dd>${fmtClock(l.created_at)}</dd>
       </dl>
@@ -841,15 +878,15 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const log = D.emails.slice(0, 15);
     let approval;
     if (j.placeholders.length) approval = `<div class="approval">${ic('shield', 18)}<span style="flex:1 1 220px">Fill in ${j.placeholders.map(p => `<span class="ph" style="color:var(--amber);background:rgba(233,162,59,.18)">[${esc(p)}]</span>`).join(', ')} before this can go live. Click a step, then Edit.</span></div>`;
-    else if (j.status !== 'live') approval = `<div class="approval">${ic('shield', 18)}<span style="flex:1 1 220px">${j.status === 'paused' ? 'Paused.' : 'Ready for approval.'}${j.enrolled ? ` ${j.enrolled} leads are waiting.` : ''}</span><button class="btn sm primary" data-act="jstatus" data-v="live">${ic('check', 14, 2.4)}Approve and go live</button></div>`;
+    else if (j.status !== 'live') approval = `<div class="approval">${ic('shield', 18)}<span style="flex:1 1 220px">${j.status === 'paused' ? 'Paused.' : 'Ready for approval.'}${j.enrolled ? ` ${j.enrolled} contacts are waiting.` : ''}</span><button class="btn sm primary" data-act="jstatus" data-v="live">${ic('check', 14, 2.4)}Approve and go live</button></div>`;
     else approval = `<div class="approval ok">${ic('shield', 18)}<span style="flex:1 1 220px">Live. Editing an email so it has a [PLACEHOLDER] takes it back to approval.</span><button class="btn sm" data-act="jstatus" data-v="paused">Pause</button></div>`;
     return `
-      <div class="vh"><div><div class="eyebrow">04 · Email automations</div><h1>Email</h1></div>
-        <p>Service emails keep people updated on their tickets. Lead journeys follow up with new and old leads. Nothing with a [PLACEHOLDER] in it can be sent.</p></div>
-      ${!D.status.email ? `<div class="banner">${ic('mail', 18)}<span>No email service is set up yet. Service emails are logged as not sent and lead journeys wait. Set <code>RESEND_API_KEY</code> and <code>DESK_FROM_EMAIL</code> on the server.</span></div>` : ''}
+      <div class="vh"><div><div class="eyebrow">05 · Email automations</div><h1>Email</h1></div>
+        <p>Service emails keep people updated on their tickets. Contact journeys follow up with new and old contacts. Nothing with a [PLACEHOLDER] in it can be sent.</p></div>
+      ${!D.status.email ? `<div class="banner">${ic('mail', 18)}<span>No email service is set up yet. Service emails are logged as not sent and contact journeys wait. Set <code>RESEND_API_KEY</code> and <code>DESK_FROM_EMAIL</code> on the server.</span></div>` : ''}
       <div class="flows">
         <div class="jlist">
-          <div class="group-l">Lead follow-up</div>${card('newlead')}${card('oldlead')}
+          <div class="group-l">Contact follow-up</div>${card('newlead')}${card('oldlead')}
           <div class="group-l">Service updates</div>${card('received')}${card('update')}${card('resolved')}
           <div class="card log" style="padding:16px 18px">
             <div class="eyebrow">Sent log</div>
@@ -894,9 +931,9 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const bars = (rows, max, hot) => rows.map(([k, v], i) => `<div class="hbar${hot && hot(k, i) ? ' c' : ''}"><span>${esc(k)}</span><span class="b"><i style="width:${v / max * 100}%"></i></span><span class="n">${typeof v === 'number' && v > 1000 ? fmtDur(v) : v}</span></div>`).join('');
     return `
       <div class="vh"><div><div class="eyebrow">01 · Management view</div><h1>Dashboard</h1></div>
-        <p>What people raise, how fast each team resolves it, what is stuck, and where leads are. Covers the latest 400 messages.</p></div>
+        <p>What people raise, how fast each team resolves it, what is stuck, and where contacts are. Covers the latest 400 messages.</p></div>
       <div class="tiles">
-        <div class="card tile"><div class="k">Messages sorted</div><div class="v num">${D.messages.filter(m => m.sort_status === 'sorted').length}</div><div class="s">${D.messages.filter(m => m.route === 'ticket').length} tickets · ${D.messages.filter(m => m.route === 'lead').length} leads</div></div>
+        <div class="card tile"><div class="k">Messages sorted</div><div class="v num">${D.messages.filter(m => m.sort_status === 'sorted').length}</div><div class="s">${D.messages.filter(m => m.route === 'ticket').length} tickets · ${D.messages.filter(m => m.route === 'lead').length} contacts</div></div>
         <div class="card tile ${openTickets().filter(isOverdue).length ? 'alert' : ''}"><div class="k">Past target</div><div class="v num">${openTickets().filter(isOverdue).length}</div><div class="s">of ${openTickets().length} open tickets</div></div>
         <div class="card tile"><div class="k">Median resolution</div><div class="v num">${res.length ? fmtDur(median(res.map(t => t.resolved_at - t.created_at))) : 'None'}</div><div class="s">${res.length} resolved</div></div>
         <div class="card tile"><div class="k">Emails sent</div><div class="v num">${sent.length}</div><div class="s">Latest 150 emails</div></div>
@@ -907,10 +944,10 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
         <section class="card panel"><h3>Resolution time by team</h3><p class="ps">Median, resolved tickets. Slowest first</p>${tr.map(([k, v], i) => `<div class="hbar${i === 0 && tr.length > 1 ? ' c' : ''}"><span>${esc(k)}</span><span class="b"><i style="width:${v / tMax * 100}%"></i></span><span class="n">${fmtDur(v)}</span></div>`).join('') || '<p class="empty">No resolved tickets yet.</p>'}</section>
         <section class="card panel"><h3>Stuck cases</h3><p class="ps">Past target first, then the oldest open</p>
           ${stuck.map(t => `<button class="stuck" data-act="openticket" data-id="${t.id}"><span><b>${esc(t.code)} · ${esc(t.customer)}</b><small>${esc(t.category)} · ${esc(t.owner ? nm(t.owner) : t.team)} · open ${fmtDur(now() - t.created_at)}</small></span><span class="chip ${isOverdue(t) ? 'u' : 'o'}">${isOverdue(t) ? 'Past target' : esc(t.status)}</span></button>`).join('') || '<p class="empty">Nothing stuck.</p>'}</section>
-        <section class="card panel" style="grid-column:1/-1"><h3>Leads in follow-up</h3><p class="ps">New and old leads by stage</p>
+        <section class="card panel" style="grid-column:1/-1"><h3>Contacts in follow-up</h3><p class="ps">New and old contacts by stage</p>
           <div class="funnel">
-            <div><b class="num">${D.leads.filter(l => l.kind === 'new' && ['active', 'queued', 'manual'].includes(l.status)).length}</b><span>New leads open</span></div>
-            <div><b class="num">${D.leads.filter(l => l.kind === 'old' && ['active', 'queued'].includes(l.status)).length}</b><span>Old leads in journey</span></div>
+            <div><b class="num">${D.leads.filter(l => l.kind === 'new' && ['active', 'queued', 'manual'].includes(l.status)).length}</b><span>New contacts open</span></div>
+            <div><b class="num">${D.leads.filter(l => l.kind === 'old' && ['active', 'queued'].includes(l.status)).length}</b><span>Old contacts in journey</span></div>
             <div><b class="num">${D.leads.filter(l => l.status === 'replied').length}</b><span>Replied, follow up</span></div>
             <div><b class="num">${D.leads.filter(l => l.status === 'won').length}</b><span>Won</span></div>
           </div></section>
@@ -941,18 +978,62 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const rows = U.importRows;
     const ok = rows ? rows.filter(r => r.ok).length : 0;
     const why = rows ? Object.entries(rows.filter(r => !r.ok).reduce((a, r) => (a[r.reason] = (a[r.reason] || 0) + 1, a), {})) : [];
-    return `<div class="modal" role="dialog" aria-modal="true" aria-label="Import old leads"><div class="box">
+    return `<div class="modal" role="dialog" aria-modal="true" aria-label="Import old contacts"><div class="box">
       <button class="x" data-act="closemodal" aria-label="Close">${ic('x', 18)}</button>
       <div class="eyebrow">Import</div><h2>Old inquiry list</h2>
-      <p style="color:var(--t-mid)">A CSV with the columns <code>name</code>, <code>email</code>, <code>interest</code>, <code>last_contact_days</code> and <code>consent</code> (yes or no). Each row is checked before anyone is enrolled: people without email consent, who unsubscribed, who are already a lead, or who were contacted in the last 90 days are skipped.</p>
+      <p style="color:var(--t-mid)">A CSV with the columns <code>name</code>, <code>email</code>, <code>interest</code>, <code>last_contact_days</code> and <code>consent</code> (yes or no). Each row is checked before anyone is enrolled: people without email consent, who unsubscribed, who are already a contact, or who were contacted in the last 90 days are skipped.</p>
       <label class="drop">Choose a CSV file<input type="file" accept=".csv,text/csv" id="csvFile"></label>
       ${rows ? `<div style="overflow-x:auto"><table class="imp"><thead><tr><th>Name</th><th>Email</th><th>Interest</th><th>Check</th></tr></thead>
         <tbody>${rows.slice(0, 8).map(r => `<tr><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${esc(r.interest)}</td><td>${r.ok ? '<span class="chip g">Ready</span>' : `<span class="chip r">${esc(r.reason)}</span>`}</td></tr>`).join('')}
         ${rows.length > 8 ? `<tr><td colspan="4" style="color:var(--t-lo)">and ${rows.length - 8} more rows</td></tr>` : ''}</tbody></table></div>
       <dl class="kv" style="margin-top:16px"><dt>Rows</dt><dd class="num">${rows.length}</dd><dt>Ready to enroll</dt><dd class="num">${ok}</dd>
         ${why.length ? `<dt>Skipped</dt><dd>${why.map(([k, v]) => `${v} ${esc(k.toLowerCase())}`).join(', ')}</dd>` : ''}</dl>
-      <div class="acts"><button class="btn primary" data-act="doimport"${ok ? '' : ' disabled'}>${ic('upload', 16)}Enroll ${ok} lead${ok === 1 ? '' : 's'}</button><button class="btn ghost" data-act="closemodal">Cancel</button></div>` : ''}
+      <div class="acts"><button class="btn primary" data-act="doimport"${ok ? '' : ' disabled'}>${ic('upload', 16)}Enroll ${ok} contact${ok === 1 ? '' : 's'}</button><button class="btn ghost" data-act="closemodal">Cancel</button></div>` : ''}
     </div></div>`;
+  }
+  // Sending from the desk is not connected yet: these windows let people write the message, and say so.
+  const BULK = {
+    sms: { label: 'Send SMS', title: 'New text message', icon: 'dm', has: l => !!l.phone, what: 'a phone number', off: 'Texting' },
+    email: { label: 'Send email', title: 'New email', icon: 'mail', has: l => !!l.email, what: 'an email address', off: 'Email' },
+    whatsapp: { label: 'Send WhatsApp', title: 'New WhatsApp message', icon: 'phone', has: l => !!l.phone, what: 'a phone number', off: 'WhatsApp' },
+  };
+  function bulkModal() {
+    const kind = U.modal.bulk, people = pickedLeads(), n = people.length, s = n === 1 ? '' : 's';
+    const box = (eyebrow, title, body) => `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="box">
+      <button class="x" data-act="closemodal" aria-label="Close">${ic('x', 18)}</button>
+      <div class="eyebrow">${eyebrow}</div><h2>${title}</h2>${body}</div></div>`;
+    const cancel = '<button class="btn ghost" data-act="closemodal">Cancel</button>';
+    if (BULK[kind]) {
+      const b = BULK[kind], reach = people.filter(b.has).length;
+      return box(`${b.label} · ${n} contact${s}`, b.title, `
+        <div class="banner">${ic('alert', 18)}<span>${b.off} from the desk isn't connected yet, so nothing will be sent.</span></div>
+        <p class="note">${reach} of ${n} selected ${n === 1 ? 'has' : 'have'} ${b.what}.${reach < n ? ` The other ${n - reach} would be skipped.` : ''}</p>
+        ${kind === 'email' ? '<div class="field"><label for="bSubj">Subject</label><input id="bSubj" maxlength="300"></div>' : ''}
+        <div class="field"><label for="bBody">Message</label><textarea id="bBody" maxlength="${kind === 'email' ? 8000 : 1600}" placeholder="Hi {first_name}, "></textarea></div>
+        <p class="note">Write {first_name} where each person's first name should go.</p>
+        <div class="acts"><button class="btn primary" disabled title="Not connected yet">${ic('send', 16)}Send to ${reach}</button>${cancel}</div>`);
+    }
+    if (kind === 'tag') {
+      const known = [...new Set(D.leads.flatMap(l => l.tags || []))].sort((a, b) => a.localeCompare(b));
+      return box(`Add tags · ${n} contact${s}`, 'Add tags', `
+        <div class="field"><label for="tagInput">Tags</label><input id="tagInput" maxlength="400" autocomplete="off" placeholder="e.g. VIP, Cebu, Call back in May"></div>
+        <p class="note">Separate tags with commas. Each one is added to every selected contact.</p>
+        ${known.length ? `<div class="tagpick" aria-label="Tags already in use">${known.slice(0, 40).map(t => `<button class="fbtn" data-act="tag-s" data-v="${esc(t)}">${ic('plus', 12)}${esc(t)}</button>`).join('')}</div>` : ''}
+        <div class="acts"><button class="btn primary" data-act="dobulk">${ic('tag', 16)}Add to ${n} contact${s}</button>${cancel}</div>`);
+    }
+    if (kind === 'untag') {
+      const counts = {};
+      people.forEach(l => (l.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+      const tags = Object.keys(counts).sort((a, b) => a.localeCompare(b)), chosen = U.modal.untag;
+      return box(`Remove tags · ${n} contact${s}`, 'Remove tags', tags.length ? `
+        <p class="note">Pick the tags to take off the selected contacts. The number is how many of them have it.</p>
+        <div class="tagpick">${tags.map(t => `<button class="fbtn" data-act="untag-t" data-v="${esc(t)}" aria-pressed="${chosen.has(t)}">${esc(t)}<span class="n num">${counts[t]}</span></button>`).join('')}</div>
+        <div class="acts"><button class="btn primary" data-act="dobulk"${chosen.size ? '' : ' disabled'}>${ic('x', 16)}Remove ${chosen.size || ''} tag${chosen.size === 1 ? '' : 's'}</button>${cancel}</div>`
+        : `<p class="note">None of the selected contacts have tags.</p><div class="acts"><button class="btn" data-act="closemodal">Close</button></div>`);
+    }
+    return box(`Delete · ${n} contact${s}`, `Delete ${n} contact${s}?`, `
+      <p style="color:var(--t-mid)">${n === 1 ? esc(people[0].name) : `These ${n} contacts`} will be removed from the desk along with their activity, and no more journey emails will go to them. The inbox messages they came from stay. This can't be undone.</p>
+      <div class="acts"><button class="btn primary" data-act="dobulk">${ic('trash', 16)}Delete ${n} contact${s}</button>${cancel}</div>`);
   }
   function sentModal(e) {
     return `<div class="modal" role="dialog" aria-modal="true" aria-label="Sent email"><div class="box">
@@ -1004,8 +1085,8 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     const counts = (T.people || []).reduce((n, p) => (n[p.role] = (n[p.role] || 0) + 1, n), {});
     const pending = (T.people || []).filter(p => p.status === 'pending').length;
     return `
-      <div class="vh"><div><div class="eyebrow">05 · Desk access</div><h1>Team</h1></div>
-        <p>Who can use the Care Desk. Admins manage this list; agents work tickets and leads.</p></div>
+      <div class="vh"><div><div class="eyebrow">06 · Desk access</div><h1>Team</h1></div>
+        <p>Who can use the Care Desk. Admins manage this list; agents work tickets and contacts.</p></div>
       <div class="card try">
         <label for="teamEmail">Add someone</label>
         <div class="row">
@@ -1034,6 +1115,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     $('#navTeam').hidden = !isAdmin();
     if (U.view === 'team' && !isAdmin()) U.view = 'dash';
     $('#view').innerHTML = VIEWS[U.view]();
+    $$('[data-indeterminate]').forEach(el => { el.indeterminate = true; });  // a property only, no HTML attribute
     Object.entries(kept).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
     if (focus) { const el = document.getElementById(focus); if (el) el.focus(); }
     $$('.nav').forEach(n => n.setAttribute('aria-current', n.dataset.view === U.view ? 'page' : 'false'));
@@ -1058,11 +1140,18 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     }
     if (U.modal === 'import') h += importModal();
     else if (U.modal && U.modal.sent) { const e = D.emails.find(x => x.id === U.modal.sent); if (e) h += sentModal(e); }
+    else if (U.modal && U.modal.bulk) { if (U.picked.size) h += bulkModal(); else U.modal = null; }
     const keep = $('.drawer') ? $('.drawer').scrollTop : 0;
-    const a = document.activeElement, typing = a && a.id === 'noteText' ? [a.selectionStart, a.selectionEnd] : null;
+    // Keep what was typed in a drawer or window, and where the cursor was, across the redraw.
+    const typed = {};
+    $$('#layer input[id], #layer textarea[id]').forEach(el => { if (el.type !== 'file' && el.type !== 'checkbox') typed[el.id] = el.value; });
+    const a = document.activeElement, focusId = a && a.id && $('#layer').contains(a) ? a.id : null;
+    const typing = focusId && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
     $('#layer').innerHTML = h;
+    Object.entries(typed).forEach(([k, v]) => { const el = document.getElementById(k); if (el) el.value = v; });
     if ($('.drawer')) $('.drawer').scrollTop = keep;
-    if (typing && $('#noteText')) { $('#noteText').focus({ preventScroll: true }); $('#noteText').setSelectionRange(...typing); }
+    const back = focusId && document.getElementById(focusId);
+    if (back) { back.focus({ preventScroll: true }); if (typing) back.setSelectionRange(...typing); }
   }
   /* timers and countdowns update in place every second, without a full render */
   function live() {
@@ -1127,7 +1216,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     pick: el => { post(`/api/desk/messages/${id(el)}/pick`, { comment_id: el.dataset.cid }, 'Matched. You can reply from here now.'); return false; },
     rematch: el => { toast('Searching Facebook'); post(`/api/desk/messages/${id(el)}/rematch`, {}); return false; },
     mkticket: el => { post(`/api/desk/messages/${id(el)}/ticket`, {}, 'Ticket created'); return false; },
-    mklead: el => { post(`/api/desk/messages/${id(el)}/lead`, {}, 'Added as a lead'); return false; },
+    mklead: el => { post(`/api/desk/messages/${id(el)}/lead`, {}, 'Added as a contact'); return false; },
     resort: el => { toast('Sorting again'); post(`/api/desk/messages/${id(el)}/resort`, {}); return false; },
     openticket: el => { U.drawer = ['ticket', id(el)]; },
     openlead: el => { U.drawer = ['lead', id(el)]; },
@@ -1153,12 +1242,48 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
       return false;
     },
     tf: el => { U.tFilter = el.dataset.v; },
-    ltab: el => { U.lTab = el.dataset.v; },
-    'l-status': el => { post(`/api/desk/leads/${id(el)}/${el.dataset.v}`, {}, { replied: 'Marked replied. No more journey emails.', won: 'Marked won', closed: 'Lead closed' }[el.dataset.v]); return false; },
+    ltab: el => { U.lTab = el.dataset.v; U.picked = new Set(); },
+    'l-status': el => { post(`/api/desk/leads/${id(el)}/${el.dataset.v}`, {}, { replied: 'Marked replied. No more journey emails.', won: 'Marked won', closed: 'Contact closed' }[el.dataset.v]); return false; },
+    pick: el => { const k = id(el); if (U.picked.has(k)) U.picked.delete(k); else U.picked.add(k); },
+    pickall: () => { const ids = leadList().map(l => l.id); U.picked = ids.length && ids.every(k => U.picked.has(k)) ? new Set() : new Set(ids); },
+    pickevery: () => { U.picked = new Set(leadList().map(l => l.id)); },
+    clearpick: () => { U.picked = new Set(); },
+    bulk: el => {
+      U.modal = { bulk: el.dataset.v, untag: new Set() };
+      setTimeout(() => { const f = $('#layer input:not([type="checkbox"]), #layer textarea'); if (f) f.focus(); }, 0);
+    },
+    'tag-s': el => {
+      const box = $('#tagInput'), have = splitTags(box.value), t = el.dataset.v;
+      if (!have.some(x => x.toLowerCase() === t.toLowerCase())) box.value = [...have, t].join(', ');
+      box.focus();
+      return false;
+    },
+    'untag-t': el => { const s = U.modal.untag, t = el.dataset.v; if (s.has(t)) s.delete(t); else s.add(t); renderLayer(); return false; },
+    dobulk: async el => {
+      const kind = U.modal.bulk, ids = [...U.picked], plural = n => `${n} contact${n === 1 ? '' : 's'}`;
+      let body, done;
+      if (kind === 'tag') {
+        const tags = splitTags($('#tagInput').value);
+        if (!tags.length) { $('#tagInput').focus(); toast('Enter at least one tag.'); return false; }
+        body = { action: 'tag', ids, tags };
+        done = r => r.changed ? `Tagged ${plural(r.changed)}` : 'They already have those tags';
+      } else if (kind === 'untag') {
+        body = { action: 'untag', ids, tags: [...U.modal.untag] };
+        done = r => `Tags removed from ${plural(r.changed)}`;
+      } else if (kind === 'delete') {
+        body = { action: 'delete', ids };
+        done = r => `${plural(r.changed)} deleted`;
+      } else return false;
+      el.disabled = true;
+      const r = await post('/api/desk/leads/bulk', body, done);
+      if (r) { U.modal = null; if (kind === 'delete') U.picked = new Set(); render(); }
+      else el.disabled = false;
+      return false;
+    },
     import: () => { U.modal = 'import'; U.importRows = null; },
     doimport: async () => {
       const raw = U.importRaw;
-      const r = await post('/api/desk/import', { rows: raw, dry_run: false }, r => `${r.enrolled} leads enrolled, ${r.skipped} skipped`);
+      const r = await post('/api/desk/import', { rows: raw, dry_run: false }, r => `${r.enrolled} contacts enrolled, ${r.skipped} skipped`);
       if (r) { U.modal = null; U.importRows = null; U.view = 'leads'; U.lTab = 'old'; render(); }
       return false;
     },
@@ -1175,7 +1300,7 @@ code{font:12px ui-monospace,Consolas,monospace;background:rgba(255,255,255,.08);
     },
     jstatus: el => {
       const status = el.dataset.v;
-      post(`/api/desk/journeys/${U.jSel}/status`, { status }, r => status === 'live' ? `Live.${r.released ? ` ${r.released} queued leads released.` : ''}` : 'Paused');
+      post(`/api/desk/journeys/${U.jSel}/status`, { status }, r => status === 'live' ? `Live.${r.released ? ` ${r.released} queued contacts released.` : ''}` : 'Paused');
       return false;
     },
     viewsent: el => { U.modal = { sent: id(el) }; },

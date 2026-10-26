@@ -26,6 +26,7 @@ class Incoming:
     author: str
     source: str = "ghl"
     email: str | None = None
+    phone: str | None = None
     subject: str | None = None
     post_url: str | None = None
     contact_id: str | None = None
@@ -85,6 +86,7 @@ def parse_ghl(payload: dict) -> Incoming:
         channel=normalise_channel(channel_hint) if channel_hint else "other",
         author=(_str(custom.get("author")) or full_name or _str(contact.get("name")) or "Unknown")[:200],
         email=(_str(payload.get("email")) or _str(custom.get("email")) or _str(contact.get("email")) or None),
+        phone=((_str(payload.get("phone")) or _str(custom.get("phone")) or _str(contact.get("phone")))[:40] or None),
         subject=(_str(custom.get("subject")) or None),
         post_url=(_str(custom.get("post_url")) or None),
         contact_id=(_str(payload.get("contact_id")) or _str(contact.get("id")) or None),

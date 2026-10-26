@@ -39,6 +39,8 @@ MATCH_ATTEMPTS = 6        # Meta can lag a little; tick() keeps looking for a fe
 REPLY_CHARS = 8000
 
 # How much the page loads on first open; later refreshes only fetch changes.
+MAX_TAGS = 20        # per contact
+TAG_CHARS = 40
 LOAD = {"messages": 400, "tickets": 600, "leads": 2000, "emails": 150}
 
 # Ticket notes. Files live in Firestore next to everything else, split into
@@ -110,6 +112,17 @@ def first_name(name: str) -> str:
     return part if part and part.lower() != "unknown" else "there"
 
 
+def clean_tags(tags) -> list[str]:
+    """Trimmed, single-spaced, at most TAG_CHARS long, without repeats (ignoring case); first spelling wins."""
+    out, seen = [], set()
+    for tag in tags or []:
+        tag = " ".join(str(tag).split())[:TAG_CHARS]
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
+            out.append(tag)
+    return out
+
+
 class Desk:
     def __init__(self, store, *, now: Callable[[], int] | None = None,
                  sort: Callable[..., sorter.Sorting] | None = None,
@@ -128,8 +141,8 @@ class Desk:
 
     def _one(self, coll: str, doc_id: int) -> dict:
         doc = self.db.get(coll, doc_id)
-        if not doc:
-            raise NotFound(f"{coll[:-1].capitalize()} {doc_id} not found")
+        if not doc or doc.get("deleted"):
+            raise NotFound(f"{'Contact' if coll == 'leads' else coll[:-1].capitalize()} {doc_id} not found")
         return doc
 
     def _event(self, label: str, detail: str = "", *, ticket_id=None, lead_id=None) -> None:
@@ -230,7 +243,7 @@ class Desk:
             return {"id": dup[0]["id"], "duplicate": True}
         message_id = self.db.insert("messages", {
             "source": incoming.source, "channel": incoming.channel, "external_id": incoming.external_id,
-            "author": incoming.author, "email": incoming.email, "contact_id": incoming.contact_id,
+            "author": incoming.author, "email": incoming.email, "phone": incoming.phone, "contact_id": incoming.contact_id,
             "location_id": incoming.location_id, "text": incoming.text, "subject": incoming.subject,
             "post_url": incoming.post_url, "received_at": now,
             "sort_status": "pending" if incoming.text else "unparsed", "sort_attempts": 0, "sort_error": None,
@@ -434,9 +447,9 @@ class Desk:
             self._create_ticket(msg, out)
         elif action == "lead":
             if msg["lead_id"]:
-                raise DeskError("This message is already a lead.")
+                raise DeskError("This message is already a contact.")
             if msg["sort_status"] != "sorted":
-                raise DeskError("Sort the message before making it a lead.")
+                raise DeskError("Sort the message before making it a contact.")
             self._create_lead_from(msg)
         else:
             raise DeskError(f"Unknown message action: {action}")
@@ -538,13 +551,13 @@ class Desk:
     # ------------------------------------------------------------ leads
 
     def _create_lead_from(self, msg: dict) -> int:
-        lead_id = self._create_lead(kind="new", name=msg["author"], email=msg.get("email"),
+        lead_id = self._create_lead(kind="new", name=msg["author"], email=msg.get("email"), phone=msg.get("phone"),
                                     source=CHANNEL_LABEL[msg["channel"]].capitalize(),
                                     interest=msg.get("interest") or "Other", message_id=msg["id"])
         self.db.update("messages", msg["id"], {"route": "lead", "lead_id": lead_id})
         return lead_id
 
-    def _create_lead(self, *, kind: str, name: str, email: str | None, source: str, interest: str,
+    def _create_lead(self, *, kind: str, name: str, email: str | None, source: str, interest: str, phone: str | None = None,
                      message_id: int | None = None, last_contact_days: int | None = None,
                      start_at: int | None = None) -> int:
         live = self.journey("oldlead" if kind == "old" else "newlead")["status"] == "live"
@@ -556,6 +569,7 @@ class Desk:
             status, next_at = "queued", None
         lead_id = self.db.insert("leads", {
             "message_id": message_id, "kind": kind, "name": name, "email": email.lower() if email else None,
+            "phone": phone, "tags": [],
             "source": source, "interest": interest, "status": status, "step": 0, "next_at": next_at,
             "created_at": self.now(), "last_contact_days": last_contact_days})
         detail = f"From {source}, interested in {interest.lower()}"
@@ -563,18 +577,60 @@ class Desk:
             detail += ". No email on file, so follow up by direct message"
         elif status == "queued":
             detail += ". Queued until the journey is approved"
-        self._event("Lead created" if kind == "new" else "Imported", detail, lead_id=lead_id)
+        self._event("Contact created" if kind == "new" else "Imported", detail, lead_id=lead_id)
         return lead_id
 
     def lead_action(self, lead_id: int, status: str, user: str) -> None:
         labels = {"replied": "Marked replied", "won": "Marked won", "closed": "Closed"}
         if status not in labels:
-            raise DeskError(f"Unknown lead status: {status}")
+            raise DeskError(f"Unknown contact status: {status}")
         lead = self._one("leads", lead_id)
         if lead["status"] == status:
-            raise DeskError(f"The lead is already {status}.")
+            raise DeskError(f"The contact is already {status}.")
         self.db.update("leads", lead_id, {"status": status, "next_at": None})
         self._event(labels[status], f"By {user}. No more journey emails", lead_id=lead_id)
+
+    # ------------------------------------------------------------ contacts in bulk
+
+    def _picked(self, lead_ids: list[int]) -> list[dict]:
+        """The contacts behind the ids the page sent; ones deleted meanwhile are skipped."""
+        found = (self.db.get("leads", i) for i in dict.fromkeys(lead_ids))
+        return [lead for lead in found if lead and not lead.get("deleted")]
+
+    def tag_leads(self, lead_ids: list[int], tags: list[str], user: str, remove: bool = False) -> int:
+        """Add (or remove) tags on many contacts at once. Returns how many changed."""
+        given = clean_tags(tags)
+        if not given:
+            raise DeskError("Enter at least one tag.")
+        drop = {t.lower() for t in given}
+        changes = []
+        for lead in self._picked(lead_ids):
+            have = lead.get("tags") or []
+            new = [t for t in have if t.lower() not in drop] if remove else clean_tags(have + given)
+            if len(new) > MAX_TAGS:
+                raise DeskError(f"A contact can have up to {MAX_TAGS} tags. {lead['name']} would have {len(new)}.")
+            if new != have:
+                changes.append((lead["id"], new))
+        for lead_id, new in changes:  # only once every contact is known to fit
+            self.db.update("leads", lead_id, {"tags": new})
+            self._event("Tags removed" if remove else "Tagged", f"{', '.join(given)}, by {user}", lead_id=lead_id)
+        return len(changes)
+
+    def delete_leads(self, lead_ids: list[int], user: str) -> int:
+        """Remove contacts and their activity. The inbox messages they came from stay."""
+        picked = self._picked(lead_ids)
+        for lead in picked:
+            if lead.get("message_id"):
+                msg = self.db.get("messages", lead["message_id"])
+                if msg and msg.get("lead_id") == lead["id"]:
+                    self.db.update("messages", msg["id"], {"lead_id": None, "route": None})
+            for event in self.db.where("events", "lead_id", "==", lead["id"]):
+                self.db.delete("events", event["id"])
+            # A marker rather than a gap: open pages fetch only what changed, so they must see it go.
+            # It keeps no name, email or phone.
+            self.db.put("leads", str(lead["id"]), {"id": lead["id"], "deleted": True})
+        log.info("%s deleted %s contacts", user, len(picked))
+        return len(picked)
 
     def check_import(self, rows: list[dict]) -> list[dict]:
         """One verdict per row: whether it can be enrolled, and why not."""
@@ -608,7 +664,7 @@ class Desk:
             elif email in blocked:
                 reason = "Unsubscribed"
             elif email in known or email in seen:
-                reason = "Already a lead"
+                reason = "Already a contact"
             elif days is not None and days < 90:
                 reason = "Contacted in the last 90 days"
             seen.add(email)
@@ -733,7 +789,7 @@ class Desk:
         else:
             msgs = self.db.recent("messages", "received_at", LOAD["messages"])
             tix = self.db.recent("tickets", "created_at", LOAD["tickets"])
-            lds = self.db.recent("leads", "created_at", LOAD["leads"])
+            lds = [l for l in self.db.recent("leads", "created_at", LOAD["leads"]) if not l.get("deleted")]
             sent = self.db.recent("emails", "at", LOAD["emails"])
             evs = []
             for coll, ids in (("ticket_id", [t["id"] for t in tix]), ("lead_id", [l["id"] for l in lds])):

@@ -77,10 +77,10 @@ JOURNEYS = {
                    "body": "Hi {first_name},\n\n{ticket} is resolved. If anything still looks off, reply to this email and we will pick it back up.\n\nHow did we do? Reply with a number from 1 to 5.\n\n{sign_off}"}],
     },
     "newlead": {
-        "group": "leads", "name": "New lead journey", "default_status": "pending",
+        "group": "leads", "name": "New contact journey", "default_status": "pending",
         "trigger": "Someone asks about a service or price, in a comment, a message or an email",
         "description": "Answers fast, shows the work, then invites them to a call.",
-        "exit": "Stops when the lead replies, is marked won or closed, or unsubscribes.",
+        "exit": "Stops when the contact replies, is marked won or closed, or unsubscribes.",
         "steps": [
             {"delay": 0, "label": "Instant", "subject": "Thanks for asking about {interest}",
              "body": "Hi {first_name},\n\nThanks for reaching out about {interest}. Someone from our team will get back to you within one business day.\n\nIf it helps, reply with your timeline and a rough budget and we will come back with options that fit.\n\n{sign_off}"},
@@ -93,10 +93,10 @@ JOURNEYS = {
         ],
     },
     "oldlead": {
-        "group": "leads", "name": "Old lead reactivation", "default_status": "pending",
-        "trigger": "An imported lead with no contact for 90 days or more, who agreed to receive email",
+        "group": "leads", "name": "Old contact reactivation", "default_status": "pending",
+        "trigger": "An imported contact with no contact for 90 days or more, who agreed to receive email",
         "description": "Re-opens old inquiries with three short emails, then closes them politely.",
-        "exit": "Stops when the lead replies or unsubscribes. Leads who finish all three emails without replying are closed.",
+        "exit": "Stops when the contact replies or unsubscribes. Contacts who finish all three emails without replying are closed.",
         "steps": [
             {"delay": 0, "label": "Day 0", "subject": "Still thinking about {interest}?",
              "body": "Hi {first_name},\n\nYou asked us about {interest} a while back. If it is still on your mind, we can pick up where we left off.\n\nReply to this email and we will set up a quick call.\n\n{sign_off}"},

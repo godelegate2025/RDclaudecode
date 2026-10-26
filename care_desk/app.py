@@ -34,7 +34,7 @@ from service.profiles import NameError_, get_profiles
 from service.firestore_db import StoreUnavailable
 
 from . import auth, intake
-from .desk import Desk, DeskError, NotFound
+from .desk import LOAD, Desk, DeskError, NotFound
 from .store import FirestoreStore, MemoryStore
 from .team import DeskTeam, TeamError, invite_message
 
@@ -65,6 +65,12 @@ class NewMessage(BaseModel):
 class Import(BaseModel):
     rows: list[dict] = []
     dry_run: bool = True
+
+
+class BulkContacts(BaseModel):
+    action: str = ""            # tag, untag or delete
+    ids: list[int] = []
+    tags: list[str] = []
 
 
 class JourneyStatus(BaseModel):
@@ -369,6 +375,22 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     def ticket_action(ticket_id: int, action: str, request: Request) -> JSONResponse:
         run(the_desk().ticket_action, ticket_id, action, staff(request, mutating=True))
         return JSONResponse({"ok": True})
+
+    @app.post("/api/desk/leads/bulk")
+    def bulk_contacts(payload: BulkContacts, request: Request) -> JSONResponse:
+        email = staff(request, mutating=True)
+        ids = payload.ids[:LOAD["leads"]]  # never more than the page can show
+        if not ids:
+            raise HTTPException(400, "Select at least one contact.")
+        if payload.action == "delete":
+            if role_of(email) not in ("owner", "admin"):
+                raise HTTPException(403, "Only Care Desk admins can delete contacts.")
+            changed = run(the_desk().delete_leads, ids, email)
+        elif payload.action in ("tag", "untag"):
+            changed = run(the_desk().tag_leads, ids, payload.tags, email, payload.action == "untag")
+        else:
+            raise HTTPException(400, f"Unknown action: {payload.action}")
+        return JSONResponse({"ok": True, "changed": changed})
 
     @app.post("/api/desk/leads/{lead_id}/{status}")
     def lead_action(lead_id: int, status: str, request: Request) -> JSONResponse:
