@@ -158,11 +158,12 @@ try {
 } catch { Fail "The desk did not answer at $url/login : $($_.Exception.Message)" }
 
 Write-Host ""
-Write-Host "Care Desk is live: $url/desk" -ForegroundColor Green
+# Hints use the public address (the desk's own domain once -PublicUrl set it), the one people should see.
+Write-Host "Care Desk is live: $public/desk" -ForegroundColor Green
 Write-Host ""
-Write-Host "Next:"
-Write-Host "  1. Google sign-in: add $url to the OAuth client's Authorised JavaScript origins"
+Write-Host "Next, if not done already:"
+Write-Host "  1. Google sign-in: add $public to the OAuth client's Authorised JavaScript origins"
 Write-Host "     (Console -> Google Auth Platform -> Clients -> your client)."
-Write-Host "  2. GHL webhook URL: $url/hooks/ghl?key=<run: gcloud secrets versions access latest --secret desk-webhook-key>"
+Write-Host "  2. GHL webhook URL: $public/hooks/ghl?key=<run: gcloud secrets versions access latest --secret desk-webhook-key>"
 Write-Host "  3. Link it from the Redefine App:"
-Write-Host "     gcloud run services update $AppService --region $Region --update-env-vars CARE_DESK_URL=$url/desk"
+Write-Host "     gcloud run services update $AppService --region $Region --update-env-vars CARE_DESK_URL=$public/"

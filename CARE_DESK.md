@@ -163,7 +163,7 @@ Then, once:
 3. **Link it from the Redefine App:**
 
    ```powershell
-   gcloud run services update redefine-apps --region us-central1 --update-env-vars CARE_DESK_URL=https://<care-desk-url>/desk
+   gcloud run services update redefine-apps --region us-central1 --update-env-vars CARE_DESK_URL=https://caredesk.redefineph.com/
    ```
 
    The Care Desk card on the app's home page then opens it.
