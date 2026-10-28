@@ -96,15 +96,16 @@ $runAs = "$number-compute@developer.gserviceaccount.com"
 gcloud projects add-iam-policy-binding $Project --member="serviceAccount:$runAs" `
   --role="roles/secretmanager.secretAccessor" --condition=None --quiet | Out-Null
 
-Write-Step "3/6  Building the image"
+Write-Step "3/6  Building the image and running the desk's tests"
 $repo = "cloud-run-source-deploy"
 gcloud artifacts repositories describe $repo --location $Region --project $Project 2>$null | Out-Null
 if ($LASTEXITCODE) {
   gcloud artifacts repositories create $repo --repository-format=docker --location $Region --project $Project | Out-Null
 }
 $image = "$Region-docker.pkg.dev/$Project/$repo/${Service}:latest"
+# Builds the image and runs the desk's tests in it; nothing is pushed unless they pass.
 gcloud builds submit --config cloudbuild.desk.yaml --substitutions "_IMAGE=$image" --project $Project .
-if ($LASTEXITCODE) { Fail "The build failed." }
+if ($LASTEXITCODE) { Fail "The build or the desk's tests failed. Nothing was deployed; the log above says which." }
 
 Write-Step "4/6  Deploying"
 # Public on purpose: GHL must reach the webhook, and every page needs team sign-in.

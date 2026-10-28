@@ -1,6 +1,32 @@
-# Builds the Care Desk image from Dockerfile.desk. `gcloud run deploy --source`
-# only reads a file named Dockerfile, which belongs to the auditors.
+# Builds the Care Desk image from Dockerfile.desk, runs the desk's tests inside
+# it, and only then pushes it. `gcloud run deploy --source` only reads a file
+# named Dockerfile, which belongs to the auditors.
 steps:
-  - name: gcr.io/cloud-builders/docker
+  - id: build
+    name: gcr.io/cloud-builders/docker
     args: ["build", "-f", "Dockerfile.desk", "-t", "${_IMAGE}", "."]
+
+  # The image leaves tests/ out, so mount them in, plus service/history.py,
+  # which tests/__init__.py loads and the desk doesn't ship. Only the desk's own
+  # tests: the others load the Redefine App, which needs the auditors' image.
+  # httpx is FastAPI's test client; it goes into this throwaway container, not
+  # the image.
+  - id: test
+    name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      - --network=cloudbuild
+      - --user=root
+      - -v
+      - /workspace/tests:/app/tests:ro
+      - -v
+      - /workspace/service/history.py:/app/service/history.py:ro
+      - ${_IMAGE}
+      - sh
+      - -c
+      - pip install --quiet --root-user-action=ignore httpx && cd /app && python -m unittest tests.test_care_desk
+
+# Pushed only once every step above has passed, so a failing test stops
+# deploy-desk.ps1 before anything reaches Cloud Run.
 images: ["${_IMAGE}"]

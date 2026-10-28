@@ -285,6 +285,12 @@ test suite inside it, and only then rolls it out to Cloud Run. A push that
 fails a test stops at the test step and the live site is untouched.
 Environment variables and secrets carry over from the running revision.
 
+Pushes that change only the Care Desk (`care_desk/`, its Dockerfile, build
+file, deploy script, requirements, `CARE_DESK.md` and `tests/test_care_desk.py`)
+are skipped: the trigger's *Ignored files* list them, and `deploy-desk.ps1`
+runs the desk's tests itself. A push that also touches anything else (for
+example `service/`, whose sign-in code the desk shares) still runs everything.
+
 Set it up once:
 
 1. **Grant the build permissions.** Cloud Build runs as the Compute Engine
@@ -310,6 +316,9 @@ Set it up once:
    - Branch: `^claude/keen-clarke-euqbmv$` (the default branch)
    - Configuration: **Cloud Build configuration file**, location `/cloudbuild.yaml`
    - Service account: the Compute Engine default service account from step 1
+   - Ignored files: `care_desk/**`, `Dockerfile.desk`, `cloudbuild.desk.yaml`,
+     `deploy-desk.ps1`, `requirements-desk.txt`, `CARE_DESK.md`,
+     `tests/test_care_desk.py`
 
 4. **Test it.** On the trigger, click **Run**. Watch Cloud Build → History: the
    steps are build (~8–12 min the first time), test, push, deploy.

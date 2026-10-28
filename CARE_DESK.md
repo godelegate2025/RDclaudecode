@@ -137,9 +137,14 @@ The script copies `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and `SESSION_SECRET` from
 the running `redefine-apps` service (pass `-AppService` for another name), reuses
 the Post Auditor's Claude key (the `anthropic-api-key` secret if there is one,
 otherwise the key set on the app), creates the webhook and cron keys, builds
-`Dockerfile.desk`, deploys `care-desk` to `us-central1` and schedules the
-5-minute clock. Re-run it after code changes, and after changing the app's
-sign-in settings.
+`Dockerfile.desk`, runs the desk's tests (`tests/test_care_desk.py`) inside
+that image, deploys `care-desk` to `us-central1` and schedules the 5-minute
+clock. If a test fails, the image is never pushed and nothing is deployed.
+Re-run it after code changes, and after changing the app's sign-in settings.
+
+Pushing desk-only changes does not rebuild the Redefine App: the push trigger
+ignores the desk's files (DEPLOY.md, "Automatic deploys"). The desk deploys
+only when you run `deploy-desk.ps1`.
 
 Then, once:
 
