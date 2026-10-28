@@ -1,23 +1,46 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from './api';
 import { ContactsView } from './contacts/ContactsView';
 import { useDesk } from './desk';
+import { useNow } from './format';
 import { Icon, type IconName } from './icons';
+import { isOverdue } from './tickets/sla';
+import { TicketsView } from './tickets/TicketsView';
+import type { Desk } from './types';
 import { useToast } from './ui';
 
-// Views not moved yet open in the current desk.
-const NAV: { label: string; icon: IconName; here?: boolean; admin?: boolean }[] = [
+// Views already in the new desk are picked by the address's #, so a reload or the Back button keeps them.
+const VIEWS = { tickets: TicketsView, contacts: ContactsView };
+type View = keyof typeof VIEWS;
+const viewFromHash = (): View => (location.hash.slice(1) in VIEWS ? location.hash.slice(1) as View : 'contacts');
+
+// The rest still open in the current desk.
+const NAV: { label: string; icon: IconName; view?: View; admin?: boolean }[] = [
   { label: 'Dashboard', icon: 'chart' },
   { label: 'Inbox', icon: 'inbox' },
-  { label: 'Tickets', icon: 'ticket' },
-  { label: 'Contacts', icon: 'users', here: true },
+  { label: 'Tickets', icon: 'ticket', view: 'tickets' },
+  { label: 'Contacts', icon: 'users', view: 'contacts' },
   { label: 'Email', icon: 'mail' },
   { label: 'Team', icon: 'shield', admin: true },
 ];
 
+function Badge({ n }: { n: number }) {
+  return n > 0 ? <span className="badge">{n}</span> : null;
+}
+function OverdueBadge({ desk }: { desk: Desk }) {
+  const now = useNow(60_000);
+  return <Badge n={desk.tickets.filter(t => t.status !== 'Resolved' && isOverdue(desk, t, now)).length} />;
+}
+
 export function App() {
   const { data: desk, error, refetch, isFetching } = useDesk();
   const toast = useToast();
+  const [view, setView] = useState(viewFromHash);
+  useEffect(() => {
+    const follow = () => { setView(viewFromHash()); window.scrollTo(0, 0); };
+    window.addEventListener('hashchange', follow);
+    return () => window.removeEventListener('hashchange', follow);
+  }, []);
 
   // A refresh that fails once the desk is showing says so, instead of blanking the page.
   useEffect(() => { if (error && desk) toast(error.message, 'u'); }, [error, desk, toast]);
@@ -30,6 +53,7 @@ export function App() {
     return () => clearInterval(t);
   }, []);
 
+  const Current = VIEWS[view];
   const isAdmin = !!desk && ['owner', 'admin'].includes(desk.user.role);
   return (
     <div className="app">
@@ -62,16 +86,19 @@ export function App() {
       </header>
 
       <nav className="side" aria-label="Views">
-        {NAV.filter(n => !n.admin || isAdmin).map(n => n.here
-          ? <a key={n.label} className="nav" href="/desk-next" aria-current="page"><Icon name={n.icon} size={22} />{n.label}</a>
+        {NAV.filter(n => !n.admin || isAdmin).map(n => n.view
+          ? <a key={n.label} className="nav" href={`#${n.view}`} aria-current={view === n.view ? 'page' : undefined}>
+              <Icon name={n.icon} size={22} />{n.label}
+              {n.view === 'tickets' && desk && <OverdueBadge desk={desk} />}
+            </a>
           : <a key={n.label} className="nav" href="/desk" title={`${n.label} opens in the current desk`}>
               <Icon name={n.icon} size={22} />{n.label}
-              {n.label === 'Inbox' && desk && desk.counts.inboxProblems > 0 && <span className="badge">{desk.counts.inboxProblems}</span>}
+              {n.label === 'Inbox' && desk && <Badge n={desk.counts.inboxProblems} />}
             </a>)}
       </nav>
 
       <main>
-        {desk ? <ContactsView desk={desk} />
+        {desk ? <Current desk={desk} />
           : <p className="loading">{error ? `Could not load the desk: ${error.message}` : 'Loading the desk'}</p>}
       </main>
     </div>

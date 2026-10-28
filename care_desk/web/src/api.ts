@@ -1,4 +1,4 @@
-import type { Desk, DeskEvent, Id, Lead, Message, Record_, StatePayload } from './types';
+import type { Desk, DeskEvent, Id, Lead, Message, Note, Record_, StatePayload, Ticket } from './types';
 
 // The header the desk requires on every change: a custom header cannot be sent
 // cross-site without a CORS preflight, which the desk never grants.
@@ -21,11 +21,11 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
    changed since the last load, and this keeps the records between loads. */
 const kept = {
   messages: new Map<Id, Message>(),
-  tickets: new Map<Id, Record_>(),
+  tickets: new Map<Id, Ticket>(),
   leads: new Map<Id, Lead>(),
   events: new Map<Id, DeskEvent>(),
   emails: new Map<Id, Record_>(),
-  notes: new Map<Id, Record_>(),
+  notes: new Map<Id, Note>(),
 };
 type Kept = typeof kept;
 let since = 0;
@@ -33,6 +33,11 @@ let journeys: StatePayload['journeys'] = null;
 let skew = 0;  // server clock minus this browser's, so countdowns agree with the server
 
 export const serverNow = () => Date.now() + skew;
+
+function group<T>(into: Map<Id, T[]>, key: Id, item: T) {
+  if (!into.has(key)) into.set(key, []);
+  into.get(key)!.push(item);
+}
 
 export async function loadDesk(): Promise<Desk> {
   const s = await api<StatePayload>('/api/desk/state' + (since ? `?since=${since}` : ''));
@@ -47,12 +52,14 @@ export async function loadDesk(): Promise<Desk> {
   if (s.journeys) journeys = s.journeys;  // only sent when a template changed
 
   const leads = [...kept.leads.values()].sort((a, b) => b.created_at - a.created_at);
-  const eventsByLead = new Map<Id, DeskEvent[]>();
+  const tickets = [...kept.tickets.values()].sort((a, b) => b.created_at - a.created_at);
+  const eventsByLead = new Map<Id, DeskEvent[]>(), eventsByTicket = new Map<Id, DeskEvent[]>();
   [...kept.events.values()].sort((a, b) => a.at - b.at).forEach(e => {
-    if (e.lead_id == null) return;
-    if (!eventsByLead.has(e.lead_id)) eventsByLead.set(e.lead_id, []);
-    eventsByLead.get(e.lead_id)!.push(e);
+    if (e.lead_id != null) group(eventsByLead, e.lead_id, e);
+    if (e.ticket_id != null) group(eventsByTicket, e.ticket_id, e);
   });
+  const notesByTicket = new Map<Id, Note[]>();
+  [...kept.notes.values()].sort((a, b) => a.at - b.at).forEach(n => group(notesByTicket, n.ticket_id, n));
   const messages = [...kept.messages.values()];
   return {
     now: s.now,
@@ -60,6 +67,10 @@ export async function loadDesk(): Promise<Desk> {
     leadById: new Map(leads.map(l => [l.id, l])),
     messageById: new Map(messages.map(m => [m.id, m])),
     eventsByLead,
+    tickets,
+    ticketById: new Map(tickets.map(t => [t.id, t])),
+    eventsByTicket,
+    notesByTicket,
     journeys: Object.fromEntries((journeys || []).map(j => [j.key, j])),
     config: s.config,
     status: s.status,

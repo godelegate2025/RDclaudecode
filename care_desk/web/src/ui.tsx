@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { holdRefresh } from './desk';
+import { fmtClock, withNames } from './format';
 import { Icon } from './icons';
+import type { DeskEvent } from './types';
 
 /* ---------------------------------------------------------------- toasts */
 
@@ -34,15 +36,16 @@ export function Toasts({ children }: { children: ReactNode }) {
 
 /* ---------------------------------------------------------------- windows */
 
-/** Escape closes; focus moves in on open and back to where it was on close; the refresh waits meanwhile. */
-function useLayer(onClose: () => void) {
+/** Escape closes; focus moves in on open and back to where it was on close; the refresh waits meanwhile.
+    A window puts the cursor in its first field; a panel focuses itself, so a phone keeps its keyboard down. */
+function useLayer(onClose: () => void, toField: boolean) {
   const ref = useRef<HTMLElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     const release = holdRefresh();
-    const first = ref.current?.querySelector<HTMLElement>('input:not([type=checkbox]):not([type=file]), textarea');
+    const first = toField ? ref.current?.querySelector<HTMLElement>('input:not([type=checkbox]):not([type=file]), textarea') : null;
     (first || ref.current)?.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') close.current(); };
     document.addEventListener('keydown', key);
@@ -51,13 +54,13 @@ function useLayer(onClose: () => void) {
       release();
       before?.focus?.({ preventScroll: true });
     };
-  }, []);
+  }, [toField]);
   return ref;
 }
 
 export function Modal({ label, eyebrow, title, onClose, children }:
   { label?: string; eyebrow: ReactNode; title: ReactNode; onClose: () => void; children: ReactNode }) {
-  const ref = useLayer(onClose);
+  const ref = useLayer(onClose, true);
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={label ?? String(title)}
       onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
@@ -72,7 +75,7 @@ export function Modal({ label, eyebrow, title, onClose, children }:
 }
 
 export function Drawer({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
-  const ref = useLayer(onClose);
+  const ref = useLayer(onClose, false);
   return (
     <>
       <div className="scrim" onClick={onClose} />
@@ -103,3 +106,13 @@ export function Tick({ checked, some, label, onChange }:
   return <input ref={ref} type="checkbox" aria-label={label} checked={checked} onChange={onChange}
     onClick={e => e.stopPropagation()} />;
 }
+
+/** What happened to a ticket or contact, oldest first. */
+export const Activity = ({ events, people }: { events?: DeskEvent[]; people: Record<string, string> }) => (
+  <ul className="hist">
+    {(events || []).map(e => <li key={e.id}>
+      <span className="t">{fmtClock(e.at)}</span><b>{e.label}</b>{e.detail ? '. ' + withNames(e.detail, people) : ''}
+    </li>)}
+    {!events?.length && <li>Nothing yet.</li>}
+  </ul>
+);
