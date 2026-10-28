@@ -1,4 +1,4 @@
-import type { Desk, DeskEvent, Id, Lead, Message, Note, Record_, StatePayload, Ticket } from './types';
+import type { Desk, DeskEvent, Id, Lead, Message, Note, SentEmail, StatePayload, Ticket } from './types';
 
 // The header the desk requires on every change: a custom header cannot be sent
 // cross-site without a CORS preflight, which the desk never grants.
@@ -24,7 +24,7 @@ const kept = {
   tickets: new Map<Id, Ticket>(),
   leads: new Map<Id, Lead>(),
   events: new Map<Id, DeskEvent>(),
-  emails: new Map<Id, Record_>(),
+  emails: new Map<Id, SentEmail>(),
   notes: new Map<Id, Note>(),
 };
 type Kept = typeof kept;
@@ -72,6 +72,7 @@ export async function loadDesk(): Promise<Desk> {
     ticketById: new Map(tickets.map(t => [t.id, t])),
     eventsByTicket,
     notesByTicket,
+    emails: [...kept.emails.values()].sort((a, b) => b.at - a.at),
     journeys: Object.fromEntries((journeys || []).map(j => [j.key, j])),
     config: s.config,
     status: s.status,

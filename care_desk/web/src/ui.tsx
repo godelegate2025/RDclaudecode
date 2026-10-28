@@ -59,7 +59,7 @@ function useLayer(onClose: () => void, toField: boolean) {
 }
 
 export function Modal({ label, eyebrow, title, onClose, children }:
-  { label?: string; eyebrow: ReactNode; title: ReactNode; onClose: () => void; children: ReactNode }) {
+  { label?: string; eyebrow: ReactNode; title?: ReactNode; onClose: () => void; children: ReactNode }) {
   const ref = useLayer(onClose, true);
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={label ?? String(title)}
@@ -67,7 +67,7 @@ export function Modal({ label, eyebrow, title, onClose, children }:
       <div className="box" ref={ref as React.RefObject<HTMLDivElement>} tabIndex={-1}>
         <button className="x" onClick={onClose} aria-label="Close"><Icon name="x" /></button>
         <div className="eyebrow">{eyebrow}</div>
-        <h2>{title}</h2>
+        {title && <h2>{title}</h2>}
         {children}
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api';
 import { ContactsView } from './contacts/ContactsView';
 import { useDesk } from './desk';
+import { EmailView } from './email/EmailView';
 import { useNow } from './format';
 import { Icon, type IconName } from './icons';
 import { InboxView } from './inbox/InboxView';
@@ -11,9 +12,13 @@ import type { Desk } from './types';
 import { useToast } from './ui';
 
 // Views already in the new desk are picked by the address's #, so a reload or the Back button keeps them.
-const VIEWS = { inbox: InboxView, tickets: TicketsView, contacts: ContactsView };
+// What follows a / is for the view itself (#email/oldlead opens that journey).
+const VIEWS = { inbox: InboxView, tickets: TicketsView, contacts: ContactsView, email: EmailView };
 type View = keyof typeof VIEWS;
-const viewFromHash = (): View => (location.hash.slice(1) in VIEWS ? location.hash.slice(1) as View : 'inbox');
+const viewFromHash = (): View => {
+  const v = location.hash.slice(1).split('/')[0];
+  return v in VIEWS ? v as View : 'inbox';
+};
 
 // The rest still open in the current desk.
 const NAV: { label: string; icon: IconName; view?: View; admin?: boolean }[] = [
@@ -21,7 +26,7 @@ const NAV: { label: string; icon: IconName; view?: View; admin?: boolean }[] = [
   { label: 'Inbox', icon: 'inbox', view: 'inbox' },
   { label: 'Tickets', icon: 'ticket', view: 'tickets' },
   { label: 'Contacts', icon: 'users', view: 'contacts' },
-  { label: 'Email', icon: 'mail' },
+  { label: 'Email', icon: 'mail', view: 'email' },
   { label: 'Team', icon: 'shield', admin: true },
 ];
 

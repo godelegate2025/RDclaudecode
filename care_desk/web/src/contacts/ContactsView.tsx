@@ -148,7 +148,7 @@ export function ContactsView({ desk }: { desk: Desk }) {
 
     {journey && journey.status !== 'live' && <Banner icon="shield">
       <span>The {journey.name} is {journey.status === 'paused' ? 'paused' : 'waiting for approval'}. Contacts with an email are queued and nothing is sent until it goes live.</span>
-      <a className="btn sm" href="/desk">Review the journey</a>
+      <a className="btn sm" href={`#email/${journey.key}`}>Review the journey</a>
     </Banner>}
     {!desk.status.email && <Banner icon="mail">
       <span>No email service is set up, so journeys are on hold. Set <code>RESEND_API_KEY</code> and <code>DESK_FROM_EMAIL</code> on the server.</span>

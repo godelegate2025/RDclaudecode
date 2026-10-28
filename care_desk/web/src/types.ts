@@ -104,6 +104,8 @@ export interface DeskEvent {
 }
 
 export interface JourneyStep {
+  delay: number;
+  label: string;
   subject: string;
   body: string;
 }
@@ -112,8 +114,24 @@ export interface Journey {
   key: string;
   name: string;
   group: string;
-  status: 'live' | 'paused' | 'draft' | string;
+  status: 'live' | 'pending' | 'paused';
+  trigger: string;
+  description: string;
+  exit?: string;
   steps: JourneyStep[];
+  placeholders: string[];
+}
+
+export interface SentEmail {
+  id: Id;
+  at: number;
+  journey: string;
+  to_addr: string;
+  subject: string;
+  body: string;
+  status: 'sent' | 'not_sent' | 'failed';
+  error?: string | null;
+  deleted?: boolean;
 }
 
 export interface Record_ {
@@ -129,7 +147,7 @@ export interface StatePayload {
   tickets: Ticket[];
   leads: Lead[];
   events: DeskEvent[];
-  emails: Record_[];
+  emails: SentEmail[];
   notes: Note[];
   journeys: Journey[] | null;
   config: {
@@ -163,6 +181,7 @@ export interface Desk {
   ticketById: Map<Id, Ticket>;
   eventsByTicket: Map<Id, DeskEvent[]>;
   notesByTicket: Map<Id, Note[]>;
+  emails: SentEmail[];
   journeys: Record<string, Journey>;
   config: StatePayload['config'];
   status: StatePayload['status'];
