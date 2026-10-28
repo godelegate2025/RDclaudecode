@@ -356,7 +356,7 @@ edited on the Email screen; those edits are stored in Firestore.
 | `LOGIN_FROM_EMAIL` | Sender of email sign-in codes, copied from the app; with `RESEND_API_KEY` it turns email sign-in on (DEPLOY.md, "Email sign-in") |
 | `DESK_WEBHOOK_KEY` | Must match `?key=` on the GHL webhook URL |
 | `DESK_CRON_KEY` | Lets Cloud Scheduler call the clock |
-| `DESK_PUBLIC_URL` | Base of unsubscribe links (set by the deploy script) |
+| `DESK_PUBLIC_URL` | Base of unsubscribe links. The deploy script sets it from `-PublicUrl`, keeps it on later runs, and uses the service's address on a first run |
 | `ANTHROPIC_API_KEY` | Claude sorting |
 | `DESK_MODEL`, `DESK_EFFORT` | Default `claude-opus-5-5` at `low` effort |
 | `RESEND_API_KEY`, `DESK_FROM_EMAIL`, `DESK_REPLY_TO` | Email sending |

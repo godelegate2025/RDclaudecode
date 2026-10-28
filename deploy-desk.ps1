@@ -22,6 +22,10 @@
 
 .EXAMPLE
   .\deploy-desk.ps1 -FromEmail "Redefine <hello@redefine.ph>" -ReplyTo "hello@redefine.ph"
+
+.EXAMPLE
+  .\deploy-desk.ps1 -PublicUrl "https://caredesk.redefineph.com"
+  Builds unsubscribe links on the desk's own domain. Later runs keep it.
 #>
 [CmdletBinding()]
 param(
@@ -30,7 +34,8 @@ param(
   [string]$Region     = "us-central1",
   [string]$Project    = "",
   [string]$FromEmail  = "",
-  [string]$ReplyTo    = ""
+  [string]$ReplyTo    = "",
+  [string]$PublicUrl  = ""
 )
 
 # gcloud reports progress on stderr, which Windows PowerShell turns into errors
@@ -123,9 +128,16 @@ gcloud run deploy $Service --image $image --project $Project --region $Region `
   --set-secrets $secrets --update-env-vars "^|^$($vars -join '|')" --allow-unauthenticated
 if ($LASTEXITCODE) { Fail "The deploy failed." }
 
-$url = gcloud run services describe $Service --project $Project --region $Region --format="value(status.url)"
-# Unsubscribe links are built from this address.
-gcloud run services update $Service --project $Project --region $Region --update-env-vars "DESK_PUBLIC_URL=$url" | Out-Null
+$deskJson = gcloud run services describe $Service --project $Project --region $Region --format=json | ConvertFrom-Json
+$url = $deskJson.status.url
+# Unsubscribe links are built from this address: -PublicUrl sets it (the desk's own domain),
+# later runs keep what is set, and a first run uses the service's address.
+$current = ($deskJson.spec.template.spec.containers[0].env | Where-Object { $_.name -eq "DESK_PUBLIC_URL" }).value
+$public = if ($PublicUrl) { $PublicUrl.TrimEnd("/") } elseif ($current) { $current } else { $url }
+if ($public -ne $current) {
+  gcloud run services update $Service --project $Project --region $Region --update-env-vars "DESK_PUBLIC_URL=$public" | Out-Null
+}
+Write-Host "  unsubscribe links: $public"
 
 Write-Step "5/6  Scheduling the clock (every 5 minutes)"
 $cronKey = gcloud secrets versions access latest --secret desk-cron-key --project $Project
