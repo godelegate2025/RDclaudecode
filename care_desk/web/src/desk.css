@@ -1,5 +1,4 @@
-/* The desk's styles, carried over from static/desk.html so both desks look the same while the
-   views move across. Trim what goes unused once the old desk is retired. */
+/* The desk's styles, carried over from the hand-written desk it replaced, so it looks the same. */
 /* Layout: an operations console. Fixed top bar, a narrow rail of views,
    and a working area that splits into list + detail. */
 :root{

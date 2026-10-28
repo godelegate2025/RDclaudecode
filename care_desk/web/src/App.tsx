@@ -13,7 +13,7 @@ import { TicketsView } from './tickets/TicketsView';
 import type { Desk } from './types';
 import { useToast } from './ui';
 
-// Views already in the new desk are picked by the address's #, so a reload or the Back button keeps them.
+// Views are picked by the address's #, so a reload or the Back button keeps them.
 // What follows a / is for the view itself (#email/oldlead opens that journey).
 const VIEWS = { dashboard: DashboardView, inbox: InboxView, tickets: TicketsView, contacts: ContactsView, email: EmailView, team: TeamView };
 type View = keyof typeof VIEWS;
@@ -71,9 +71,6 @@ export function App() {
           <span className="divider" aria-hidden="true" />
           <span className="tool">Care Desk</span>
         </div>
-        <span className="pill new" title="The new desk, on the same data as the current one.">
-          New desk · <a href="/desk">back to current</a>
-        </span>
         {desk && <>
           <span className={`pill ${desk.status.sorting === 'claude' ? 'ok' : 'warn'}`}>
             <span className="dot" />{desk.status.sorting === 'claude' ? 'Claude sorting' : 'Keyword sorting'}

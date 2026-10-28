@@ -1,7 +1,9 @@
 """Names: taken from Google, asked for once otherwise, and shown in both apps. No network."""
 
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 os.environ.setdefault("DESK_AUTOSTART", "0")
@@ -111,7 +113,12 @@ class RedefineAppTest(Base):
 class CareDeskTest(Base):
     def setUp(self):
         super().setUp()
-        self.desk_app = create_app(Desk(DeskStore()))
+        # A stand-in for the desk's React build, which only the desk's own image contains.
+        web = tempfile.TemporaryDirectory()
+        self.addCleanup(web.cleanup)
+        (Path(web.name) / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
+        with mock.patch("care_desk.app.WEB", Path(web.name)):
+            self.desk_app = create_app(Desk(DeskStore()))
         self.client = TestClient(self.desk_app, follow_redirects=False)
 
     def test_first_visit_asks_then_the_desk_shows_names(self):

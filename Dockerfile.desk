@@ -2,7 +2,7 @@
 # auditors' Chromium or ffmpeg, so the image is a fraction of the size and
 # starts fast.
 
-# The new desk's React pages (care_desk/web) are built in a Node stage of their
+# The desk's React pages (care_desk/web) are built in a Node stage of their
 # own, so the running image carries only the finished files, not Node.
 FROM node:22-slim AS web
 WORKDIR /web

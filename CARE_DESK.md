@@ -98,22 +98,23 @@ Open http://127.0.0.1:8010. Data is gone when the server stops. Without
 so. `DESK_DEV_EMAIL` is ignored as soon as the sign-in settings are present, so
 it can never open a deployed desk.
 
-## The new desk (React)
+## The desk's pages (React)
 
-The desk's pages are being rebuilt in React + Vite + TypeScript in
-`care_desk/web/`, one view at a time, at `/desk-next` beside the current desk
-(`/desk`, `static/desk.html`). Every view is done: `/desk-next` opens the
-Dashboard, then `#inbox`, `#tickets`, `#contacts`, `#email` (`#email/oldlead`
-opens that journey) and `#team` (admins only). Both use the same API and the same sign-in, so they can run
-side by side on real data. Once every view is across, `/desk` serves the new
-one and `desk.html` goes.
+The desk's pages are React + Vite + TypeScript, in `care_desk/web/`. `/desk`
+opens the Dashboard; the other views are `#inbox`, `#tickets`, `#contacts`,
+`#email` (`#email/oldlead` opens that journey) and `#team` (admins only).
+`/desk-next`, where the pages were built beside the old hand-written desk,
+redirects to `/desk`.
 
 ```powershell
 cd care_desk/web
 npm install
-npm run dev        # http://localhost:5173/desk-next/, with the desk above running on port 8010
-npm run build      # type-checks, then writes dist/, which the desk serves at /desk-next
+npm run dev        # http://localhost:5173/desk/, with the desk above running on port 8010
+npm run build      # type-checks, then writes dist/, which the desk serves at /desk
 ```
+
+Without a build, `/desk` says so instead of showing the desk, so run
+`npm run build` once before starting the desk locally.
 
 `npm run dev` sends `/api` and the sign-in pages on to the desk on port 8010, so
 the data is real and edits show up as you save. Nothing extra is needed to

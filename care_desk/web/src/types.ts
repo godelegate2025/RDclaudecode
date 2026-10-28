@@ -1,5 +1,5 @@
-// What /api/desk/state sends. Only the fields the new desk reads are typed;
-// records carry more, and the old desk still uses those.
+// What /api/desk/state sends. Only the fields the desk reads are typed;
+// records carry more.
 
 export type Id = number;
 
