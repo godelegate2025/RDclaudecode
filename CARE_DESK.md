@@ -102,8 +102,9 @@ it can never open a deployed desk.
 
 The desk's pages are being rebuilt in React + Vite + TypeScript in
 `care_desk/web/`, one view at a time, at `/desk-next` beside the current desk
-(`/desk`, `static/desk.html`). Contacts and Tickets are done (`/desk-next#tickets`);
-the other views link back to the current desk. Both use the same API and the same sign-in, so they can run
+(`/desk`, `static/desk.html`). Inbox, Tickets and Contacts are done (`/desk-next#inbox`,
+`#tickets`, `#contacts`); Dashboard, Email and Team still link back to the
+current desk. Both use the same API and the same sign-in, so they can run
 side by side on real data. Once every view is across, `/desk` serves the new
 one and `desk.html` goes.
 

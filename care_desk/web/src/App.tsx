@@ -4,20 +4,21 @@ import { ContactsView } from './contacts/ContactsView';
 import { useDesk } from './desk';
 import { useNow } from './format';
 import { Icon, type IconName } from './icons';
+import { InboxView } from './inbox/InboxView';
 import { isOverdue } from './tickets/sla';
 import { TicketsView } from './tickets/TicketsView';
 import type { Desk } from './types';
 import { useToast } from './ui';
 
 // Views already in the new desk are picked by the address's #, so a reload or the Back button keeps them.
-const VIEWS = { tickets: TicketsView, contacts: ContactsView };
+const VIEWS = { inbox: InboxView, tickets: TicketsView, contacts: ContactsView };
 type View = keyof typeof VIEWS;
-const viewFromHash = (): View => (location.hash.slice(1) in VIEWS ? location.hash.slice(1) as View : 'contacts');
+const viewFromHash = (): View => (location.hash.slice(1) in VIEWS ? location.hash.slice(1) as View : 'inbox');
 
 // The rest still open in the current desk.
 const NAV: { label: string; icon: IconName; view?: View; admin?: boolean }[] = [
   { label: 'Dashboard', icon: 'chart' },
-  { label: 'Inbox', icon: 'inbox' },
+  { label: 'Inbox', icon: 'inbox', view: 'inbox' },
   { label: 'Tickets', icon: 'ticket', view: 'tickets' },
   { label: 'Contacts', icon: 'users', view: 'contacts' },
   { label: 'Email', icon: 'mail' },
@@ -90,10 +91,10 @@ export function App() {
           ? <a key={n.label} className="nav" href={`#${n.view}`} aria-current={view === n.view ? 'page' : undefined}>
               <Icon name={n.icon} size={22} />{n.label}
               {n.view === 'tickets' && desk && <OverdueBadge desk={desk} />}
+              {n.view === 'inbox' && desk && <Badge n={desk.counts.inboxProblems} />}
             </a>
           : <a key={n.label} className="nav" href="/desk" title={`${n.label} opens in the current desk`}>
               <Icon name={n.icon} size={22} />{n.label}
-              {n.label === 'Inbox' && desk && <Badge n={desk.counts.inboxProblems} />}
             </a>)}
       </nav>
 

@@ -21,17 +21,42 @@ export interface Lead {
   deleted?: boolean;
 }
 
+export interface FbCandidate { id: string; message: string; created_at: number; comment_url?: string | null }
+
 export interface Message {
   id: Id;
   channel: string;
   author: string;
+  email?: string | null;
   text: string;
   subject?: string | null;
   received_at: number;
-  sort_status?: string;
+  source?: string;
+  // Sorting: pending until Claude (or the keyword rules) has read it.
+  sort_status?: 'pending' | 'sorted' | 'failed' | 'unparsed' | string;
+  sort_error?: string | null;
+  sorted_by?: string;
+  intent?: 'sales' | 'service' | 'other' | string;
+  category?: string | null;
+  priority?: Priority;
+  interest?: string | null;
+  summary?: string | null;
+  confidence?: number | null;
+  route?: 'ticket' | 'lead' | 'logged' | string | null;
+  ticket_id?: Id | null;
+  lead_id?: Id | null;
+  raw?: unknown;
+  // Replying
   suggested_reply?: string | null;
   replied_at?: number | null;
+  replied_by?: string | null;
+  reply_text?: string | null;
+  emailed_at?: number | null;
   post_url?: string | null;
+  fb_match?: 'matched' | 'ambiguous' | 'pending' | 'none' | string | null;
+  fb_candidates?: FbCandidate[];
+  fb_reply_id?: string | null;
+  match_error?: string | null;
   deleted?: boolean;
 }
 
@@ -113,7 +138,15 @@ export interface StatePayload {
     sla: Record<Priority, { first: number; resolve: number }>;  // minutes
     [k: string]: unknown;
   };
-  status: { sorting: string; email: boolean; email_from?: string | null; ghl_location?: string | null; [k: string]: unknown };
+  status: {
+    sorting: string;
+    email: boolean;
+    email_from?: string | null;
+    ghl_location?: string | null;
+    webhook?: boolean;
+    facebook_replies?: boolean;
+    [k: string]: unknown;
+  };
   people: Record<string, string>;
   user: { email: string; role: string; name?: string | null };
 }
@@ -123,6 +156,7 @@ export interface Desk {
   now: number;
   leads: Lead[];
   leadById: Map<Id, Lead>;
+  messages: Message[];
   messageById: Map<Id, Message>;
   eventsByLead: Map<Id, DeskEvent[]>;
   tickets: Ticket[];

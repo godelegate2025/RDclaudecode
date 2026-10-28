@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useAction } from '../desk';
-import { channelLabel, fmtDur, fmtTime, nameOf, useNow } from '../format';
+import { channelLabel, fmtDur, fmtTime, ghlLink, nameOf, useNow } from '../format';
 import { Icon } from '../icons';
-import type { Desk, Message, Ticket } from '../types';
+import type { Desk, Ticket } from '../types';
 import { Activity, Drawer } from '../ui';
 import { FirstReplyClock, ResolutionClock } from './sla';
 import { TicketNotes } from './TicketNotes';
@@ -11,13 +11,6 @@ const STEPS = ['Open', 'Replied', 'In progress', 'Resolved'];
 const DONE: Record<string, string> = {
   assign: 'Assigned to you', first_reply: 'First reply recorded', progress: 'Moved to In progress', resolve: 'Resolved', reopen: 'Reopened',
 };
-
-// The comment on its post when GHL sent the link, otherwise GHL's comment inbox.
-function ghlLink(desk: Desk, m?: Message) {
-  if (m?.post_url) return m.post_url;
-  const loc = desk.status.ghl_location;
-  return loc ? `https://app.gohighlevel.com/v2/location/${encodeURIComponent(loc)}/marketing/social-planner/comments` : null;
-}
 
 const lo = (text: string) => <span style={{ color: 'var(--t-lo)' }}>{text}</span>;
 

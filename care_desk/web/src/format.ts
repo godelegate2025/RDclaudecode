@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { serverNow } from './api';
+import type { IconName } from './icons';
+import type { Desk, Message } from './types';
 
 export const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
@@ -59,11 +61,22 @@ export const median = (a: number[]) => {
   return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2;
 };
 
-export const CHANNEL: Record<string, string> = {
-  facebook: 'Facebook', instagram: 'Instagram', messenger: 'Messenger', tiktok: 'TikTok', linkedin: 'LinkedIn',
-  threads: 'Threads', email: 'Email', website: 'Website',
+// Every channel a message can come from: its name, its icon, and what one item from it is called.
+export const CHANNELS: Record<string, { label: string; icon: IconName; kind: string }> = {
+  facebook: { label: 'Facebook', icon: 'fb', kind: 'Comment' },
+  instagram: { label: 'Instagram', icon: 'ig', kind: 'Comment' },
+  messenger: { label: 'Messenger', icon: 'dm', kind: 'Message' },
+  tiktok: { label: 'TikTok', icon: 'tt', kind: 'Comment' },
+  linkedin: { label: 'LinkedIn', icon: 'li', kind: 'Comment' },
+  threads: { label: 'Threads', icon: 'at', kind: 'Comment' },
+  email: { label: 'Email', icon: 'mail', kind: 'Email' },
+  website: { label: 'Website', icon: 'web', kind: 'Form' },
+  other: { label: 'Other', icon: 'dm', kind: 'Message' },
 };
-export const channelLabel = (c: string) => CHANNEL[c] || 'Other';
+export const channelOf = (c: string) => CHANNELS[c] || CHANNELS.other;
+export const channelLabel = (c: string) => channelOf(c).label;
+export const initials = (n: string) =>
+  String(n || '?').split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
 
 // Records name people by email; pages show the name each gave, where there is one.
 export const nameOf = (email: string | null | undefined, people: Record<string, string>) => (email && people[email]) || email || '';
@@ -72,4 +85,11 @@ export function withNames(text: string, people: Record<string, string>) {
   if (!emails.length) return text;
   const re = new RegExp(emails.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
   return text.replace(re, m => people[m.toLowerCase()] || m);
+}
+
+// The comment on its post when GHL sent the link, otherwise GHL's comment inbox.
+export function ghlLink(desk: Desk, m?: Message) {
+  if (m?.post_url) return m.post_url;
+  const loc = desk.status.ghl_location;
+  return loc ? `https://app.gohighlevel.com/v2/location/${encodeURIComponent(loc)}/marketing/social-planner/comments` : null;
 }

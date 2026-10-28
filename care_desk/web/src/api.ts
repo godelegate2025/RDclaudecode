@@ -60,11 +60,12 @@ export async function loadDesk(): Promise<Desk> {
   });
   const notesByTicket = new Map<Id, Note[]>();
   [...kept.notes.values()].sort((a, b) => a.at - b.at).forEach(n => group(notesByTicket, n.ticket_id, n));
-  const messages = [...kept.messages.values()];
+  const messages = [...kept.messages.values()].sort((a, b) => b.received_at - a.received_at);
   return {
     now: s.now,
     leads,
     leadById: new Map(leads.map(l => [l.id, l])),
+    messages,
     messageById: new Map(messages.map(m => [m.id, m])),
     eventsByLead,
     tickets,
