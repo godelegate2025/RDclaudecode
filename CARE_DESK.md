@@ -98,6 +98,32 @@ Open http://127.0.0.1:8010. Data is gone when the server stops. Without
 so. `DESK_DEV_EMAIL` is ignored as soon as the sign-in settings are present, so
 it can never open a deployed desk.
 
+## The new desk (React)
+
+The desk's pages are being rebuilt in React + Vite + TypeScript in
+`care_desk/web/`, one view at a time, at `/desk-next` beside the current desk
+(`/desk`, `static/desk.html`). Contacts is done; the other views link back to
+the current desk. Both use the same API and the same sign-in, so they can run
+side by side on real data. Once every view is across, `/desk` serves the new
+one and `desk.html` goes.
+
+```powershell
+cd care_desk/web
+npm install
+npm run dev        # http://localhost:5173/desk-next/, with the desk above running on port 8010
+npm run build      # type-checks, then writes dist/, which the desk serves at /desk-next
+```
+
+`npm run dev` sends `/api` and the sign-in pages on to the desk on port 8010, so
+the data is real and edits show up as you save. Nothing extra is needed to
+deploy: `Dockerfile.desk` builds the pages in a Node stage and copies only
+`dist/` into the image. `dist/` and `node_modules/` are not committed.
+
+The styles are the current desk's, copied into `src/desk.css`, so the two look
+the same while views move across. Records load from `/api/desk/state` through
+TanStack Query (`src/desk.ts`), which keeps what was loaded and asks only for
+changes every 20 seconds, as the current desk does. Tables use TanStack Table.
+
 ## Deploy
 
 Team sign-in and the Firestore database must already be set up for the Redefine

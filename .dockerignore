@@ -8,3 +8,5 @@ tests/
 .claude/
 *.md
 !requirements.txt
+care_desk/web/node_modules/
+care_desk/web/dist/

@@ -2,7 +2,10 @@
 
 import base64
 import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 os.environ["DESK_AUTOSTART"] = "0"  # the module-level app would open Firestore
 
@@ -545,6 +548,35 @@ class HTTPTest(DeskTestCase):
         self.assertEqual((r.status_code, r.headers["location"]), (303, "/login"))
         login = self.client.get("/login")
         self.assertIn(SIGN_IN["GOOGLE_CLIENT_ID"], login.text)
+
+    def test_the_new_desk_is_served_behind_the_same_sign_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "assets").mkdir()
+            (web / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
+            (web / "assets" / "index-abc.js").write_text("console.log(1)", encoding="utf-8")
+            with mock.patch("care_desk.app.WEB", web):
+                client = TestClient(create_app(self.desk))
+            r = client.get("/desk-next", follow_redirects=False)
+            self.assertEqual((r.status_code, r.headers["location"]), (303, "/login"))
+            client.cookies.set(team_auth.COOKIE, team_auth.make_session("owner@redefine.ph", SIGN_IN["SESSION_SECRET"].encode()))
+            client.post("/auth/name", json={"name": "Owner"}, headers={"X-Requested-With": "desk"})
+            r = client.get("/desk-next")
+            self.assertEqual(r.status_code, 200)
+            self.assertIn('id="root"', r.text)
+            self.assertEqual(r.headers["cache-control"], "no-store")
+            self.assertEqual(client.get("/desk-next/assets/index-abc.js").text, "console.log(1)")
+            self.assertEqual(client.get("/desk-next/assets/missing.js").status_code, 404)
+            self.assertIn("Redefine Care Desk", client.get("/desk").text)  # the current desk stays as it is
+
+    def test_the_new_desk_says_so_when_it_was_not_built(self):
+        with mock.patch("care_desk.app.WEB", Path(tempfile.gettempdir()) / "no-desk-build-here"):
+            client = TestClient(create_app(self.desk))
+        client.cookies.set(team_auth.COOKIE, team_auth.make_session("owner@redefine.ph", SIGN_IN["SESSION_SECRET"].encode()))
+        client.post("/auth/name", json={"name": "Owner"}, headers={"X-Requested-With": "desk"})
+        r = client.get("/desk-next")
+        self.assertEqual(r.status_code, 404)
+        self.assertIn("npm run build", r.text)
 
     def test_the_desk_keeps_its_own_team(self):
         self.sign_in("stranger@gmail.com")

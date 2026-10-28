@@ -1,0 +1,4 @@
+/* What the new desk adds on top of desk.css. */
+a.nav{text-decoration:none}
+.pill.new{border-color:rgba(252,68,82,.5);color:var(--coral)}
+.pill.new a{color:inherit}

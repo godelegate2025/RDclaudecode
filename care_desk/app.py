@@ -43,6 +43,8 @@ log = logging.getLogger("care-desk")
 logging.basicConfig(level=logging.INFO)
 
 STATIC = Path(__file__).parent / "static"
+# The new React desk (care_desk/web), built by `npm run build` or by Dockerfile.desk.
+WEB = Path(__file__).parent / "web" / "dist"
 
 
 class GoogleCredential(BaseModel):
@@ -158,6 +160,7 @@ def _store():
 def create_app(desk: Desk | None = None) -> FastAPI:
     app = FastAPI(title="Care Desk", docs_url=None, redoc_url=None)
     app.state.desk = desk or Desk(_store())
+    web = WEB
     if os.environ.get("DESK_STORE") == "memory":
         app_team.use_store(app_team.MemoryStore())  # nor the app's team list, which the desk team is filled from
         profiles.use_store(profiles.MemoryStore())
@@ -221,8 +224,7 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         page = page.replace("__EMAIL_LOGIN__", "on" if email_login.available() else "off")
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
-    @app.get("/desk", response_class=HTMLResponse)
-    def desk_page(request: Request) -> Response:
+    def desk_shell(request: Request, page: Path) -> Response:
         problem = not_set_up()
         if problem:
             return HTMLResponse(_note("Sign-in is not set up", problem), 503)
@@ -231,7 +233,23 @@ def create_app(desk: Desk | None = None) -> FastAPI:
             return RedirectResponse("/login", status_code=303)
         if get_profiles().needs_name(email):  # first visit: ask for a name once
             return RedirectResponse("/welcome", status_code=303)
-        return HTMLResponse((STATIC / "desk.html").read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+        if not page.is_file():
+            return HTMLResponse(_note("The new desk isn't built", "Run npm run build in care_desk/web, "
+                                      "or deploy with deploy-desk.ps1, which builds it."), 404)
+        return HTMLResponse(page.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+    @app.get("/desk", response_class=HTMLResponse)
+    def desk_page(request: Request) -> Response:
+        return desk_shell(request, STATIC / "desk.html")
+
+    # The React desk, next to the current one while its views move across.
+    @app.get("/desk-next", response_class=HTMLResponse)
+    def desk_next_page(request: Request) -> Response:
+        return desk_shell(request, web / "index.html")
+
+    # Its scripts and styles, named by content hash so a new build never mixes with an old one.
+    # No desk data is in them, so they need no sign-in, like /static.
+    app.mount("/desk-next/assets", StaticFiles(directory=web / "assets", check_dir=False), name="desk-next")
 
     @app.get("/welcome", response_class=HTMLResponse)
     def welcome_page(request: Request) -> Response:
