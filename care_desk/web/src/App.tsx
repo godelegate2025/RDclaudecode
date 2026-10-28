@@ -8,27 +8,27 @@ import { useNow } from './format';
 import { Icon, type IconName } from './icons';
 import { InboxView } from './inbox/InboxView';
 import { isOverdue } from './tickets/sla';
+import { TeamView } from './team/TeamView';
 import { TicketsView } from './tickets/TicketsView';
 import type { Desk } from './types';
 import { useToast } from './ui';
 
 // Views already in the new desk are picked by the address's #, so a reload or the Back button keeps them.
 // What follows a / is for the view itself (#email/oldlead opens that journey).
-const VIEWS = { dashboard: DashboardView, inbox: InboxView, tickets: TicketsView, contacts: ContactsView, email: EmailView };
+const VIEWS = { dashboard: DashboardView, inbox: InboxView, tickets: TicketsView, contacts: ContactsView, email: EmailView, team: TeamView };
 type View = keyof typeof VIEWS;
 const viewFromHash = (): View => {
   const v = location.hash.slice(1).split('/')[0];
   return v in VIEWS ? v as View : 'dashboard';
 };
 
-// The rest still open in the current desk.
-const NAV: { label: string; icon: IconName; view?: View; admin?: boolean }[] = [
+const NAV: { label: string; icon: IconName; view: View; admin?: boolean }[] = [
   { label: 'Dashboard', icon: 'chart', view: 'dashboard' },
   { label: 'Inbox', icon: 'inbox', view: 'inbox' },
   { label: 'Tickets', icon: 'ticket', view: 'tickets' },
   { label: 'Contacts', icon: 'users', view: 'contacts' },
   { label: 'Email', icon: 'mail', view: 'email' },
-  { label: 'Team', icon: 'shield', admin: true },
+  { label: 'Team', icon: 'shield', view: 'team', admin: true },
 ];
 
 function Badge({ n }: { n: number }) {
@@ -71,7 +71,7 @@ export function App() {
           <span className="divider" aria-hidden="true" />
           <span className="tool">Care Desk</span>
         </div>
-        <span className="pill new" title="The new desk. Views not moved yet open in the current one.">
+        <span className="pill new" title="The new desk, on the same data as the current one.">
           New desk · <a href="/desk">back to current</a>
         </span>
         {desk && <>
@@ -93,15 +93,12 @@ export function App() {
       </header>
 
       <nav className="side" aria-label="Views">
-        {NAV.filter(n => !n.admin || isAdmin).map(n => n.view
-          ? <a key={n.label} className="nav" href={`#${n.view}`} aria-current={view === n.view ? 'page' : undefined}>
-              <Icon name={n.icon} size={22} />{n.label}
-              {n.view === 'tickets' && desk && <OverdueBadge desk={desk} />}
-              {n.view === 'inbox' && desk && <Badge n={desk.counts.inboxProblems} />}
-            </a>
-          : <a key={n.label} className="nav" href="/desk" title={`${n.label} opens in the current desk`}>
-              <Icon name={n.icon} size={22} />{n.label}
-            </a>)}
+        {NAV.filter(n => !n.admin || isAdmin).map(n =>
+          <a key={n.label} className="nav" href={`#${n.view}`} aria-current={view === n.view ? 'page' : undefined}>
+            <Icon name={n.icon} size={22} />{n.label}
+            {n.view === 'tickets' && desk && <OverdueBadge desk={desk} />}
+            {n.view === 'inbox' && desk && <Badge n={desk.counts.inboxProblems} />}
+          </a>)}
       </nav>
 
       <main>

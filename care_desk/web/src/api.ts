@@ -4,10 +4,11 @@ import type { Desk, DeskEvent, Id, Lead, Message, Note, SentEmail, StatePayload,
 // cross-site without a CORS preflight, which the desk never grants.
 const HEADERS = { 'X-Requested-With': 'desk' };
 
-export async function api<T = Record<string, unknown>>(path: string, body?: unknown): Promise<T> {
+/** GET without a body, POST with one; `method` overrides (the team list uses PATCH and DELETE). */
+export async function api<T = Record<string, unknown>>(path: string, body?: unknown, method?: string): Promise<T> {
   const r = await fetch(path, body === undefined
-    ? { headers: HEADERS }
-    : { method: 'POST', headers: { ...HEADERS, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    ? { method: method || 'GET', headers: HEADERS }
+    : { method: method || 'POST', headers: { ...HEADERS, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (r.status === 401) {
     location.href = '/login';
     throw new Error('Signed out');
