@@ -130,7 +130,7 @@ class RoutesTest(unittest.TestCase):
         self.sign_in(TestClient(app, follow_redirects=False), "/post-audit", "Redefine App")
 
     def test_care_desk(self):
-        self.sign_in(TestClient(create_app(Desk(DeskStore()))), "/desk", "Care Desk")
+        self.sign_in(TestClient(create_app(Desk(DeskStore()))), "/tickets", "Care Desk")
 
     def test_the_email_reads_well_without_html(self):
         subject, text, html = email_login.message("mia@studio.ph", "257137", "Care Desk", "https://x.example/static/logo.png")

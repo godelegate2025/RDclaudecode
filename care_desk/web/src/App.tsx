@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { api } from './api';
 import { ContactsView } from './contacts/ContactsView';
 import { DashboardView } from './dashboard/DashboardView';
@@ -7,20 +7,29 @@ import { EmailView } from './email/EmailView';
 import { useNow } from './format';
 import { Icon, type IconName } from './icons';
 import { InboxView } from './inbox/InboxView';
+import { onLink, usePath } from './nav';
 import { isOverdue } from './tickets/sla';
 import { TeamView } from './team/TeamView';
 import { TicketsView } from './tickets/TicketsView';
 import type { Desk } from './types';
 import { useToast } from './ui';
 
-// Views are picked by the address's #, so a reload or the Back button keeps them.
-// What follows a / is for the view itself (#email/oldlead opens that journey).
+// Each view has its own address: / for the Dashboard, /inbox, /tickets and so on, and what
+// follows is for the view itself (/email/oldlead opens that journey). The server serves
+// the page at the same addresses (DESK_VIEWS in care_desk/app.py).
 const VIEWS = { dashboard: DashboardView, inbox: InboxView, tickets: TicketsView, contacts: ContactsView, email: EmailView, team: TeamView };
 type View = keyof typeof VIEWS;
-const viewFromHash = (): View => {
-  const v = location.hash.slice(1).split('/')[0];
+const viewOf = (path: string): View => {
+  const v = path.split('/')[1] || 'dashboard';
   return v in VIEWS ? v as View : 'dashboard';
 };
+const hrefOf = (v: View) => (v === 'dashboard' ? '/' : `/${v}`);
+
+// Old links (/desk#tickets, /desk-next#tickets) reach / with the #view kept; swap it for the view's address.
+const old = /^#(\w+)(\/[\w-]+)?$/.exec(location.hash);
+if (location.pathname === '/' && old && old[1] in VIEWS) {
+  history.replaceState(null, '', old[1] === 'dashboard' ? '/' : `/${old[1]}${old[2] || ''}`);
+}
 
 const NAV: { label: string; icon: IconName; view: View; admin?: boolean }[] = [
   { label: 'Dashboard', icon: 'chart', view: 'dashboard' },
@@ -42,12 +51,8 @@ function OverdueBadge({ desk }: { desk: Desk }) {
 export function App() {
   const { data: desk, error, refetch, isFetching } = useDesk();
   const toast = useToast();
-  const [view, setView] = useState(viewFromHash);
-  useEffect(() => {
-    const follow = () => { setView(viewFromHash()); window.scrollTo(0, 0); };
-    window.addEventListener('hashchange', follow);
-    return () => window.removeEventListener('hashchange', follow);
-  }, []);
+  const path = usePath();
+  const view = viewOf(path);
 
   // A refresh that fails once the desk is showing says so, instead of blanking the page.
   useEffect(() => { if (error && desk) toast(error.message, 'u'); }, [error, desk, toast]);
@@ -80,7 +85,7 @@ export function App() {
           </span>
         </>}
         <div className="controls">
-          {desk && <a className="who" href="/welcome" title={`${desk.user.email} · change your name`}>{desk.user.name || desk.user.email}</a>}
+          {desk && <a className="who" href={`/welcome?next=${encodeURIComponent(path)}`} title={`${desk.user.email} · change your name`}>{desk.user.name || desk.user.email}</a>}
           <button className="btn sm" disabled={isFetching}
             onClick={async () => { const r = await refetch(); if (!r.error) toast('Up to date'); }}>
             <Icon name="refresh" size={15} />Refresh
@@ -91,7 +96,7 @@ export function App() {
 
       <nav className="side" aria-label="Views">
         {NAV.filter(n => !n.admin || isAdmin).map(n =>
-          <a key={n.label} className="nav" href={`#${n.view}`} aria-current={view === n.view ? 'page' : undefined}>
+          <a key={n.label} className="nav" href={hrefOf(n.view)} onClick={onLink} aria-current={view === n.view ? 'page' : undefined}>
             <Icon name={n.icon} size={22} />{n.label}
             {n.view === 'tickets' && desk && <OverdueBadge desk={desk} />}
             {n.view === 'inbox' && desk && <Badge n={desk.counts.inboxProblems} />}

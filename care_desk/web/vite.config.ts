@@ -1,4 +1,4 @@
-// The desk, built into dist/ and served by the FastAPI desk at /desk.
+// The desk, built into dist/ and served by the FastAPI desk at / and each view's address.
 // `npm run dev` proxies the API to a desk running locally on port 8010
 // (the "care-desk-local" launch config), so sign-in and data are the real ones.
 import react from '@vitejs/plugin-react';
@@ -7,7 +7,7 @@ import { defineConfig } from 'vite';
 const desk = 'http://127.0.0.1:8010';
 
 export default defineConfig({
-  base: '/desk/',
+  base: '/',
   plugins: [react()],
   server: {
     port: 5173,

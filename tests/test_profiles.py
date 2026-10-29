@@ -127,10 +127,11 @@ class CareDeskTest(Base):
         self.names.set_name("mia@studio.ph", "Mia Cruz")
         self.names.set_name("outsider@gmail.com", "Not On The Desk")
         self.session(self.client)
-        self.assertEqual(self.client.get("/desk").headers["location"], "/welcome")
+        # The name step comes first, then back to the view they opened.
+        self.assertEqual(self.client.get("/tickets").headers["location"], "/welcome?next=/tickets")
         self.assertEqual(self.client.post("/auth/name", json={"name": "Nilo"}).status_code, 403)
         self.assertEqual(self.client.post("/auth/name", json={"name": "Nilo"}, headers=h).status_code, 200)
-        self.assertEqual(self.client.get("/desk").status_code, 200)
+        self.assertEqual(self.client.get("/tickets").status_code, 200)
 
         state = self.client.get("/api/desk/state").json()
         self.assertEqual(state["user"]["name"], "Nilo")

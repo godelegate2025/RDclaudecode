@@ -82,6 +82,8 @@ input.code{font:600 22px 'Archivo',sans-serif;letter-spacing:.3em;text-align:cen
   <p id="err" role="alert"></p>
 </main>
 <script>
+  // Where to go once signed in: the desk view that sent them here. The server only accepts same-site paths.
+  const NEXT = new URLSearchParams(location.search).get('next') || '/';
   // Google hands over a signed token; the server checks it and the team list.
   async function onGoogleCredential(response) {
     const err = document.getElementById('err');
@@ -90,11 +92,11 @@ input.code{font:600 22px 'Archivo',sans-serif;letter-spacing:.3em;text-align:cen
       const res = await fetch('/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential, next: '/desk' }),
+        body: JSON.stringify({ credential: response.credential, next: NEXT }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { err.textContent = data.detail || 'Sign-in failed. Try again.'; return; }
-      location.replace(data.next || '/desk');
+      location.replace(data.next || '/');
     } catch {
       err.textContent = 'Could not reach the desk. Check your connection and try again.';
     }
@@ -133,8 +135,8 @@ input.code{font:600 22px 'Archivo',sans-serif;letter-spacing:.3em;text-align:cen
       if (code.length !== 6) { $('code').focus(); err.textContent = 'Enter the 6-digit code from the email.'; return; }
       err.textContent = ''; busy(codeForm, true);
       try {
-        const data = await call('/auth/email/verify', { email: $('email').value.trim(), code, next: '/desk' });
-        location.replace(data.next || '/desk');
+        const data = await call('/auth/email/verify', { email: $('email').value.trim(), code, next: NEXT });
+        location.replace(data.next || '/');
       } catch (e2) { err.textContent = e2.message; busy(codeForm, false); $('code').select(); }
     });
   }

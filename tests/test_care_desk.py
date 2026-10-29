@@ -544,8 +544,10 @@ class HTTPTest(DeskTestCase):
 
     def test_desk_needs_a_team_sign_in(self):
         self.assertEqual(self.client.get("/api/desk/state").status_code, 401)
-        r = self.client.get("/desk", follow_redirects=False)
-        self.assertEqual((r.status_code, r.headers["location"]), (303, "/login"))
+        # Signing in brings them back to the view they opened.
+        for path in ("/", "/tickets", "/email/oldlead"):
+            r = self.client.get(path, follow_redirects=False)
+            self.assertEqual((r.status_code, r.headers["location"]), (303, "/login?next=" + path))
         login = self.client.get("/login")
         self.assertIn(SIGN_IN["GOOGLE_CLIENT_ID"], login.text)
 
@@ -559,22 +561,31 @@ class HTTPTest(DeskTestCase):
                 client = TestClient(create_app(self.desk))
             client.cookies.set(team_auth.COOKIE, team_auth.make_session("owner@redefine.ph", SIGN_IN["SESSION_SECRET"].encode()))
             client.post("/auth/name", json={"name": "Owner"}, headers={"X-Requested-With": "desk"})
-            r = client.get("/desk")
-            self.assertEqual(r.status_code, 200)
-            self.assertIn('id="root"', r.text)
-            self.assertEqual(r.headers["cache-control"], "no-store")
-            self.assertEqual(client.get("/desk/assets/index-abc.js").text, "console.log(1)")
-            self.assertEqual(client.get("/desk/assets/missing.js").status_code, 404)
-            # Where the desk lived while it was rebuilt: old links still land on it.
-            r = client.get("/desk-next", follow_redirects=False)
-            self.assertEqual((r.status_code, r.headers["location"]), (301, "/desk"))
+            # Every view's address gets the same page; the page picks the view.
+            for path in ("/", "/inbox", "/tickets", "/contacts", "/email", "/email/oldlead", "/team"):
+                r = client.get(path)
+                self.assertEqual(r.status_code, 200, path)
+                self.assertIn('id="root"', r.text)
+                self.assertEqual(r.headers["cache-control"], "no-store")
+            self.assertEqual(client.get("/settings").status_code, 404)
+            self.assertEqual(client.get("/assets/index-abc.js").text, "console.log(1)")
+            self.assertEqual(client.get("/assets/missing.js").status_code, 404)
+            # Old addresses still land on the desk; the browser keeps their #view.
+            for path in ("/desk", "/desk-next"):
+                r = client.get(path, follow_redirects=False)
+                self.assertEqual((r.status_code, r.headers["location"]), (301, "/"))
+            # Already signed in, the sign-in page sends them on to where they were going.
+            r = client.get("/login?next=/tickets", follow_redirects=False)
+            self.assertEqual((r.status_code, r.headers["location"]), (303, "/tickets"))
+            r = client.get("/login?next=//elsewhere.example", follow_redirects=False)
+            self.assertEqual(r.headers["location"], "/")
 
     def test_the_desk_says_so_when_it_was_not_built(self):
         with mock.patch("care_desk.app.WEB", Path(tempfile.gettempdir()) / "no-desk-build-here"):
             client = TestClient(create_app(self.desk))
         client.cookies.set(team_auth.COOKIE, team_auth.make_session("owner@redefine.ph", SIGN_IN["SESSION_SECRET"].encode()))
         client.post("/auth/name", json={"name": "Owner"}, headers={"X-Requested-With": "desk"})
-        r = client.get("/desk")
+        r = client.get("/")
         self.assertEqual(r.status_code, 404)
         self.assertIn("npm run build", r.text)
 
@@ -715,7 +726,7 @@ class HTTPTest(DeskTestCase):
         for name in SIGN_IN:
             os.environ.pop(name)
         self.assertEqual(self.client.get("/api/desk/state").status_code, 503)
-        self.assertEqual(self.client.get("/desk").status_code, 503)
+        self.assertEqual(self.client.get("/").status_code, 503)
         os.environ["DESK_DEV_EMAIL"] = "dev@redefine.ph"  # laptop runs only
         self.assertEqual(self.client.get("/api/desk/state").json()["user"]["email"], "dev@redefine.ph")
 

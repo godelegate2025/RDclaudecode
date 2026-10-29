@@ -10,7 +10,7 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
     ? { method: method || 'GET', headers: HEADERS }
     : { method: method || 'POST', headers: { ...HEADERS, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (r.status === 401) {
-    location.href = '/login';
+    location.href = '/login?next=' + encodeURIComponent(location.pathname);  // back to this view after
     throw new Error('Signed out');
   }
   const data = await r.json().catch(() => ({}));

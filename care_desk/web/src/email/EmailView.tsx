@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { holdRefresh, useAction } from '../desk';
 import { fill, fmtClock, fmtTime, useNow } from '../format';
 import { Icon } from '../icons';
+import { usePath } from '../nav';
 import type { Desk, Id, Journey, JourneyStep, SentEmail } from '../types';
 import { Banner, Modal } from '../ui';
 
@@ -88,22 +89,17 @@ function SentModal({ desk, e, onClose }: { desk: Desk; e: SentEmail; onClose: ()
   </Modal>;
 }
 
-/** The journey to show first: the one named after the # (from "Review the journey"), or new contacts. */
-const journeyFromHash = () => location.hash.split('/')[1] || 'newlead';
-
 export function EmailView({ desk }: { desk: Desk }) {
   const now = useNow(60_000);
   const act = useAction();
-  const [key, setKey] = useState(journeyFromHash);
+  // The journey to show first: the one the address names (/email/oldlead, from "Review the journey"), or new contacts.
+  const named = usePath().split('/')[2] || 'newlead';
+  const [key, setKey] = useState(named);
   const [stepAt, setStepAt] = useState(0);
   const [editing, setEditing] = useState(false);
   const [viewing, setViewing] = useState<Id | null>(null);
 
-  useEffect(() => {
-    const follow = () => { setKey(journeyFromHash()); setStepAt(0); setEditing(false); };
-    window.addEventListener('hashchange', follow);
-    return () => window.removeEventListener('hashchange', follow);
-  }, []);
+  useEffect(() => { setKey(named); setStepAt(0); setEditing(false); }, [named]);
 
   // How many contacts are in each journey, and how many of its emails went out.
   const stats = (j: Journey) => ({

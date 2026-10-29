@@ -51,18 +51,22 @@ input:focus{outline:2px solid var(--coral);outline-offset:1px;border-color:trans
     <label for="name">Your name</label>
     <input id="name" name="name" autocomplete="name" maxlength="80" placeholder="e.g. Maria Santos" value="__NAME__">
     <button class="go" type="submit" id="save">Continue</button>
-    <a class="back" id="back" href="/desk" hidden>Cancel</a>
+    <a class="back" id="back" href="/" hidden>Cancel</a>
     <p id="err" role="alert"></p>
   </form>
   <p class="note">Signed in as __EMAIL__</p>
 </main>
 <script>
   const editing = '__EDIT__' === 'on';
+  // Back to the desk view they came from; same-site paths only.
+  const asked = new URLSearchParams(location.search).get('next') || '/';
+  const NEXT = asked.startsWith('/') && !asked.startsWith('//') && !asked.includes('\\') ? asked : '/';
   const $ = (id) => document.getElementById(id);
   if (editing) {
     $('title').textContent = 'Your name';
     $('lede').textContent = 'This is what your teammates see on tickets, notes and the team list instead of your email.';
     $('save').textContent = 'Save';
+    $('back').href = NEXT;
     $('back').hidden = false;
   }
   $('name').focus();
@@ -76,7 +80,7 @@ input:focus{outline:2px solid var(--coral);outline-offset:1px;border-color:trans
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) { location.href = '/login'; return; }
       if (!res.ok) throw new Error(data.detail || 'Could not save your name. Try again.');
-      location.replace('/desk');
+      location.replace(NEXT);
     } catch (err) { $('err').textContent = err.message; $('save').disabled = false; }
   });
 </script>

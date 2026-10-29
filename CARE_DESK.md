@@ -100,20 +100,24 @@ it can never open a deployed desk.
 
 ## The desk's pages (React)
 
-The desk's pages are React + Vite + TypeScript, in `care_desk/web/`. `/desk`
-opens the Dashboard; the other views are `#inbox`, `#tickets`, `#contacts`,
-`#email` (`#email/oldlead` opens that journey) and `#team` (admins only).
-`/desk-next`, where the pages were built beside the old hand-written desk,
-redirects to `/desk`.
+The desk's pages are React + Vite + TypeScript, in `care_desk/web/`. Each view
+has its own address: `/` is the Dashboard, then `/inbox`, `/tickets`,
+`/contacts`, `/email` (`/email/oldlead` opens that journey) and `/team` (admins
+only). The server sends the same page for all of them (`DESK_VIEWS` in
+`care_desk/app.py`) and the page shows the view the address names, so adding a
+view means adding its address in both places. Signed out, any of them goes to
+sign-in and back to the same view after. Older links (`/desk#tickets`, and
+`/desk-next#tickets` from when the pages were rebuilt) redirect to `/` and the
+page swaps the `#tickets` for `/tickets`.
 
 ```powershell
 cd care_desk/web
 npm install
-npm run dev        # http://localhost:5173/desk/, with the desk above running on port 8010
-npm run build      # type-checks, then writes dist/, which the desk serves at /desk
+npm run dev        # http://localhost:5173/, with the desk above running on port 8010
+npm run build      # type-checks, then writes dist/, which the desk serves
 ```
 
-Without a build, `/desk` says so instead of showing the desk, so run
+Without a build, the desk's pages say so instead of showing the desk, so run
 `npm run build` once before starting the desk locally.
 
 `npm run dev` sends `/api` and the sign-in pages on to the desk on port 8010, so
@@ -121,10 +125,10 @@ the data is real and edits show up as you save. Nothing extra is needed to
 deploy: `Dockerfile.desk` builds the pages in a Node stage and copies only
 `dist/` into the image. `dist/` and `node_modules/` are not committed.
 
-The styles are the current desk's, copied into `src/desk.css`, so the two look
-the same while views move across. Records load from `/api/desk/state` through
-TanStack Query (`src/desk.ts`), which keeps what was loaded and asks only for
-changes every 20 seconds, as the current desk does. Tables use TanStack Table.
+The styles are the old hand-written desk's, copied into `src/desk.css`.
+Records load from `/api/desk/state` through TanStack Query (`src/desk.ts`),
+which keeps what was loaded and asks only for changes every 20 seconds. Tables
+use TanStack Table.
 
 ## Deploy
 

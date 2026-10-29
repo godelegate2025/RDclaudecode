@@ -43,19 +43,21 @@ log = logging.getLogger("care-desk")
 logging.basicConfig(level=logging.INFO)
 
 STATIC = Path(__file__).parent / "static"
-# The new React desk (care_desk/web), built by `npm run build` or by Dockerfile.desk.
+# The React desk (care_desk/web), built by `npm run build` or by Dockerfile.desk.
 WEB = Path(__file__).parent / "web" / "dist"
+# The desk's views, each at its own address; care_desk/web/src/App.tsx has the same list.
+DESK_VIEWS = ("/", "/inbox", "/tickets", "/contacts", "/email", "/email/{journey}", "/team")
 
 
 class GoogleCredential(BaseModel):
     credential: str = ""
-    next: str = "/desk"
+    next: str = "/"
 
 
 class EmailCode(BaseModel):
     email: str = ""
     code: str = ""
-    next: str = "/desk"
+    next: str = "/"
 
 
 class NewMessage(BaseModel):
@@ -207,48 +209,51 @@ def create_app(desk: Desk | None = None) -> FastAPI:
 
     # ------------------------------------------------------------ pages
 
-    @app.get("/")
-    def root() -> RedirectResponse:
-        return RedirectResponse("/desk", status_code=303)
-
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request) -> Response:
         problem = not_set_up()
         if problem:
             return HTMLResponse(_note("Sign-in is not set up", problem), 503)
         if signed_in(request, team()):
-            return RedirectResponse("/desk", status_code=303)
+            return RedirectResponse(team_auth.safe_next(request.query_params.get("next")), status_code=303)
         page = (STATIC / "login.html").read_text(encoding="utf-8")
         client_id = html.escape(team_auth.config().client_id, quote=True)
         page = page.replace("__GOOGLE_CLIENT_ID__", client_id)
         page = page.replace("__EMAIL_LOGIN__", "on" if email_login.available() else "off")
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
-    # The desk is a React app (care_desk/web), built into web/dist.
-    @app.get("/desk", response_class=HTMLResponse)
+    # The desk is a React app (care_desk/web), built into web/dist. Each view has its own
+    # address and they all get the same page; the page shows the view the address names.
     def desk_page(request: Request) -> Response:
         problem = not_set_up()
         if problem:
             return HTMLResponse(_note("Sign-in is not set up", problem), 503)
+        here = request.url.path
         email = signed_in(request, team())
-        if not email:
-            return RedirectResponse("/login", status_code=303)
+        if not email:  # back to this view once signed in
+            return RedirectResponse(team_auth.login_url(here), status_code=303)
         if get_profiles().needs_name(email):  # first visit: ask for a name once
-            return RedirectResponse("/welcome", status_code=303)
+            return RedirectResponse("/welcome?next=" + quote(team_auth.safe_next(here), safe="/"), status_code=303)
         page = web / "index.html"
         if not page.is_file():
             return HTMLResponse(_note("The desk isn't built", "Run npm run build in care_desk/web, "
                                       "or deploy with deploy-desk.ps1, which builds it."), 404)
         return HTMLResponse(page.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
 
-    # Where the desk lived while it was rebuilt; saved links still land, and the browser keeps the #view.
+    for path in DESK_VIEWS:
+        app.add_api_route(path, desk_page, methods=["GET"], response_class=HTMLResponse, include_in_schema=False)
+
+    # Where the desk lived before its views had their own addresses (/desk#tickets, and
+    # /desk-next#tickets while it was rebuilt). The browser keeps the #view through the
+    # redirect, and the page swaps it for the view's own address.
+    @app.get("/desk")
     @app.get("/desk-next")
-    def desk_next_page() -> RedirectResponse:
-        return RedirectResponse("/desk", status_code=301)
+    def old_desk_address() -> RedirectResponse:
+        return RedirectResponse("/", status_code=301)
 
     # Its scripts and styles, named by content hash so a new build never mixes with an old one.
     # No desk data is in them, so they need no sign-in, like /static.
-    app.mount("/desk/assets", StaticFiles(directory=web / "assets", check_dir=False), name="desk-assets")
+    app.mount("/assets", StaticFiles(directory=web / "assets", check_dir=False), name="desk-assets")
 
     @app.get("/welcome", response_class=HTMLResponse)
     def welcome_page(request: Request) -> Response:
