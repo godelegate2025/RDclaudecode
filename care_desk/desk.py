@@ -213,6 +213,11 @@ class Desk:
     def _blocked(self, email: str) -> bool:
         return self.db.get("suppressions", email.lower()) is not None
 
+    def _unsubscribed_at(self, email: str | None) -> int | None:
+        """When an email address unsubscribed, if it did. Contacts keep it as `unsubscribed_at`."""
+        found = self.db.get("suppressions", email.lower()) if email else None
+        return found.get("at") if found else None
+
     def _flush(self, out: list[Outgoing]) -> list[tuple[str, str | None]]:
         """Send what a change queued, then record each result. Returns (status, error) per email."""
         results: list[tuple[str, str | None]] = []
@@ -684,6 +689,8 @@ class Desk:
         missing = {k: v for k, v in (("email", (msg.get("email") or "").strip().lower() or None),
                                      ("phone", msg.get("phone")), ("contact_id", msg.get("contact_id")),
                                      ("name_key", name_key(lead["name"]))) if v and not lead.get(k)}
+        if missing.get("email"):
+            missing["unsubscribed_at"] = self._unsubscribed_at(missing["email"])
         if missing:
             self.db.update("leads", lead["id"], missing)
         if note:
@@ -699,7 +706,8 @@ class Desk:
         lead_id = self.db.insert("leads", {
             "message_id": msg["id"], "kind": "general", "name": msg["author"], "email": email,
             "phone": msg.get("phone"), "contact_id": msg.get("contact_id"), "name_key": name_key(msg["author"]),
-            "tags": [], "source": CHANNEL_LABEL[msg["channel"]].capitalize(), "interest": msg["category"],
+            "tags": [], "unsubscribed_at": self._unsubscribed_at(email),
+            "source": CHANNEL_LABEL[msg["channel"]].capitalize(), "interest": msg["category"],
             "status": "saved", "step": 0, "next_at": None, "created_at": at or self.now(),
             "last_contact_days": None})
         self._event("Contact saved", f"{msg['category']}, by {CHANNEL_LABEL[msg['channel']]}. No journey",
@@ -746,6 +754,7 @@ class Desk:
         lead_id = self.db.insert("leads", {
             "message_id": message_id, "kind": kind, "name": name, "email": email.lower() if email else None,
             "phone": phone, "contact_id": contact_id, "name_key": name_key(name), "tags": [],
+            "unsubscribed_at": self._unsubscribed_at(email),
             "source": source, "interest": interest, "status": status, "step": 0, "next_at": next_at,
             "created_at": self.now(), "last_contact_days": last_contact_days})
         self._event("Contact created" if kind == "new" else "Imported",
@@ -829,6 +838,7 @@ class Desk:
         # been one contact all along. Writing in after their sales question stopped the journey;
         # otherwise the journey can email them now.
         merged = {**keep, **fields}
+        fields["unsubscribed_at"] = self._unsubscribed_at(merged.get("email"))
         if merged["status"] == "manual" and merged.get("email"):
             sales = keep if keep["kind"] != "general" else other
             later = [m for i in (keep_id, other_id) for m in self.db.where("messages", "lead_id", "==", i)
@@ -948,9 +958,13 @@ class Desk:
         email = email.lower()
         if not self._blocked(email):
             self.db.put("suppressions", email, {"email": email, "at": self.now(), "reason": "unsubscribed"})
+        at = self._unsubscribed_at(email)
         for lead in self.db.where("leads", "email", "==", email):
             if lead["status"] in ("active", "queued"):
-                self.db.update("leads", lead["id"], {"status": "unsubscribed", "next_at": None})
+                self.db.update("leads", lead["id"], {"status": "unsubscribed", "next_at": None, "unsubscribed_at": at})
+                self._event("Unsubscribed", "From the link in an email", lead_id=lead["id"])
+            elif not lead.get("unsubscribed_at"):
+                self.db.update("leads", lead["id"], {"unsubscribed_at": at})
                 self._event("Unsubscribed", "From the link in an email", lead_id=lead["id"])
 
     # ------------------------------------------------------------ the clock
@@ -998,7 +1012,23 @@ class Desk:
                 sent += 1
             self._flush(out)
         return {"escalated": escalated, "resorted": len(retry), "matched": len(matching), "journey_emails": sent,
-                "past_contacts": self.add_past_contacts()}
+                "past_contacts": self.add_past_contacts(), "unsubscribed_contacts": self.mark_unsubscribed_contacts()}
+
+    def mark_unsubscribed_contacts(self) -> int:
+        """A one-time catch-up: mark the contacts whose email unsubscribed before contacts kept
+        `unsubscribed_at` (unsubscribe() keeps it from then on). Returns how many it marked."""
+        job = self.db.get("jobs", "unsubscribed_contacts") or {}
+        if job.get("done"):
+            return 0
+        marked = 0
+        for s in self.db.all("suppressions"):
+            for lead in self.db.where("leads", "email", "==", s["email"]):
+                if not lead.get("unsubscribed_at"):
+                    self.db.update("leads", lead["id"], {"unsubscribed_at": s["at"]})
+                    marked += 1
+        self.db.put("jobs", "unsubscribed_contacts", {"done": True, "marked": marked})
+        log.info("unsubscribed contacts: %s marked", marked)
+        return marked
 
     def add_past_contacts(self, batch: int = 100) -> int:
         """Save the people behind messages from before every sender became a contact.

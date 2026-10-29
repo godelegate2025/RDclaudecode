@@ -415,6 +415,32 @@ class EveryoneIsAContactTest(DeskTestCase):
         self.desk.keep_leads_separate(a, b, "mia@redefine.ph")
         self.assertEqual((self.desk._one("leads", a)["distinct"], self.desk._one("leads", b)["distinct"]), ([b], [a]))
 
+    def test_unsubscribing_marks_every_contact_with_that_email(self):
+        self.make_newlead_live()
+        self.next_sort = sorting("Complaint")
+        self.add("Late again", email="ana@example.com", author="Ana")
+        self.next_sort = sorting("Pricing question", interest="Website")
+        self.add("How much?", email="ben@example.com", author="Ben")
+        self.desk.unsubscribe("ANA@example.com")
+        self.desk.unsubscribe("ben@example.com")
+        ana, ben = self.rows("leads")
+        self.assertEqual((ana["status"], ana["unsubscribed_at"]), ("saved", self.clock()))  # no journey to stop
+        self.assertEqual((ben["status"], ben["unsubscribed_at"]), ("unsubscribed", self.clock()))
+        # Someone who unsubscribed earlier is marked the moment they become a contact.
+        self.desk.unsubscribe("cy@example.com")
+        self.clock.advance(5)
+        self.next_sort = sorting("Engagement")
+        self.add("nice", email="cy@example.com", author="Cy")
+        self.assertEqual(self.rows("leads")[-1]["unsubscribed_at"], self.clock() - 5 * MIN)
+
+    def test_the_clock_marks_contacts_who_unsubscribed_before_once(self):
+        self.store.put("suppressions", "old@example.com", {"email": "old@example.com", "at": 123, "reason": "unsubscribed"})
+        lead = self.store.insert("leads", {"name": "Old", "email": "old@example.com", "kind": "general",
+                                           "status": "saved", "created_at": self.clock()})
+        self.assertEqual(self.desk.tick()["unsubscribed_contacts"], 1)
+        self.assertEqual(self.store.get("leads", lead)["unsubscribed_at"], 123)
+        self.assertEqual(self.desk.tick()["unsubscribed_contacts"], 0)
+
     def test_the_clock_runs_the_catch_up(self):
         self.store.insert("messages", {"author": "Ana", "email": None, "contact_id": None, "channel": "facebook",
                                        "text": "x", "sort_status": "sorted", "category": "Engagement",

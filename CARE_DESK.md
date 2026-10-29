@@ -37,6 +37,10 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
   "Send email" sends one email per selected contact with `{first_name}` filled
   in, at most 50 at a time; sent to two or more it carries an unsubscribe link
   and skips anyone unsubscribed. SMS and WhatsApp are still previews only.
+  Unsubscribing marks every contact with that email (`unsubscribed_at`, shown as
+  "Unsubscribed" under the email), with or without a journey, and a contact made later
+  with an unsubscribed email is marked as it is made. The clock marked the
+  contacts who unsubscribed before this once (`jobs/unsubscribed_contacts`).
 - **Everyone who writes in is a contact, once.** Spam aside, every message
   files its sender under a contact, and Contacts is one list of them all:
   sales questions as before (type "New", in the new contact journey), and

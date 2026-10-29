@@ -16,6 +16,7 @@ export interface Lead {
   kind: 'new' | 'old' | 'general';
   contact_id?: string | null;  // GHL's id for them
   distinct?: Id[];  // contacts marked as a different person, though they look alike
+  unsubscribed_at?: number | null;  // when their email unsubscribed; bulk and journey emails skip them
   status: string;
   step: number;
   next_at?: number | null;

@@ -1,6 +1,9 @@
 /* What the React desk adds on top of desk.css. */
 a.nav{text-decoration:none}
 .sect .quote + .quote{margin-top:8px}
+.kv dd .sub{display:block;font:500 12px var(--body);color:var(--t-lo);margin-top:2px}
+/* Under an email that unsubscribed, in the table and the contact's panel. */
+.sub.unsub,.kv dd .sub.unsub{color:var(--coral)}
 .card.dupe{padding:14px 16px;margin-top:8px;display:flex;flex-direction:column;gap:2px}
 .card.dupe .acts{margin-top:10px}
 /* A sortable column's header: the whole label is the button, the arrow shows the order. */

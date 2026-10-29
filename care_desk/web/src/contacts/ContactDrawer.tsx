@@ -29,7 +29,8 @@ export function ContactDrawer({ desk, lead: l, onClose }: { desk: Desk; lead: Le
       <div className="eyebrow">{(KIND[l.kind] || KIND.general)[1]} contact · {l.interest}</div>
       <h2>{l.name}</h2>
       <dl className="kv" style={{ marginTop: 16 }}>
-        <dt>Email</dt><dd>{l.email || none('None. Follow up by direct message')}</dd>
+        <dt>Email</dt><dd>{l.email || none('None. Follow up by direct message')}
+          {l.email && l.unsubscribed_at && <span className="sub unsub">Unsubscribed {fmtClock(l.unsubscribed_at)}. Bulk and journey emails skip them</span>}</dd>
         <dt>Phone</dt><dd>{l.phone || none('None')}</dd>
         <dt>Tags</dt><dd>{l.tags?.length ? <Tags tags={l.tags} /> : none('None')}</dd>
         <dt>Source</dt><dd>{l.source}</dd>

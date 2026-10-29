@@ -66,7 +66,10 @@ const COLUMNS = [
     id: 'phone', header: 'Phone', sortDescFirst: false, sortUndefined: 'last', cell: ({ row: { original: l } }) => l.phone || muted('None'),
   }),
   col.accessor(l => l.email || undefined, {
-    id: 'email', header: 'Email', sortingFn: 'text', sortDescFirst: false, sortUndefined: 'last', cell: ({ row: { original: l } }) => l.email || muted('None'),
+    id: 'email', header: 'Email', sortingFn: 'text', sortDescFirst: false, sortUndefined: 'last',
+    // Unsubscribing is by email address, so it shows under the address it was for.
+    cell: ({ row: { original: l } }) => l.email ? <>{l.email}{l.unsubscribed_at &&
+      <span className="sub unsub" title={`Unsubscribed ${fmtDateTime(l.unsubscribed_at)}`}>Unsubscribed</span>}</> : muted('None'),
   }),
   col.accessor('source', { header: 'Source', sortingFn: 'text', sortDescFirst: false }),
   col.accessor('created_at', {
