@@ -570,10 +570,10 @@ class HTTPTest(DeskTestCase):
             self.assertEqual(client.get("/settings").status_code, 404)
             self.assertEqual(client.get("/assets/index-abc.js").text, "console.log(1)")
             self.assertEqual(client.get("/assets/missing.js").status_code, 404)
-            # Old addresses still land on the desk; the browser keeps their #view.
-            for path in ("/desk", "/desk-next"):
-                r = client.get(path, follow_redirects=False)
-                self.assertEqual((r.status_code, r.headers["location"]), (301, "/"))
+            # The desk's old address still opens it.
+            r = client.get("/desk", follow_redirects=False)
+            self.assertEqual((r.status_code, r.headers["location"]), (301, "/"))
+            self.assertEqual(client.get("/desk-next").status_code, 404)
             # Already signed in, the sign-in page sends them on to where they were going.
             r = client.get("/login?next=/tickets", follow_redirects=False)
             self.assertEqual((r.status_code, r.headers["location"]), (303, "/tickets"))

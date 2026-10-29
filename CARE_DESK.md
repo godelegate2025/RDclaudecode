@@ -106,9 +106,8 @@ has its own address: `/` is the Dashboard, then `/inbox`, `/tickets`,
 only). The server sends the same page for all of them (`DESK_VIEWS` in
 `care_desk/app.py`) and the page shows the view the address names, so adding a
 view means adding its address in both places. Signed out, any of them goes to
-sign-in and back to the same view after. Older links (`/desk#tickets`, and
-`/desk-next#tickets` from when the pages were rebuilt) redirect to `/` and the
-page swaps the `#tickets` for `/tickets`.
+sign-in and back to the same view after. `/desk`, the desk's address before
+its views had their own, redirects to `/`.
 
 ```powershell
 cd care_desk/web

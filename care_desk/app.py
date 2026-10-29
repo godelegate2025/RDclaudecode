@@ -243,11 +243,8 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     for path in DESK_VIEWS:
         app.add_api_route(path, desk_page, methods=["GET"], response_class=HTMLResponse, include_in_schema=False)
 
-    # Where the desk lived before its views had their own addresses (/desk#tickets, and
-    # /desk-next#tickets while it was rebuilt). The browser keeps the #view through the
-    # redirect, and the page swaps it for the view's own address.
+    # The desk's address before its views had their own, so bookmarks of it still open the desk.
     @app.get("/desk")
-    @app.get("/desk-next")
     def old_desk_address() -> RedirectResponse:
         return RedirectResponse("/", status_code=301)
 

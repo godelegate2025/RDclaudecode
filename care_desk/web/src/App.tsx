@@ -25,12 +25,6 @@ const viewOf = (path: string): View => {
 };
 const hrefOf = (v: View) => (v === 'dashboard' ? '/' : `/${v}`);
 
-// Old links (/desk#tickets, /desk-next#tickets) reach / with the #view kept; swap it for the view's address.
-const old = /^#(\w+)(\/[\w-]+)?$/.exec(location.hash);
-if (location.pathname === '/' && old && old[1] in VIEWS) {
-  history.replaceState(null, '', old[1] === 'dashboard' ? '/' : `/${old[1]}${old[2] || ''}`);
-}
-
 const NAV: { label: string; icon: IconName; view: View; admin?: boolean }[] = [
   { label: 'Dashboard', icon: 'chart', view: 'dashboard' },
   { label: 'Inbox', icon: 'inbox', view: 'inbox' },
