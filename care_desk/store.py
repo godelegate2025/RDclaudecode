@@ -178,7 +178,7 @@ class SupabaseStore:
     INDEXED = {
         "messages": ("received_at", "external_id", "fb_comment_id", "match_at", "retry_at"),
         "tickets": ("created_at", "escalate_at"),
-        "leads": ("created_at", "email", "next_at", "status"),
+        "leads": ("created_at", "email", "next_at", "status", "contact_id", "name_key"),
         "events": ("ticket_id", "lead_id"),
         "emails": ("at",),
         "notes": ("ticket_id",),

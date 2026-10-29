@@ -10,6 +10,8 @@ export const fmtClock = (t: number) => {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ' '
     + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 };
+export const fmtDateTime = (t: number) => new Date(t).toLocaleString('en-US',
+  { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 export const fmtTime = (t: number, now: number) => {
   const d = new Date(t);
   return (now - t > DAY ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' : '')

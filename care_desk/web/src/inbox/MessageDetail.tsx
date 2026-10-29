@@ -1,7 +1,7 @@
 import { useAction } from '../desk';
 import { channelOf, fmtTime, initials, nameOf, useNow } from '../format';
 import { Icon } from '../icons';
-import type { Desk, Message } from '../types';
+import type { Desk, Lead, Message } from '../types';
 import type { Open } from './InboxView';
 import { ReplyBlock } from './ReplyBlock';
 
@@ -29,6 +29,8 @@ export function MessageDetail({ desk, m, open }: { desk: Desk; m: Message; open:
   const t = m.ticket_id != null ? desk.ticketById.get(m.ticket_id) : undefined;
   const l = m.lead_id != null ? desk.leadById.get(m.lead_id) : undefined;
   const post = (action: string, done?: string) => act(`/api/desk/messages/${m.id}/${action}`, {}, done);
+  const contact = (lead: Lead) =>
+    <button className="btn sm" onClick={() => open('lead', lead.id)}><Icon name="users" size={14} />{lead.name}</button>;
 
   const head = <div className="dh">
     <span className="av">{initials(m.author)}<span className="ch"><Icon name={c.icon} size={11} stroke={2.2} /></span></span>
@@ -60,9 +62,11 @@ export function MessageDetail({ desk, m, open }: { desk: Desk; m: Message; open:
           {m.sorted_by === 'rules' && <span className="chip a">Keyword rules</span>}</dd>
         <dt>Routed to</dt><dd>
           {t ? <button className="btn sm" onClick={() => open('ticket', t.id)}><Icon name="ticket" size={14} />{t.code} · {t.owner ? nameOf(t.owner, desk.people) : t.team}</button>
-            : l ? <button className="btn sm" onClick={() => open('lead', l.id)}><Icon name="users" size={14} />{l.name}</button>
+            : l && m.route === 'lead' ? contact(l)
             : m.route === 'logged' ? 'Logged, nothing to do' : 'Not routed'}
         </dd>
+        {/* Everyone who writes in is a contact, so a ticket or a logged message has one too. */}
+        {l && (t || m.route !== 'lead') && <><dt>Contact</dt><dd>{contact(l)}</dd></>}
       </dl>
       <ReplyBlock desk={desk} m={m} />
       <div className="acts">

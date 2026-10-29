@@ -37,9 +37,22 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
   "Send email" sends one email per selected contact with `{first_name}` filled
   in, at most 50 at a time; sent to two or more it carries an unsubscribe link
   and skips anyone unsubscribed. SMS and WhatsApp are still previews only.
+- **Everyone who writes in is a contact, once.** Spam aside, every message
+  files its sender under a contact, and Contacts is one list of them all:
+  sales questions as before (type "New", in the new contact journey), and
+  everyone else, complaints and praise included, as type "Other" with no
+  journey, so they never get sales emails. A contact's journey, and the
+  Replied, Won and Close buttons, are in the panel that opens on a contact. A message is from an existing contact when it has the same email;
+  else the same GHL contact; else, when it has neither, the same name, ignoring
+  case, spacing, punctuation and accents. It then fills in any email, phone or
+  GHL contact the contact was missing. A message with none of the three ("Unknown",
+  no email) saves no contact. Someone under Other contacts who asks about a
+  service joins the new contact journey. The desk's clock went back over the
+  messages from before this once, oldest first (`add_past_contacts`, recorded
+  in the `jobs` collection as `past_contacts`).
 - **Lead journeys stop when the lead writes back.** A new message from the same
-  email stops the journey, including a reply to a journey email, which reaches
-  info@ and comes in through the n8n workflow (see "Emails to info@").
+  contact stops the journey, including a reply to a journey email, which
+  reaches info@ and comes in through the n8n workflow (see "Emails to info@").
 - **A placeholder can never be emailed.** Templates with `[SQUARE BRACKETS]`
   cannot go live. The new lead journey ships with `[PORTFOLIO LINK]` and
   `[BOOKING LINK]` to fill in on the Email screen.
@@ -287,8 +300,8 @@ GHL retries a webhook that fails. The desk ignores repeats with the same
 An n8n workflow watches the info@redefineph.com inbox and forwards each email
 to `/hooks/email`. The desk sorts it like any other message: sales questions
 become Contacts with the sender's email, concerns become Tickets, the rest is
-logged. A reply from someone in a contact journey stops their journey, the
-same as a message through GHL.
+logged, and every sender but spam is a contact. A reply from someone in a
+contact journey stops their journey, the same as a message through GHL.
 
 The workflow is "Care Desk: info@ inbox to desk" in n8n (redefine.app.n8n.cloud,
 workflow `VldAWUdg4OL5b2Rd`); `care_desk/n8n/info-inbox-to-desk.json` is a copy to

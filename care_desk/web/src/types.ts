@@ -9,9 +9,12 @@ export interface Lead {
   email?: string | null;
   phone?: string | null;
   tags?: string[];
-  interest: string;
+  interest: string;  // for "general" contacts, what they wrote in about (the issue type)
   source: string;
-  kind: 'new' | 'old';
+  // new: asked about a service, in the new contact journey. old: imported, in reactivation.
+  // general: wrote in about anything else, with no journey.
+  kind: 'new' | 'old' | 'general';
+  contact_id?: string | null;  // GHL's id for them
   status: string;
   step: number;
   next_at?: number | null;

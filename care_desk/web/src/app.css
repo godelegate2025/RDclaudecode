@@ -1,2 +1,9 @@
 /* What the React desk adds on top of desk.css. */
 a.nav{text-decoration:none}
+.sect .quote + .quote{margin-top:8px}
+/* A sortable column's header: the whole label is the button, the arrow shows the order. */
+th .sortby{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit}
+th .sortby:hover,th[aria-sort] .sortby{color:var(--t-hi)}
+th .sortby:focus-visible{outline:2px solid var(--coral);outline-offset:3px;border-radius:4px}
+th .sortby span{font-size:12px;letter-spacing:0;opacity:.6}
+th[aria-sort] .sortby span{opacity:1}

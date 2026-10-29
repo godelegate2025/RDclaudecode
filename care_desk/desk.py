@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
@@ -31,6 +32,11 @@ CHANNEL_LABEL = {"facebook": "Facebook comment", "instagram": "Instagram comment
                  "email": "email", "website": "website form", "other": "message"}
 MAX_SORT_ATTEMPTS = 3
 OPEN_LEAD = ("active", "queued", "manual")
+# Everyone who writes in is saved as a contact, except these.
+NOT_A_CONTACT = ("Spam",)
+# Names that GHL or a platform gives when it has none, which must never match two people.
+NAMELESS = {"", "unknown", "anonymous", "guest", "customer", "user", "facebook user", "instagram user",
+            "tiktok user", "linkedin member"}
 
 # Facebook matching: GHL sends a comment's text and author but not its Facebook
 # id, so the desk finds it among the Page's recent comments by text and time.
@@ -106,6 +112,14 @@ def _norm(text: str) -> str:
     return " ".join((text or "").casefold().split())
 
 
+def name_key(name: str) -> str:
+    """A name as the duplicate check compares it: case, spacing, punctuation and accents do not
+    matter ("José  Cruz" is "jose cruz"). Empty for names that say nothing about who it is."""
+    plain = "".join(c for c in unicodedata.normalize("NFKD", name or "") if not unicodedata.combining(c))
+    key = " ".join(re.findall(r"[a-z0-9]+", plain.casefold()))
+    return "" if key in NAMELESS else key
+
+
 def _candidate(c) -> dict:
     return {"id": c.id, "message": c.message, "created_at": c.created_at,
             "post_url": c.post_url, "comment_url": c.comment_url}
@@ -150,8 +164,8 @@ class Desk:
             raise NotFound(f"{'Contact' if coll == 'leads' else coll[:-1].capitalize()} {doc_id} not found")
         return doc
 
-    def _event(self, label: str, detail: str = "", *, ticket_id=None, lead_id=None) -> None:
-        self.db.insert("events", {"at": self.now(), "label": label, "detail": detail,
+    def _event(self, label: str, detail: str = "", *, ticket_id=None, lead_id=None, at: int | None = None) -> None:
+        self.db.insert("events", {"at": at or self.now(), "label": label, "detail": detail,
                                   "ticket_id": ticket_id, "lead_id": lead_id})
 
     def journey(self, key: str) -> dict:
@@ -299,25 +313,38 @@ class Desk:
         msg = self._one("messages", message_id)
 
         # Anyone in a lead journey who writes in again has replied: stop emailing them.
-        existing = None
-        if msg.get("email"):
-            for lead in self.db.where("leads", "email", "==", msg["email"]):
-                if lead["status"] not in OPEN_LEAD:
-                    continue
-                self.db.update("leads", lead["id"], {"status": "replied", "next_at": None})
-                self._event("Replied", f"Wrote in again by {CHANNEL_LABEL[msg['channel']]}, so the journey stopped",
-                            lead_id=lead["id"])
-                existing = lead["id"]
+        contact = self._contact_for(msg)
+        email = (msg.get("email") or "").strip().lower()
+        stopped = set()
+        for lead in (self.db.where("leads", "email", "==", email) if email else []) + ([contact] if contact else []):
+            if lead["status"] not in OPEN_LEAD or lead["id"] in stopped:
+                continue
+            self.db.update("leads", lead["id"], {"status": "replied", "next_at": None})
+            self._event("Replied", f"Wrote in again by {CHANNEL_LABEL[msg['channel']]}, so the journey stopped",
+                        lead_id=lead["id"])
+            stopped.add(lead["id"])
+        if contact:
+            contact = self._one("leads", contact["id"])
 
+        # Everyone who writes in is a contact (spam aside). Sales questions also start the sales journey.
         if s.intent == "sales":
-            if existing:
-                self.db.update("messages", message_id, {"route": "lead", "lead_id": existing})
-            else:
+            if not contact:
                 self._create_lead_from(msg)
-        elif s.intent == "service":
-            self._create_ticket(msg, out)
+            else:
+                if contact["kind"] == "general":
+                    self._start_journey(contact, msg)
+                self._link(msg, contact, route="lead", note=contact["id"] not in stopped)
         else:
-            self.db.update("messages", message_id, {"route": "logged"})
+            if s.intent == "service":
+                self._create_ticket(msg, out)
+            else:
+                self.db.update("messages", message_id, {"route": "logged"})
+            if s.category not in NOT_A_CONTACT:
+                msg = self._one("messages", message_id)
+                if contact:
+                    self._link(msg, contact, note=contact["id"] not in stopped)
+                else:
+                    self._save_contact(msg)
         self._flush(out)
 
     # ------------------------------------------------------------ tickets
@@ -628,34 +655,101 @@ class Desk:
 
     # ------------------------------------------------------------ leads
 
+    # Contacts come in three kinds: "new" (asked about a service, in the new contact journey), "old"
+    # (imported, in the reactivation journey) and "general" (wrote in about anything else: no journey).
+
+    def _contact_for(self, msg: dict) -> dict | None:
+        """The contact a message is from, when they are one already: the same email, else the same GHL
+        contact, else, when the message has neither, the same name (see name_key)."""
+        email = (msg.get("email") or "").strip().lower()
+        if email:
+            found = self.db.where("leads", "email", "==", email, limit=1)
+            if found:
+                return found[0]
+        if msg.get("contact_id"):
+            found = self.db.where("leads", "contact_id", "==", msg["contact_id"], limit=1)
+            if found:
+                return found[0]
+        key = name_key(msg["author"])
+        if not email and not msg.get("contact_id") and key:
+            found = self.db.where("leads", "name_key", "==", key, limit=1)
+            if found:
+                return found[0]
+        return None
+
+    def _link(self, msg: dict, lead: dict, *, route: str | None = None, note: bool = True,
+              at: int | None = None) -> None:
+        """File a message under the contact it is from, and fill in what the contact was missing."""
+        self.db.update("messages", msg["id"], {"lead_id": lead["id"], **({"route": route} if route else {})})
+        missing = {k: v for k, v in (("email", (msg.get("email") or "").strip().lower() or None),
+                                     ("phone", msg.get("phone")), ("contact_id", msg.get("contact_id")),
+                                     ("name_key", name_key(lead["name"]))) if v and not lead.get(k)}
+        if missing:
+            self.db.update("leads", lead["id"], missing)
+        if note:
+            self._event("Wrote in again", f"{msg['category']}, by {CHANNEL_LABEL[msg['channel']]}",
+                        lead_id=lead["id"], at=at)
+
+    def _save_contact(self, msg: dict, at: int | None = None) -> int | None:
+        """Save the sender of a message that is not about a service as a contact, with no journey.
+        Nothing is saved when the message gives no email, GHL contact or real name to know them by."""
+        email = (msg.get("email") or "").strip().lower() or None
+        if not (email or msg.get("contact_id") or name_key(msg["author"])):
+            return None
+        lead_id = self.db.insert("leads", {
+            "message_id": msg["id"], "kind": "general", "name": msg["author"], "email": email,
+            "phone": msg.get("phone"), "contact_id": msg.get("contact_id"), "name_key": name_key(msg["author"]),
+            "tags": [], "source": CHANNEL_LABEL[msg["channel"]].capitalize(), "interest": msg["category"],
+            "status": "saved", "step": 0, "next_at": None, "created_at": at or self.now(),
+            "last_contact_days": None})
+        self._event("Contact saved", f"{msg['category']}, by {CHANNEL_LABEL[msg['channel']]}. No journey",
+                    lead_id=lead_id, at=at)
+        self.db.update("messages", msg["id"], {"lead_id": lead_id})
+        return lead_id
+
+    def _start_journey(self, lead: dict, msg: dict) -> None:
+        """A contact with no journey asks about a service: they join the new contact journey."""
+        interest = msg.get("interest") or "Other"
+        status, next_at = self._journey_start("new", lead.get("email") or msg.get("email"))
+        self.db.update("leads", lead["id"], {"kind": "new", "interest": interest, "status": status,
+                                             "step": 0, "next_at": next_at})
+        self._event("Joined the new contact journey", self._journey_detail(
+            f"Asked about {interest.lower()} by {CHANNEL_LABEL[msg['channel']]}", status), lead_id=lead["id"])
+
+    def _journey_start(self, kind: str, email: str | None, start_at: int | None = None) -> tuple[str, int | None]:
+        if not email:
+            return "manual", None
+        if self.journey("oldlead" if kind == "old" else "newlead")["status"] == "live":
+            return "active", start_at or self.now()
+        return "queued", None
+
+    @staticmethod
+    def _journey_detail(detail: str, status: str) -> str:
+        if status == "manual":
+            return detail + ". No email on file, so follow up by direct message"
+        if status == "queued":
+            return detail + ". Queued until the journey is approved"
+        return detail
+
     def _create_lead_from(self, msg: dict) -> int:
         lead_id = self._create_lead(kind="new", name=msg["author"], email=msg.get("email"), phone=msg.get("phone"),
                                     source=CHANNEL_LABEL[msg["channel"]].capitalize(),
-                                    interest=msg.get("interest") or "Other", message_id=msg["id"])
+                                    interest=msg.get("interest") or "Other", message_id=msg["id"],
+                                    contact_id=msg.get("contact_id"))
         self.db.update("messages", msg["id"], {"route": "lead", "lead_id": lead_id})
         return lead_id
 
     def _create_lead(self, *, kind: str, name: str, email: str | None, source: str, interest: str, phone: str | None = None,
                      message_id: int | None = None, last_contact_days: int | None = None,
-                     start_at: int | None = None) -> int:
-        live = self.journey("oldlead" if kind == "old" else "newlead")["status"] == "live"
-        if not email:
-            status, next_at = "manual", None
-        elif live:
-            status, next_at = "active", start_at or self.now()
-        else:
-            status, next_at = "queued", None
+                     start_at: int | None = None, contact_id: str | None = None) -> int:
+        status, next_at = self._journey_start(kind, email, start_at)
         lead_id = self.db.insert("leads", {
             "message_id": message_id, "kind": kind, "name": name, "email": email.lower() if email else None,
-            "phone": phone, "tags": [],
+            "phone": phone, "contact_id": contact_id, "name_key": name_key(name), "tags": [],
             "source": source, "interest": interest, "status": status, "step": 0, "next_at": next_at,
             "created_at": self.now(), "last_contact_days": last_contact_days})
-        detail = f"From {source}, interested in {interest.lower()}"
-        if status == "manual":
-            detail += ". No email on file, so follow up by direct message"
-        elif status == "queued":
-            detail += ". Queued until the journey is approved"
-        self._event("Contact created" if kind == "new" else "Imported", detail, lead_id=lead_id)
+        self._event("Contact created" if kind == "new" else "Imported",
+                    self._journey_detail(f"From {source}, interested in {interest.lower()}", status), lead_id=lead_id)
         return lead_id
 
     def lead_action(self, lead_id: int, status: str, user: str) -> None:
@@ -852,7 +946,45 @@ class Desk:
                     self._event("Journey finished", "All emails sent with no reply", lead_id=lead["id"])
                 sent += 1
             self._flush(out)
-        return {"escalated": escalated, "resorted": len(retry), "matched": len(matching), "journey_emails": sent}
+        return {"escalated": escalated, "resorted": len(retry), "matched": len(matching), "journey_emails": sent,
+                "past_contacts": self.add_past_contacts()}
+
+    def add_past_contacts(self, batch: int = 100) -> int:
+        """Save the people behind messages from before every sender became a contact.
+
+        A one-time catch-up, a batch per tick, oldest message first so a person's first message makes
+        their contact and later ones are filed under it. It first gives the contacts already saved the
+        name key and GHL contact the duplicate check looks for. Once it reaches the newest message it
+        marks itself done and costs one read per tick from then on. Returns how many it saved."""
+        job = self.db.get("jobs", "past_contacts") or {}
+        if job.get("done"):
+            return 0
+        if not job.get("contacts_keyed"):
+            for lead in self.db.where("leads", "created_at", "<=", self.now()):
+                fill = {} if lead.get("name_key") else {"name_key": name_key(lead["name"])}
+                if not lead.get("contact_id") and lead.get("message_id"):
+                    m = self.db.get("messages", lead["message_id"])
+                    if m and m.get("contact_id"):
+                        fill["contact_id"] = m["contact_id"]
+                if any(fill.values()):
+                    self.db.update("leads", lead["id"], {k: v for k, v in fill.items() if v})
+            job = {"contacts_keyed": True, "after": 0}
+        saved = 0
+        msgs = self.db.where("messages", "id", ">", job.get("after", 0), order="id", limit=batch)
+        for m in msgs:
+            if m.get("lead_id") or m["sort_status"] != "sorted" or m.get("category") in NOT_A_CONTACT:
+                continue
+            contact = self._contact_for(m)
+            if contact:
+                self._link(m, contact, at=m["received_at"])
+            elif self._save_contact(m, at=m["received_at"]):
+                saved += 1
+        done = len(msgs) < batch
+        self.db.put("jobs", "past_contacts", {**job, "after": msgs[-1]["id"] if msgs else job.get("after", 0),
+                                              "done": done})
+        if saved or done:
+            log.info("past contacts: %s saved%s", saved, ", all messages checked" if done else "")
+        return saved
 
     # ------------------------------------------------------------ the page's view
 

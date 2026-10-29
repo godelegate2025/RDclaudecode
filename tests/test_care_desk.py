@@ -233,6 +233,134 @@ class RoutingTest(DeskTestCase):
         self.assertEqual(self.rows("messages")[1]["lead_id"], all_leads[0]["id"])
 
 
+class EveryoneIsAContactTest(DeskTestCase):
+    """Everyone who writes in is saved as a contact, spam aside, once: duplicates are filed under one."""
+
+    def ghl(self, text, contact_id=None, name="", email=""):
+        payload = {"customData": {"comment": text, "author": name}, "email": email}
+        if contact_id:
+            payload["contact_id"] = contact_id
+        return self.desk.ingest(parse_ghl(payload))["id"]
+
+    def test_a_complaint_saves_a_contact_with_no_sales_journey(self):
+        self.make_newlead_live()
+        self.mail_on = True
+        self.next_sort = sorting("Complaint", "High")
+        self.add("Nobody answered my emails!", email="Ana@Example.com")
+        lead, msg = self.rows("leads")[0], self.rows("messages")[0]
+        self.assertEqual((lead["kind"], lead["status"], lead["interest"], lead["email"], lead["next_at"]),
+                         ("general", "saved", "Complaint", "ana@example.com", None))
+        self.assertEqual((msg["route"], msg["lead_id"]), ("ticket", lead["id"]))  # still a ticket too
+        self.clock.advance(60 * 24 * 30)
+        self.desk.tick()
+        self.assertEqual([m["subject"] for m in self.sent], ["We got your message · RD-1001"])  # no sales emails
+
+    def test_engagement_and_job_inquiries_are_contacts_but_spam_is_not(self):
+        for category, name in (("Engagement", "Joy Uy"), ("Job inquiry", "Rico Go"), ("Spam", "Win A Prize")):
+            self.next_sort = sorting(category)
+            self.add("hi", author=name)
+        self.assertEqual([(l["name"], l["interest"]) for l in self.rows("leads")],
+                         [("Joy Uy", "Engagement"), ("Rico Go", "Job inquiry")])
+        self.assertIsNone(self.rows("messages")[2]["lead_id"])
+
+    def test_the_same_email_is_the_same_person(self):
+        self.next_sort = sorting("Engagement")
+        self.add("love it", email="ana@example.com", author="Ana")
+        self.next_sort = sorting("Billing question")
+        self.add("where is my receipt?", email="ANA@example.com", author="Ana Cruz")
+        leads, msgs = self.rows("leads"), self.rows("messages")
+        self.assertEqual(len(leads), 1)
+        self.assertEqual([m["lead_id"] for m in msgs], [leads[0]["id"]] * 2)
+        events = [e["label"] for e in self.rows("events") if e["lead_id"] == leads[0]["id"]]
+        self.assertEqual(events, ["Contact saved", "Wrote in again"])
+
+    def test_the_same_ghl_contact_is_the_same_person_and_fills_in_what_was_missing(self):
+        self.next_sort = sorting("Engagement")
+        self.ghl("nice", contact_id="g1", name="Mia")
+        self.next_sort = sorting("Client concern")
+        self.ghl("any update?", contact_id="g1", name="Mia Cruz", email="mia@example.com")
+        leads = self.rows("leads")
+        self.assertEqual(len(leads), 1)
+        self.assertEqual((leads[0]["name"], leads[0]["email"], leads[0]["contact_id"]), ("Mia", "mia@example.com", "g1"))
+
+    def test_with_no_email_or_ghl_contact_the_same_name_is_the_same_person(self):
+        self.next_sort = sorting("Engagement")
+        self.add("wow", author="José  Cruz")
+        self.add("great work", author="jose cruz")
+        self.assertEqual(len(self.rows("leads")), 1)
+        # Different emails are different people, whatever the name.
+        self.add("hi", author="Ana Reyes", email="ana1@example.com")
+        self.add("hi again", author="Ana Reyes", email="ana2@example.com")
+        self.assertEqual([l["name"] for l in self.rows("leads")], ["José  Cruz", "Ana Reyes", "Ana Reyes"])
+
+    def test_no_name_email_or_ghl_contact_saves_no_contact(self):
+        self.next_sort = sorting("Engagement")
+        self.add("wow", author="")
+        self.add("nice", author="Facebook User")
+        self.assertEqual(self.rows("leads"), [])
+
+    def test_a_saved_contact_who_asks_about_a_service_joins_the_sales_journey(self):
+        self.make_newlead_live()
+        self.next_sort = sorting("Complaint")
+        self.add("You were late", email="ben@example.com", author="Ben")
+        self.next_sort = sorting("Pricing question", interest="Website")
+        self.add("How much is a website?", email="ben@example.com", author="Ben")
+        leads = self.rows("leads")
+        self.assertEqual(len(leads), 1)
+        self.assertEqual((leads[0]["kind"], leads[0]["status"], leads[0]["interest"]), ("new", "active", "Website"))
+        self.assertEqual(self.rows("messages")[1]["route"], "lead")
+
+    def test_a_sales_contact_who_complains_stays_one_contact_and_their_journey_stops(self):
+        self.make_newlead_live()
+        self.next_sort = sorting("Pricing question", interest="Website")
+        self.add("How much?", email="ben@example.com")
+        self.next_sort = sorting("Complaint")
+        self.add("Still no answer", email="ben@example.com")
+        leads = self.rows("leads")
+        self.assertEqual(len(leads), 1)
+        self.assertEqual((leads[0]["kind"], leads[0]["status"]), ("new", "replied"))
+        self.assertEqual(self.rows("messages")[1]["lead_id"], leads[0]["id"])
+
+    def test_the_clock_adds_past_senders_once_oldest_first(self):
+        # Messages and a contact from before everyone became a contact.
+        def old_message(author, email=None, category="Complaint", lead_id=None, at=0):
+            return self.store.insert("messages", {
+                "author": author, "email": email, "phone": None, "contact_id": None, "channel": "facebook",
+                "text": "x", "sort_status": "sorted", "category": category, "lead_id": lead_id,
+                "received_at": self.clock() - at * MIN})
+        first = old_message("Ana Cruz", "ana@example.com", at=300)
+        old_message("Spam Bot", category="Spam", at=200)
+        sales = old_message("Ben Lim", "ben@example.com", category="Pricing question", at=150)
+        ben = self.store.insert("leads", {"kind": "new", "name": "Ben Lim", "email": "ben@example.com",
+                                          "status": "completed", "created_at": self.clock(), "message_id": sales})
+        self.store.update("messages", sales, {"lead_id": ben})
+        later = old_message("ana cruz", "ana@example.com", category="Engagement", at=100)
+        old_message("Ben Lim", category="Billing question", at=50)  # no email: matched by name
+
+        self.assertEqual(self.desk.add_past_contacts(batch=2), 1)  # a batch at a time: Ana
+        self.desk.add_past_contacts(batch=2)
+        self.desk.add_past_contacts(batch=2)
+        self.assertEqual(self.desk.add_past_contacts(batch=2), 0)  # done: from now on it does nothing
+        self.assertTrue(self.store.get("jobs", "past_contacts")["done"])
+
+        leads = self.rows("leads")
+        self.assertEqual([(l["name"], l["kind"]) for l in leads], [("Ben Lim", "new"), ("Ana Cruz", "general")])
+        ana = leads[1]
+        self.assertEqual(ana["created_at"], self.clock() - 300 * MIN)  # when they first wrote, not today
+        msgs = {m["id"]: m for m in self.rows("messages")}
+        self.assertEqual((msgs[first]["lead_id"], msgs[later]["lead_id"]), (ana["id"], ana["id"]))
+        self.assertEqual(msgs[max(msgs)]["lead_id"], ben)
+        self.assertEqual(leads[0]["name_key"], "ben lim")  # older contacts get the key duplicates are checked by
+        self.assertEqual(len([m for m in msgs.values() if m["lead_id"] is None]), 1)  # only the spam
+
+    def test_the_clock_runs_the_catch_up(self):
+        self.store.insert("messages", {"author": "Ana", "email": None, "contact_id": None, "channel": "facebook",
+                                       "text": "x", "sort_status": "sorted", "category": "Engagement",
+                                       "lead_id": None, "received_at": self.clock()})
+        self.assertEqual(self.desk.tick()["past_contacts"], 1)
+        self.assertEqual(self.desk.tick()["past_contacts"], 0)
+
+
 class TicketTest(DeskTestCase):
     def setUp(self):
         super().setUp()
