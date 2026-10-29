@@ -72,6 +72,10 @@ class Import(BaseModel):
     dry_run: bool = True
 
 
+class OtherContact(BaseModel):
+    other: int = 0
+
+
 class BulkContacts(BaseModel):
     action: str = ""            # tag, untag or delete
     ids: list[int] = []
@@ -435,6 +439,17 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         else:
             raise HTTPException(400, f"Unknown action: {payload.action}")
         return JSONResponse({"ok": True, "changed": changed})
+
+    # One person saved twice: merge the other contact into this one, or mark them as two people.
+    @app.post("/api/desk/leads/{lead_id}/merge")
+    def merge_contacts(lead_id: int, payload: OtherContact, request: Request) -> JSONResponse:
+        run(the_desk().merge_leads, lead_id, payload.other, staff(request, mutating=True))
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/desk/leads/{lead_id}/separate")
+    def keep_contacts_separate(lead_id: int, payload: OtherContact, request: Request) -> JSONResponse:
+        run(the_desk().keep_leads_separate, lead_id, payload.other, staff(request, mutating=True))
+        return JSONResponse({"ok": True})
 
     @app.post("/api/desk/leads/{lead_id}/{status}")
     def lead_action(lead_id: int, status: str, request: Request) -> JSONResponse:

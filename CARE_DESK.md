@@ -46,7 +46,18 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
   else the same GHL contact; else, when it has neither, the same name, ignoring
   case, spacing, punctuation and accents. It then fills in any email, phone or
   GHL contact the contact was missing. A message with none of the three ("Unknown",
-  no email) saves no contact. Someone under Other contacts who asks about a
+  no email) saves no contact.
+- **One person can still be saved twice, and a person decides.** A Facebook
+  comment (a GHL contact, no email) and an email (an email, no GHL contact) from
+  the same person match on nothing the desk trusts, so they make two contacts.
+  Contacts flags any two with the same name, email or GHL contact as a
+  "Possible duplicate". In the contact's panel, "Merge into this contact" moves
+  the other's messages, activity, journey emails, tags and missing details onto
+  it and removes the other (a second email is noted in the activity); "Not the
+  same person" stops flagging the pair. Any team member can do either. A merged
+  sales contact that had no email is settled as if it had been one contact all
+  along: replied if they wrote in after their sales question, otherwise its
+  journey can now email them. Someone under Other contacts who asks about a
   service joins the new contact journey. The desk's clock went back over the
   messages from before this once, oldest first (`add_past_contacts`, recorded
   in the `jobs` collection as `past_contacts`).

@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from care_desk import auth, config
 from care_desk.app import create_app
 from care_desk.meta import Comment, MetaError
-from care_desk.desk import MIN, Desk, DeskError
+from care_desk.desk import MIN, Desk, DeskError, NotFound
 from care_desk.intake import manual, new_text_of, parse_email, parse_ghl
 from care_desk.sorter import SortError, Sorting, sort_with_rules
 from care_desk.store import MemoryStore, SupabaseStore
@@ -352,6 +352,68 @@ class EveryoneIsAContactTest(DeskTestCase):
         self.assertEqual(msgs[max(msgs)]["lead_id"], ben)
         self.assertEqual(leads[0]["name_key"], "ben lim")  # older contacts get the key duplicates are checked by
         self.assertEqual(len([m for m in msgs.values() if m["lead_id"] is None]), 1)  # only the spam
+
+    def test_a_facebook_comment_then_an_email_are_two_contacts_until_merged(self):
+        # GHL gives the comment a contact but no email; the email has no GHL contact. Nothing
+        # proves they are one person, so the desk keeps two and leaves it to someone to merge.
+        self.make_newlead_live()
+        self.next_sort = sorting("Pricing question", interest="Website")
+        self.ghl("How much is a website?", contact_id="g-juan", name="Juan Dela Cruz")
+        self.next_sort = sorting("Complaint")
+        self.add("Nobody replied to my comment", email="juan@example.com", author="Juan Dela Cruz", channel="email")
+        fb, mail = self.rows("leads")
+        self.assertEqual((fb["kind"], mail["kind"]), ("new", "general"))
+        self.store.insert("emails", {"lead_id": mail["id"], "subject": "s", "at": self.clock()})
+        self.desk.tag_leads([mail["id"]], ["VIP"], "mia@redefine.ph")
+
+        self.desk.merge_leads(mail["id"], fb["id"], "mia@redefine.ph")  # keep the email one
+        kept = self.desk._one("leads", mail["id"])
+        self.assertEqual((kept["email"], kept["contact_id"], kept["tags"]), ("juan@example.com", "g-juan", ["VIP"]))
+        # The sales journey wins over none, and with an email now it is settled as one contact's
+        # would be: Juan wrote in again after asking, which stops a journey.
+        self.assertEqual((kept["kind"], kept["status"], kept["interest"]), ("new", "replied", "Website"))
+        self.assertEqual(kept["created_at"], fb["created_at"])
+        self.assertTrue(self.store.get("leads", fb["id"])["deleted"])
+        self.assertEqual({m["lead_id"] for m in self.rows("messages")}, {mail["id"]})
+        self.assertEqual({e["lead_id"] for e in self.rows("events") if e["lead_id"]}, {mail["id"]})
+        self.assertEqual(self.rows("emails")[-1]["lead_id"], mail["id"])
+        self.assertEqual(self.rows("events")[-1]["label"], "Merged")
+        # From now on both the email and the GHL contact find the one contact.
+        self.next_sort = sorting("Engagement")
+        self.ghl("thanks!", contact_id="g-juan", name="Juan")
+        self.assertEqual(len([l for l in self.rows("leads") if not l.get("deleted")]), 1)
+
+    def test_merging_gives_a_dm_only_sales_contact_its_journey_when_they_had_not_written_again(self):
+        self.make_newlead_live()
+        self.next_sort = sorting("Engagement")
+        mail = self.desk._one("messages", self.add("love your work", email="lea@example.com", author="Lea Tan"))["lead_id"]
+        self.clock.advance(5)
+        self.next_sort = sorting("Service inquiry", interest="Branding")
+        fb = self.desk._one("messages", self.ghl("Do you do logos?", contact_id="g-lea", name="Lea Tan"))["lead_id"]
+        self.assertEqual(self.desk._one("leads", fb)["status"], "manual")
+        self.desk.merge_leads(mail, fb, "mia@redefine.ph")
+        kept = self.desk._one("leads", mail)
+        self.assertEqual((kept["kind"], kept["status"], kept["email"]), ("new", "active", "lea@example.com"))
+        self.assertIsNotNone(kept["next_at"])
+
+    def test_merging_keeps_a_second_email_in_the_activity(self):
+        self.next_sort = sorting("Engagement")
+        a = self.desk._one("messages", self.add("hi", email="ana1@example.com", author="Ana Reyes"))["lead_id"]
+        b = self.desk._one("messages", self.add("hey", email="ana2@example.com", author="Ana Reyes"))["lead_id"]
+        self.desk.merge_leads(a, b, "mia@redefine.ph")
+        self.assertEqual(self.desk._one("leads", a)["email"], "ana1@example.com")
+        self.assertIn("Their other email ana2@example.com", self.rows("events")[-1]["detail"])
+        with self.assertRaises(DeskError):
+            self.desk.merge_leads(a, a, "mia@redefine.ph")
+        with self.assertRaises(NotFound):
+            self.desk.merge_leads(a, b, "mia@redefine.ph")  # already merged in
+
+    def test_two_people_with_one_name_can_be_kept_apart(self):
+        self.next_sort = sorting("Engagement")
+        a = self.desk._one("messages", self.add("nice post", email="juan1@example.com", author="Juan Dela Cruz"))["lead_id"]
+        b = self.desk._one("messages", self.add("great reel", email="juan2@example.com", author="Juan Dela Cruz"))["lead_id"]
+        self.desk.keep_leads_separate(a, b, "mia@redefine.ph")
+        self.assertEqual((self.desk._one("leads", a)["distinct"], self.desk._one("leads", b)["distinct"]), ([b], [a]))
 
     def test_the_clock_runs_the_catch_up(self):
         self.store.insert("messages", {"author": "Ana", "email": None, "contact_id": None, "channel": "facebook",
@@ -849,6 +911,25 @@ class HTTPTest(DeskTestCase):
         self.sign_in("owner@redefine.ph")
         self.assertEqual(bulk({"action": "delete", "ids": [lead_id]}).json()["changed"], 1)
         self.assertEqual(self.client.get("/api/desk/state").json()["leads"], [])
+
+    def test_merge_and_keep_apart_over_http(self):
+        self.client.app.state.team.add("agent@redefine.ph", "agent", by="owner@redefine.ph")
+        h = {"X-Requested-With": "desk"}
+        self.next_sort = sorting("Engagement")
+        self.add("nice post", email="juan1@example.com", author="Juan Dela Cruz")
+        self.add("great reel", email="juan2@example.com", author="Juan Dela Cruz")
+        self.add("love it", email="juan3@example.com", author="Juan Dela Cruz")
+        a, b, c = (l["id"] for l in self.rows("leads"))
+        self.sign_in("agent@redefine.ph")  # merging moves everything and loses nothing, so agents may
+        post = lambda path, other, headers=h: self.client.post(f"/api/desk/leads/{path}", json={"other": other}, headers=headers)  # noqa: E731
+        self.assertEqual(post(f"{a}/merge", b, {}).status_code, 403)
+        self.assertEqual(post(f"{a}/merge", b).status_code, 200)
+        self.assertEqual(post(f"{a}/merge", b).status_code, 404)  # already merged in
+        self.assertEqual(post(f"{a}/merge", a).status_code, 400)
+        self.assertEqual(post(f"{a}/separate", c).status_code, 200)
+        leads = {l["id"]: l for l in self.client.get("/api/desk/state").json()["leads"]}
+        self.assertEqual(sorted(leads), [a, c])
+        self.assertEqual((leads[a]["distinct"], leads[c]["distinct"]), ([c], [a]))
 
     def test_never_runs_open_without_sign_in(self):
         for name in SIGN_IN:

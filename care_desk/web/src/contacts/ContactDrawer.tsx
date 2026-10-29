@@ -1,8 +1,9 @@
 import { useAction } from '../desk';
-import { channelLabel, fill, firstName, fmtClock, fmtIn, fmtTime, useNow } from '../format';
+import { channelLabel, fill, firstName, fmtClock, fmtIn, fmtTime, plural, useNow } from '../format';
 import type { Desk, Lead } from '../types';
 import { Activity, Drawer, Tags } from '../ui';
 import { KIND, statusOf } from './ContactsView';
+import { possibleDuplicates } from './duplicates';
 
 const none = (text: string) => <span style={{ color: 'var(--t-lo)' }}>{text}</span>;
 const DONE: Record<string, string> = { replied: 'Marked replied. No more journey emails.', won: 'Marked won', closed: 'Contact closed' };
@@ -17,6 +18,11 @@ export function ContactDrawer({ desk, lead: l, onClose }: { desk: Desk; lead: Le
   const steps = journey?.steps.length ?? 0, sent = Math.min(l.step, steps);
   const next = l.status === 'active' && l.next_at != null ? journey?.steps[l.step] : undefined;
   const setStatus = (status: string) => act(`/api/desk/leads/${l.id}/${status}`, {}, DONE[status]);
+  const dupes = possibleDuplicates(desk.leads).get(l.id) || [];
+  const merge = (o: Lead) => {
+    if (!confirm(`Merge ${o.name}${o.email ? ` (${o.email})` : ''} into ${l.name}? Everything moves here and the other contact goes. This can't be undone.`)) return;
+    act(`/api/desk/leads/${l.id}/merge`, { other: o.id }, `${o.name} merged in`);
+  };
 
   return (
     <Drawer label={`Contact ${l.name}`} onClose={onClose}>
@@ -48,6 +54,19 @@ export function ContactDrawer({ desk, lead: l, onClose }: { desk: Desk; lead: Le
           {!['won', 'unsubscribed'].includes(l.status) && <button className="btn sm" onClick={() => setStatus('won')}>Mark won</button>}
           {!['closed', 'won', 'unsubscribed', 'completed'].includes(l.status) && <button className="btn sm ghost" onClick={() => setStatus('closed')}>Close</button>}
         </div>
+      </div>}
+
+      {dupes.length > 0 && <div className="sect"><h3>Possible duplicates</h3>
+        <p className="note">The same name, email or GHL contact as this one. If it's the same person, merge it in: its messages, activity, tags and missing details move here, and it goes from the list.</p>
+        {dupes.map(o => <div key={o.id} className="card dupe">
+          <b>{o.name}</b>
+          <span className="sub">{[o.email || 'No email', o.phone, o.source, `added ${fmtClock(o.created_at)}`].filter(Boolean).join(' · ')}</span>
+          <span className="sub">{plural(desk.messages.filter(m => m.lead_id === o.id).length, 'message')}{o.kind !== 'general' ? ' · in a sales journey' : ''}</span>
+          <div className="acts">
+            <button className="btn sm primary" onClick={() => merge(o)}>Merge into this contact</button>
+            <button className="btn sm ghost" onClick={() => act(`/api/desk/leads/${l.id}/separate`, { other: o.id }, 'Kept as different people')}>Not the same person</button>
+          </div>
+        </div>)}
       </div>}
 
       <div className="sect"><h3>Messages{messages.length > 1 ? ` · ${messages.length}` : ''}</h3>

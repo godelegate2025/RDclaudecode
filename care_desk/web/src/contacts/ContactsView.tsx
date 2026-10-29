@@ -3,9 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { fmtAgo, fmtClock, fmtDateTime, useNow } from '../format';
 import { Icon, type IconName } from '../icons';
 import type { Desk, Id, Lead } from '../types';
-import { Tags, Tick } from '../ui';
+import { Banner, Tags, Tick } from '../ui';
 import { BulkModal, type BulkKind } from './BulkModal';
 import { ContactDrawer } from './ContactDrawer';
+import { possibleDuplicates } from './duplicates';
 import { ImportModal } from './ImportModal';
 
 // Journey status, shown in the contact's panel.
@@ -23,9 +24,10 @@ export const KIND: Record<Lead['kind'], [string, string, string]> = {
   general: ['o', 'Other', 'Wrote in about something else; no journey'],
 };
 
-// Each row carries its last activity, so that column sorts like the others.
+// Each row carries its last activity, so that column sorts like the others, and how many
+// other contacts may be the same person.
 type Activity = { at: number; label: string };
-type Row = Lead & { last?: Activity };
+type Row = Lead & { last?: Activity; dupes: number };
 const col = createColumnHelper<Row>();
 
 // What the cells need besides the row. Passed as table meta so the columns stay the same
@@ -55,7 +57,11 @@ const COLUMNS = [
   }),
   // Text sorts A to Z on the first click, dates newest first. Empty phones, emails and tags
   // sort last whichever way the column is sorted.
-  col.accessor('name', { header: 'Name', sortingFn: 'text', sortDescFirst: false, cell: ({ row: { original: l } }) => <b>{l.name}</b> }),
+  col.accessor('name', { header: 'Name', sortingFn: 'text', sortDescFirst: false, cell: ({ row: { original: l } }) => <>
+    <b>{l.name}</b>
+    {l.dupes > 0 && <span className="sub"><span className="chip a" style={{ height: 22, marginTop: 4 }}
+      title="Same name, email or GHL contact as another contact. Open it to compare and merge.">Possible duplicate</span></span>}
+  </> }),
   col.accessor(l => l.phone || undefined, {
     id: 'phone', header: 'Phone', sortDescFirst: false, sortUndefined: 'last', cell: ({ row: { original: l } }) => l.phone || muted('None'),
   }),
@@ -86,10 +92,13 @@ export function ContactsView({ desk }: { desk: Desk }) {
   const [open, setOpen] = useState<Id | null>(null);
   const [modal, setModal] = useState<BulkKind | 'import' | null>(null);
   const now = useNow(15_000);
-  const list = useMemo<Row[]>(() => {
-    const last = lastActivity(desk);
-    return desk.leads.map(l => ({ ...l, last: last.get(l.id) }));
+  const [onlyDupes, setOnlyDupes] = useState(false);
+  const all = useMemo<Row[]>(() => {
+    const last = lastActivity(desk), dupes = possibleDuplicates(desk.leads);
+    return desk.leads.map(l => ({ ...l, last: last.get(l.id), dupes: dupes.get(l.id)?.length ?? 0 }));
   }, [desk]);
+  const flagged = all.filter(r => r.dupes > 0).length;
+  const list = onlyDupes && flagged ? all.filter(r => r.dupes > 0) : all;
   // Newest first until someone picks another order; their pick is remembered in this browser.
   const [sorting, setSorting] = useState<SortingState>(() => {
     try { return JSON.parse(localStorage.getItem(SORT_KEY) || '') as SortingState; } catch { return DEFAULT_SORT; }
@@ -128,9 +137,14 @@ export function ContactsView({ desk }: { desk: Desk }) {
   return <>
     <div className="vh">
       <div><div className="eyebrow">04 · People</div><h1>Contacts</h1></div>
-      <p>Everyone who writes in is saved here once: the same email, GHL contact or name is one contact. Open a contact to see everything they sent and, for sales contacts, their follow-up journey.</p>
+      <p>Everyone who writes in is saved here. A message joins the contact with the same email or GHL contact, or the same name when it has neither. Open a contact to see everything they sent and, for sales contacts, their follow-up journey.</p>
       <div className="right"><button className="btn" onClick={() => setModal('import')}><Icon name="upload" size={16} />Import old contacts</button></div>
     </div>
+
+    {flagged > 0 && <Banner icon="users">
+      <span>{flagged} contacts may be the same person as another: the same name, email or GHL contact. Open one to compare, then merge them or mark them as different people.</span>
+      <button className="btn sm" onClick={() => { setOnlyDupes(!onlyDupes); setPicked({}); }}>{onlyDupes ? 'Show everyone' : 'Show only these'}</button>
+    </Banner>}
 
     {n > 0 && <div className="selbar" role="toolbar" aria-label="Selected contacts">
       <span className="count">Selected: {n}

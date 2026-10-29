@@ -1,6 +1,8 @@
 /* What the React desk adds on top of desk.css. */
 a.nav{text-decoration:none}
 .sect .quote + .quote{margin-top:8px}
+.card.dupe{padding:14px 16px;margin-top:8px;display:flex;flex-direction:column;gap:2px}
+.card.dupe .acts{margin-top:10px}
 /* A sortable column's header: the whole label is the button, the arrow shows the order. */
 th .sortby{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit}
 th .sortby:hover,th[aria-sort] .sortby{color:var(--t-hi)}

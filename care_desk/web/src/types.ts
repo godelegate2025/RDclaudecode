@@ -15,6 +15,7 @@ export interface Lead {
   // general: wrote in about anything else, with no journey.
   kind: 'new' | 'old' | 'general';
   contact_id?: string | null;  // GHL's id for them
+  distinct?: Id[];  // contacts marked as a different person, though they look alike
   status: string;
   step: number;
   next_at?: number | null;

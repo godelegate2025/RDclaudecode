@@ -804,6 +804,57 @@ class Desk:
         log.info("%s deleted %s contacts", user, len(picked))
         return len(picked)
 
+    # ------------------------------------------------------------ one person saved twice
+
+    # The desk files a message under an existing contact only on the same email or GHL contact,
+    # or the same name when the message has neither. A person who writes from two places (a
+    # Facebook comment, then an email) can still end up as two contacts. The page flags contacts
+    # that may be one person; someone merges them, or marks them as two different people.
+
+    def merge_leads(self, keep_id: int, other_id: int, user: str) -> None:
+        """Move everything from `other` onto `keep`, then remove `other`. `keep` keeps its own
+        details and takes the ones it lacks; a sales journey wins over no journey."""
+        if keep_id == other_id:
+            raise DeskError("Pick two different contacts to merge.")
+        keep, other = self._one("leads", keep_id), self._one("leads", other_id)
+        fields = {k: other[k] for k in ("email", "phone", "contact_id", "message_id") if other.get(k) and not keep.get(k)}
+        if keep["kind"] == "general" and other["kind"] != "general":
+            fields.update({k: other.get(k) for k in ("kind", "interest", "status", "step", "next_at", "last_contact_days")})
+        fields.update(
+            tags=clean_tags((keep.get("tags") or []) + (other.get("tags") or [])),
+            created_at=min(keep["created_at"], other["created_at"]),
+            name_key=keep.get("name_key") or name_key(keep["name"]),
+            distinct=sorted((set(keep.get("distinct") or []) | set(other.get("distinct") or [])) - {keep_id, other_id}))
+        # A sales contact kept for a direct message, now with an email: settle it as if they had
+        # been one contact all along. Writing in after their sales question stopped the journey;
+        # otherwise the journey can email them now.
+        merged = {**keep, **fields}
+        if merged["status"] == "manual" and merged.get("email"):
+            sales = keep if keep["kind"] != "general" else other
+            later = [m for i in (keep_id, other_id) for m in self.db.where("messages", "lead_id", "==", i)
+                     if m["id"] != sales.get("message_id") and m["received_at"] >= sales["created_at"]]
+            fields["status"], fields["next_at"] = ("replied", None) if later else self._journey_start(merged["kind"], merged["email"])
+        self.db.update("leads", keep_id, fields)
+        for coll in ("messages", "events", "emails"):
+            for doc in self.db.where(coll, "lead_id", "==", other_id):
+                self.db.update(coll, doc["id"], {"lead_id": keep_id})
+        self.db.put("leads", str(other_id), {"id": other_id, "deleted": True})
+        # A second email or GHL contact has nowhere to go on one contact; say what it was.
+        kept = [f"{label} {other[k]}" for k, label in (("email", "email"), ("contact_id", "GHL contact"))
+                if other.get(k) and keep.get(k) and other[k] != keep[k]]
+        self._event("Merged", f"{other['name']} merged in by {user}" + (". Their other " + " and ".join(kept) if kept else ""),
+                    lead_id=keep_id)
+        log.info("%s merged contact %s into %s", user, other_id, keep_id)
+
+    def keep_leads_separate(self, lead_id: int, other_id: int, user: str) -> None:
+        """Two contacts that look alike are different people: stop flagging them."""
+        if lead_id == other_id:
+            raise DeskError("Pick two different contacts.")
+        pair = [self._one("leads", lead_id), self._one("leads", other_id)]
+        for lead, other in (pair, pair[::-1]):
+            self.db.update("leads", lead["id"], {"distinct": sorted(set(lead.get("distinct") or []) | {other["id"]})})
+            self._event("Not a duplicate", f"Of {other['name']}, by {user}", lead_id=lead["id"])
+
     def check_import(self, rows: list[dict]) -> list[dict]:
         """One verdict per row: whether it can be enrolled, and why not."""
         emails = {str(r.get("email") or "").strip().lower() for r in rows[:5000]}
