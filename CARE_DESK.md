@@ -46,16 +46,25 @@ data and must answer GHL's webhooks quickly while audits run for minutes.
   sales questions as before (type "New", in the new contact journey), and
   everyone else, complaints and praise included, as type "Other" with no
   journey, so they never get sales emails. A contact's journey, and the
-  Replied, Won and Close buttons, are in the panel that opens on a contact. A message is from an existing contact when it has the same email;
+  Replied, Won and Close buttons, are on the contact's page (below). A message is from an existing contact when it has the same email;
   else the same GHL contact; else, when it has neither, the same name, ignoring
   case, spacing, punctuation and accents. It then fills in any email, phone or
   GHL contact the contact was missing. A message with none of the three ("Unknown",
   no email) saves no contact.
+- **Each contact has a page** (`/contacts/<id>`, opened from Contacts or a message
+  in the Inbox), laid out like a CRM's contact record. Left: their details,
+  tags (add and remove there), sales follow-up and possible duplicates. Middle:
+  the whole conversation in time order, their messages on the left (Reply opens
+  the same reply box as the Inbox) and what Redefine sent on the right (email
+  replies, journey emails, ticket updates, Facebook replies), tickets as lines,
+  and a box to email them. Right: all activity on them and their tickets. It
+  loads their full history from `/api/desk/leads/<id>`, not just what the desk's
+  state holds, and steps through the Contacts list in the order it was shown.
 - **One person can still be saved twice, and a person decides.** A Facebook
   comment (a GHL contact, no email) and an email (an email, no GHL contact) from
   the same person match on nothing the desk trusts, so they make two contacts.
   Contacts flags any two with the same name, email or GHL contact as a
-  "Possible duplicate". In the contact's panel, "Merge into this contact" moves
+  "Possible duplicate". On the contact's page, "Merge into this contact" moves
   the other's messages, activity, journey emails, tags and missing details onto
   it and removes the other (a second email is noted in the activity); "Not the
   same person" stops flagging the pair. Any team member can do either. A merged

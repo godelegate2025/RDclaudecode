@@ -12,3 +12,48 @@ th .sortby:hover,th[aria-sort] .sortby{color:var(--t-hi)}
 th .sortby:focus-visible{outline:2px solid var(--coral);outline-offset:3px;border-radius:4px}
 th .sortby span{font-size:12px;letter-spacing:0;opacity:.6}
 th[aria-sort] .sortby span{opacity:1}
+
+/* A contact's page: details | conversation | activity, each scrolling on its own, like a CRM. */
+.cbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.cstep{margin-left:auto;display:flex;align-items:center;gap:4px;color:var(--t-mid);font:600 13px var(--body)}
+.cstep .btn{font-size:16px;padding:0 10px}
+.cpage{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr) minmax(240px,320px);gap:14px;align-items:start}
+.cpanel{padding:18px;height:calc(100vh - 150px);overflow:auto;position:sticky;top:80px}
+.cpanel>h3{font:700 11px var(--body);letter-spacing:.18em;text-transform:uppercase;color:var(--t-lo);margin-bottom:6px}
+.cpanel .kv{grid-template-columns:96px minmax(0,1fr)}
+.chead{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.chead h2{font:700 18px var(--body)}
+.chead .sub{display:block;font:500 12px var(--body);color:var(--t-lo)}
+.cthread{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.cthread .chead{padding:14px 18px;margin:0;border-bottom:1px solid var(--line)}
+.cmsgs{flex:1;overflow:auto;padding:8px 18px 18px}
+.cday{display:block;width:max-content;margin:16px auto 10px;padding:3px 12px;border-radius:999px;background:var(--raise);font:700 11px var(--body);color:var(--t-mid)}
+.cday.left{margin:14px 0 8px -16px}
+.bubble{max-width:min(78%,620px);margin:8px 0;padding:10px 14px;border-radius:14px 14px 14px 4px;background:var(--raise);border:1px solid var(--line)}
+.bubble.out{margin-left:auto;border-radius:14px 14px 4px 14px;background:rgba(252,68,82,.1);border-color:rgba(252,68,82,.28)}
+.bh{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font:700 11px var(--body);color:var(--t-mid);margin-bottom:4px}
+.bt{margin-left:auto;font-weight:600;color:var(--t-lo)}
+.bb{font:400 14px/1.5 var(--body);white-space:pre-wrap;overflow-wrap:anywhere}
+.bs{display:block;margin-bottom:2px}
+.bf{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px;white-space:normal}
+.breply{max-width:min(78%,620px);margin:-2px 0 10px;padding:12px 14px;border-radius:12px;border:1px dashed var(--line-2)}
+.tline{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin:10px auto;padding:6px 14px;width:max-content;max-width:100%;border-radius:999px;border:1px solid var(--line-2);font:500 13px var(--body);color:var(--t-mid)}
+.tline b{color:var(--t-hi)}
+.linkish{all:unset;cursor:pointer;font:700 12px var(--body);color:var(--coral)}
+.linkish:hover{text-decoration:underline}
+.linkish:focus-visible{outline:2px solid var(--coral);outline-offset:2px;border-radius:3px}
+.ccomp{border-top:1px solid var(--line);padding:12px 18px;display:flex;flex-direction:column;gap:8px}
+.ccomp .note{margin:0}
+.ccomp input,.ccomp textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line-2);background:var(--ink);color:var(--t-hi);font:400 14px/1.45 var(--body)}
+.crow{display:flex;gap:8px;align-items:stretch}
+.crow textarea{min-height:46px;max-height:180px;resize:vertical}
+.tagedit{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.tagedit .tag{gap:4px;padding-right:4px}
+.tagedit .tag button{all:unset;cursor:pointer;display:grid;place-items:center;width:16px;height:16px;border-radius:50%;color:var(--t-lo)}
+.tagedit .tag button:hover{background:rgba(255,255,255,.12);color:var(--t-hi)}
+.tagedit input{width:90px;height:24px;padding:0 8px;border-radius:999px;border:1px dashed var(--line-2);background:transparent;color:var(--t-hi);font:600 12px var(--body)}
+@media (max-width:1100px){
+  .cpage{grid-template-columns:1fr}
+  .cpanel{height:auto;max-height:none;position:static}
+  .cthread{height:75vh}
+}

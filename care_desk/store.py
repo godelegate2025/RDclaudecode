@@ -176,11 +176,11 @@ class SupabaseStore:
 
     # Fields the desk filters or sorts on, besides updated_at, which every table indexes.
     INDEXED = {
-        "messages": ("received_at", "external_id", "fb_comment_id", "match_at", "retry_at"),
+        "messages": ("received_at", "external_id", "fb_comment_id", "match_at", "retry_at", "lead_id"),
         "tickets": ("created_at", "escalate_at"),
         "leads": ("created_at", "email", "next_at", "status", "contact_id", "name_key"),
         "events": ("ticket_id", "lead_id"),
-        "emails": ("at",),
+        "emails": ("at", "lead_id", "ticket_id"),
         "notes": ("ticket_id",),
     }
     NAME = re.compile(r"[a-z_]{1,40}")

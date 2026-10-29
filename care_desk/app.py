@@ -46,7 +46,7 @@ STATIC = Path(__file__).parent / "static"
 # The React desk (care_desk/web), built by `npm run build` or by Dockerfile.desk.
 WEB = Path(__file__).parent / "web" / "dist"
 # The desk's views, each at its own address; care_desk/web/src/App.tsx has the same list.
-DESK_VIEWS = ("/", "/inbox", "/tickets", "/contacts", "/email", "/email/{journey}", "/team")
+DESK_VIEWS = ("/", "/inbox", "/tickets", "/contacts", "/contacts/{lead_id}", "/email", "/email/{journey}", "/team")
 
 
 class GoogleCredential(BaseModel):
@@ -439,6 +439,12 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         else:
             raise HTTPException(400, f"Unknown action: {payload.action}")
         return JSONResponse({"ok": True, "changed": changed})
+
+    # A contact's page: their whole conversation and activity, beyond what the state loads.
+    @app.get("/api/desk/leads/{lead_id}")
+    def contact_thread(lead_id: int, request: Request) -> JSONResponse:
+        staff(request)
+        return JSONResponse(run(the_desk().contact_thread, lead_id), headers={"Cache-Control": "no-store"})
 
     # One person saved twice: merge the other contact into this one, or mark them as two people.
     @app.post("/api/desk/leads/{lead_id}/merge")

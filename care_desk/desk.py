@@ -813,6 +813,25 @@ class Desk:
         log.info("%s deleted %s contacts", user, len(picked))
         return len(picked)
 
+    def contact_thread(self, lead_id: int) -> dict:
+        """Everything about one contact, for their page, oldest first: the messages they sent, the
+        emails sent to them (replies, journey emails, ticket updates), their tickets and all the
+        activity on them and their tickets. Not limited to what the desk's state loads."""
+        lead = self._one("leads", lead_id)
+        at = lambda d: d.get("at") or d.get("received_at") or d.get("created_at") or 0  # noqa: E731
+        msgs = sorted(self.db.where("messages", "lead_id", "==", lead_id), key=at)
+        tickets = [{**t, "code": code(t["id"])}
+                   for t in (self.db.get("tickets", i) for i in dict.fromkeys(m["ticket_id"] for m in msgs if m.get("ticket_id"))) if t]
+
+        def mine(coll: str) -> list[dict]:
+            found = {d["id"]: d for d in self.db.where(coll, "lead_id", "==", lead_id)}
+            for group in chunks([t["id"] for t in tickets]):
+                found.update((d["id"], d) for d in self.db.where(coll, "ticket_id", "in", group))
+            return sorted(found.values(), key=at)
+
+        return {"lead": lead, "messages": [{k: v for k, v in m.items() if k != "raw"} for m in msgs],
+                "tickets": sorted(tickets, key=at), "emails": mine("emails"), "events": mine("events")}
+
     # ------------------------------------------------------------ one person saved twice
 
     # The desk files a message under an existing contact only on the same email or GHL contact,

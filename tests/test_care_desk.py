@@ -415,6 +415,28 @@ class EveryoneIsAContactTest(DeskTestCase):
         self.desk.keep_leads_separate(a, b, "mia@redefine.ph")
         self.assertEqual((self.desk._one("leads", a)["distinct"], self.desk._one("leads", b)["distinct"]), ([b], [a]))
 
+    def test_a_contacts_page_has_their_whole_conversation(self):
+        self.mail_on = True
+        self.next_sort = sorting("Complaint")
+        first = self.add("You were late", email="ana@example.com", author="Ana", channel="email")
+        self.clock.advance(5)
+        self.next_sort = sorting("Engagement")
+        self.add("ok thanks", email="ana@example.com", author="Ana")
+        self.next_sort = sorting("Engagement")
+        self.add("someone else", email="ben@example.com", author="Ben")
+        self.desk.email_reply(first, "Sorry, we're on it.", "mia@redefine.ph")
+        lead_id = self.desk._one("messages", first)["lead_id"]
+        thread = self.desk.contact_thread(lead_id)
+        self.assertEqual(thread["lead"]["id"], lead_id)
+        self.assertEqual([m["text"] for m in thread["messages"]], ["You were late", "ok thanks"])  # oldest first, only hers
+        self.assertNotIn("raw", thread["messages"][0])
+        self.assertEqual([t["code"] for t in thread["tickets"]], ["RD-1001"])  # the ticket from her complaint
+        self.assertEqual([e["journey"] for e in thread["emails"]], ["received", "reply"])  # the ticket's email and our reply
+        self.assertIn("Contact saved", [e["label"] for e in thread["events"]])
+        self.assertIn("Ticket created", [e["label"] for e in thread["events"]])  # the ticket's activity too
+        with self.assertRaises(NotFound):
+            self.desk.contact_thread(999)
+
     def test_unsubscribing_marks_every_contact_with_that_email(self):
         self.make_newlead_live()
         self.next_sort = sorting("Complaint")
@@ -778,7 +800,7 @@ class HTTPTest(DeskTestCase):
             client.cookies.set(team_auth.COOKIE, team_auth.make_session("owner@redefine.ph", SIGN_IN["SESSION_SECRET"].encode()))
             client.post("/auth/name", json={"name": "Owner"}, headers={"X-Requested-With": "desk"})
             # Every view's address gets the same page; the page picks the view.
-            for path in ("/", "/inbox", "/tickets", "/contacts", "/email", "/email/oldlead", "/team"):
+            for path in ("/", "/inbox", "/tickets", "/contacts", "/contacts/12", "/email", "/email/oldlead", "/team"):
                 r = client.get(path)
                 self.assertEqual(r.status_code, 200, path)
                 self.assertIn('id="root"', r.text)
@@ -955,6 +977,9 @@ class HTTPTest(DeskTestCase):
         self.assertEqual(post(f"{a}/separate", c).status_code, 200)
         leads = {l["id"]: l for l in self.client.get("/api/desk/state").json()["leads"]}
         self.assertEqual(sorted(leads), [a, c])
+        page = self.client.get(f"/api/desk/leads/{a}").json()  # a contact's page
+        self.assertEqual((page["lead"]["id"], len(page["messages"])), (a, 2))
+        self.assertEqual(self.client.get(f"/api/desk/leads/{b}").status_code, 404)
         self.assertEqual((leads[a]["distinct"], leads[c]["distinct"]), ([c], [a]))
 
     def test_never_runs_open_without_sign_in(self):

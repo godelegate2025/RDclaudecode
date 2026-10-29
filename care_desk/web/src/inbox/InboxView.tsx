@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ContactDrawer } from '../contacts/ContactDrawer';
 import { CHANNELS, channelOf, fmtAgo, initials, useNow } from '../format';
 import { Icon } from '../icons';
+import { go } from '../nav';
 import { TicketDrawer } from '../tickets/TicketDrawer';
 import type { Desk, Id, Message } from '../types';
 import { Banner } from '../ui';
@@ -15,7 +15,7 @@ export function InboxView({ desk }: { desk: Desk }) {
   const [cat, setCat] = useState('all');
   const [sel, setSel] = useState<Id | null>(null);
   const [adding, setAdding] = useState(false);
-  const [drawer, setDrawer] = useState<['ticket' | 'lead', Id] | null>(null);
+  const [ticketId, setTicketId] = useState<Id | null>(null);
   const now = useNow(15_000);
 
   const counts = useMemo(() => {
@@ -33,9 +33,9 @@ export function InboxView({ desk }: { desk: Desk }) {
     // On narrow screens the detail sits under the list, so bring it into view.
     if (innerWidth < 1100) setTimeout(() => document.querySelector('.detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
-  const open: Open = (kind, id) => setDrawer([kind, id]);
-  const ticket = drawer?.[0] === 'ticket' ? desk.ticketById.get(drawer[1]) : undefined;
-  const lead = drawer?.[0] === 'lead' ? desk.leadById.get(drawer[1]) : undefined;
+  // A ticket opens over the inbox; a contact on their own page.
+  const open: Open = (kind, id) => (kind === 'ticket' ? setTicketId(id) : go(`/contacts/${id}`));
+  const ticket = ticketId != null ? desk.ticketById.get(ticketId) : undefined;
 
   return <>
     <div className="vh">
@@ -81,7 +81,6 @@ export function InboxView({ desk }: { desk: Desk }) {
       {shown ? <MessageDetail key={shown.id} desk={desk} m={shown} open={open} /> : <div />}
     </div>
 
-    {ticket && <TicketDrawer desk={desk} ticket={ticket} onClose={() => setDrawer(null)} />}
-    {lead && <ContactDrawer desk={desk} lead={lead} onClose={() => setDrawer(null)} />}
+    {ticket && <TicketDrawer desk={desk} ticket={ticket} onClose={() => setTicketId(null)} />}
   </>;
 }

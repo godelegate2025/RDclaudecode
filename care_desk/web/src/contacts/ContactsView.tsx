@@ -2,11 +2,13 @@ import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, use
 import { useEffect, useMemo, useState } from 'react';
 import { fmtAgo, fmtClock, fmtDateTime, useNow } from '../format';
 import { Icon, type IconName } from '../icons';
+import { go, usePath } from '../nav';
 import type { Desk, Id, Lead } from '../types';
 import { Banner, Tags, Tick } from '../ui';
 import { BulkModal, type BulkKind } from './BulkModal';
-import { ContactDrawer } from './ContactDrawer';
+import { ContactPage } from './ContactPage';
 import { possibleDuplicates } from './duplicates';
+import { rememberOrder } from './order';
 import { ImportModal } from './ImportModal';
 
 // Journey status, shown in the contact's panel.
@@ -91,8 +93,13 @@ const SORT_KEY = 'care-desk.contacts.sort';
 const DEFAULT_SORT: SortingState = [{ id: 'created_at', desc: true }];
 
 export function ContactsView({ desk }: { desk: Desk }) {
+  // /contacts/12 is that contact's page.
+  const page = Number(usePath().split('/')[2]);
+  return page ? <ContactPage key={page} desk={desk} id={page} /> : <ContactList desk={desk} />;
+}
+
+function ContactList({ desk }: { desk: Desk }) {
   const [picked, setPicked] = useState<RowSelectionState>({});
-  const [open, setOpen] = useState<Id | null>(null);
   const [modal, setModal] = useState<BulkKind | 'import' | null>(null);
   const now = useNow(15_000);
   const [onlyDupes, setOnlyDupes] = useState(false);
@@ -135,7 +142,8 @@ export function ContactsView({ desk }: { desk: Desk }) {
   const n = pickedLeads.length;
   const bulk = (v: BulkKind, icon: IconName, label: string) =>
     <button className="btn sm ghost" onClick={() => setModal(v)}><Icon name={icon} size={14} />{label}</button>;
-  const lead = open != null ? desk.leadById.get(open) : undefined;
+  // A contact opens on its own page; it remembers the list's order to step through it there.
+  const open = (id: Id) => { rememberOrder(table.getRowModel().rows.map(r => r.original.id)); go(`/contacts/${id}`); };
 
   return <>
     <div className="vh">
@@ -181,8 +189,8 @@ export function ContactsView({ desk }: { desk: Desk }) {
       <tbody>
         {table.getRowModel().rows.map(row => <tr key={row.id} tabIndex={0} data-act="open"
           className={row.getIsSelected() ? 'picked' : undefined}
-          onClick={() => setOpen(row.original.id)}
-          onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); setOpen(row.original.id); } }}>
+          onClick={() => open(row.original.id)}
+          onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); open(row.original.id); } }}>
           {row.getVisibleCells().map(c => <td key={c.id} className={c.column.id === 'pick' ? 'pick' : undefined}
             onClick={c.column.id === 'pick' ? e => { e.stopPropagation(); row.toggleSelected(); } : undefined}>
             {flexRender(c.column.columnDef.cell, c.getContext())}
@@ -193,7 +201,6 @@ export function ContactsView({ desk }: { desk: Desk }) {
     </table></div>
     {list.length > 0 && <p className="note">{list.length} {list.length === 1 ? 'contact' : 'contacts'}</p>}
 
-    {lead && <ContactDrawer desk={desk} lead={lead} onClose={() => setOpen(null)} />}
     {modal === 'import' && <ImportModal onClose={() => setModal(null)} onDone={() => setModal(null)} />}
     {modal && modal !== 'import' && n > 0 && <BulkModal kind={modal} desk={desk} people={pickedLeads}
       onClose={() => setModal(null)} onDone={deleted => { setModal(null); if (deleted) setPicked({}); }} />}
