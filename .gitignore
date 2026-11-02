@@ -6,3 +6,4 @@ care_desk.db
 care_desk.db-*
 care_desk/web/node_modules/
 care_desk/web/dist/
+.apify-token

@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from post_audit import higgsfield
+from post_audit import finder, higgsfield
 from post_audit.analysis import AnalysisError
 from post_audit.apify import ScrapeError
 from post_audit.media import MediaError
@@ -73,6 +73,8 @@ _hits_lock = threading.Lock()
 # budget than a single page. Keys come from the environment, never the repo.
 POST_RATE_COST = int(os.environ.get("POST_RATE_COST", "3"))
 PROMPT_RATE_COST = int(os.environ.get("PROMPT_RATE_COST", "1"))
+# A content search is Apify only, no Claude, but runs one scraper per platform.
+FIND_RATE_COST = int(os.environ.get("FIND_RATE_COST", "2"))
 MAX_PROMPT_AUDIT_BYTES = 200_000
 _post_lock = threading.Lock()
 
@@ -126,6 +128,13 @@ class BlockedError(RuntimeError):
 
 class PostAuditRequest(BaseModel):
     url: str = ""
+
+
+class FindRequest(BaseModel):
+    mode: str = "topic"         # "topic" or "profile"
+    query: str = ""
+    items: int = 10             # per platform
+    platforms: list[str] = []
 
 
 class PromptRequest(BaseModel):
@@ -721,6 +730,38 @@ def post_audit(payload: PostAuditRequest, request: Request) -> JSONResponse:
         if not delivered:
             refund(ip, POST_RATE_COST)
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+# ------------------------------------------------------------------ content finder
+
+@app.post("/api/post-find")
+def post_find(payload: FindRequest, request: Request) -> JSONResponse:
+    if not os.environ.get("APIFY_TOKEN"):
+        raise HTTPException(503, "The content finder is not set up yet: APIFY_TOKEN missing on the server.")
+    try:
+        search = finder.parse_search(payload.mode, payload.query)
+        chosen = finder.clean_platforms(payload.platforms)
+    except finder.FindError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    ip = client_ip(request)
+    wait = seconds_until_allowed(ip, FIND_RATE_COST)
+    if wait:
+        raise HTTPException(429, f"Rate limit reached. You can search again in {_minutes(wait)}.",
+                            headers={"Retry-After": str(wait)})
+    try:
+        result = finder.find(search, chosen, finder.clean_items(payload.items), os.environ["APIFY_TOKEN"])
+    except Exception as exc:  # noqa: BLE001
+        refund(ip, FIND_RATE_COST)
+        log.exception("content search failed")
+        raise HTTPException(502, "Could not run the search. Try again in a moment.") from exc
+    if not result["rows"]:
+        refund(ip, FIND_RATE_COST)
+        reasons = "; ".join(f"{e['label']}: {e['message']}" for e in result["errors"])
+        raise HTTPException(502, f"Nothing came back. {reasons}" if reasons else "Nothing came back.")
+    log.info("content search by %s: %s %r on %s, %s rows, %s platform(s) failed", _me(request) or ip,
+             search.mode, search.term, ",".join(chosen), len(result["rows"]), len(result["errors"]))
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 
 # ------------------------------------------------------------------ audit history

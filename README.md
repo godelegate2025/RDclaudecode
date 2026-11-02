@@ -148,6 +148,26 @@ Facebook photo posts and LinkedIn posts usually come back as thumbnails and
 text rather than video, so those audits read stills and captions only; the
 report says so.
 
+**Find content** (the second tab on `/post-audit`) searches a topic or a
+profile (@handle or profile link) across TikTok, Instagram, YouTube, YouTube
+Shorts, LinkedIn, X, Reddit and Meta Ads (`post_audit/finder.py`,
+`POST /api/post-find`). One Apify actor runs per ticked platform, all at once,
+and every result becomes one row: posted at, author, content, link, views,
+likes, comments, shares, days since posting, and engagement (likes + comments
++ shares per day since posting). The table sorts and filters by platform,
+downloads as a CSV with the Viral Content Ideas sheet's columns, and any
+TikTok, Instagram or LinkedIn row opens straight into an audit. An Instagram
+topic goes to Instagram's reel keyword search (hashtag feeds are newest-first
+and no longer show top posts); a several-word topic is searched as a phrase on
+X, Reddit and Meta Ads, whose searches otherwise match any one of the words,
+and X keeps to tweets with at least `FIND_X_MIN_LIKES` likes (default 50).
+Actors can be swapped with `APIFY_FIND_ACTOR_<PLATFORM>` (e.g.
+`APIFY_FIND_ACTOR_X`, `APIFY_FIND_ACTOR_INSTAGRAM_SEARCH`,
+`APIFY_FIND_ACTOR_LINKEDIN_PROFILE`). It needs only `APIFY_TOKEN`, caps items
+at `FIND_MAX_ITEMS` (default 50) per platform, and counts as 2 against the
+hourly rate limit (`FIND_RATE_COST`). Nothing is saved; a failing platform is
+listed above the table and never hides the others' results.
+
 ## Website build brief
 
 A whole-site audit can also produce the document you paste into a site

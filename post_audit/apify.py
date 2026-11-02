@@ -84,14 +84,18 @@ def actor_input(platform: str, url: str) -> dict:
 
 
 def fetch_items(platform: str, url: str, token: str, timeout_s: int = 240) -> list[dict]:
-    """Run the actor synchronously and return its dataset items."""
-    actor = actor_for(platform)
+    """Run the platform's actor on one post link and return its dataset items."""
+    return run_actor(actor_for(platform), actor_input(platform, url), token, timeout_s)
+
+
+def run_actor(actor: str, payload: dict, token: str, timeout_s: int = 240) -> list[dict]:
+    """Run an actor synchronously and return its dataset items."""
     try:
         response = requests.post(
             f"{API}/acts/{actor}/run-sync-get-dataset-items",
             params={"timeout": timeout_s, "clean": "true"},
             headers={"Authorization": f"Bearer {token}"},
-            json=actor_input(platform, url),
+            json=payload,
             timeout=timeout_s + 30,
         )
     except requests.RequestException as exc:

@@ -165,6 +165,87 @@ button:disabled { opacity: .5; cursor: progress; }
   font-size: 11.5px; color: var(--muted);
 }
 
+/* ---------- tabs: audit one post, or find posts ---------- */
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+        background: var(--paper-2); border-radius: var(--radius); }
+.tabs button, .seg button {
+  min-height: 38px; padding: 8px 10px; font-size: 11.5px; letter-spacing: .1em;
+  background: transparent; color: var(--charcoal); border-radius: 7px;
+}
+.tabs button:hover:not(:disabled), .seg button:hover:not(:disabled) { background: rgba(255, 255, 255, .6); }
+.tabs button[aria-selected="true"], .seg button[aria-pressed="true"] {
+  background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(25, 22, 22, .12);
+}
+main[data-view="find"] .audit-only, main[data-view="audit"] .find-only { display: none !important; }
+
+.seg { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+       background: var(--paper-2); border-radius: var(--radius); }
+.seg button { min-width: 110px; }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.check {
+  display: flex; align-items: center; gap: 8px; padding: 9px 11px; cursor: pointer;
+  background: #fff; border: 1.5px solid var(--line); border-radius: 8px; font-size: 13.5px;
+}
+.check:has(input:checked) { border-color: var(--coral); background: #fff6f6; }
+.check input { accent-color: var(--coral); width: 16px; height: 16px; margin: 0; }
+input[type=number] {
+  width: 110px; padding: 12px 13px; font: inherit; font-size: 15px; color: var(--ink); background: #fff;
+  border: 1.5px solid var(--line); border-radius: var(--radius);
+}
+input[type=number]:focus { outline: none; border-color: var(--coral); box-shadow: 0 0 0 3px rgba(252, 68, 82, .14); }
+.hint-line { font-size: 12.5px; color: var(--muted); margin: -2px 0 0; }
+
+/* ---------- content finder results ---------- */
+#finds { display: none; padding: var(--space-6) var(--space-6) 64px; }
+#finds[data-show] { display: block; }
+.finds-head { display: flex; align-items: flex-end; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
+.finds-head h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 26px;
+                 text-transform: uppercase; letter-spacing: .02em; line-height: 1.05; }
+.finds-head .sub { color: var(--muted); font-size: 13px; }
+.finds-head .grow { flex: 1; }
+.finds-head button { min-height: 38px; padding: 8px 14px; font-size: 11.5px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
+.filters button {
+  min-height: 30px; padding: 4px 11px; font-size: 11px; letter-spacing: .06em;
+  background: #fff; color: var(--charcoal); border: 1px solid var(--line); border-radius: 999px;
+}
+.filters button:hover:not(:disabled) { background: #fff; border-color: var(--charcoal); }
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.filters button b { font-weight: 700; opacity: .65; margin-left: 4px; }
+.notes { margin: 0 0 var(--space-3); padding: 10px 14px; list-style: none; font-size: 13px;
+         background: #fff; border: 1px dashed var(--line); border-radius: 8px; color: var(--charcoal); }
+.notes li + li { margin-top: 4px; }
+.notes b { color: var(--bad); }
+
+.table-wrap { overflow: auto; max-height: calc(100vh - var(--header-h) - 190px);
+              background: #fff; border: 1px solid var(--line); border-radius: var(--radius); }
+table.finds { width: 100%; border-collapse: collapse; font-size: 13px; }
+.finds th {
+  position: sticky; top: 0; z-index: 1; text-align: left; white-space: nowrap;
+  background: var(--ink); color: var(--paper); font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  padding: 0; border-right: 1px solid #3a3535;
+}
+.finds th button {
+  width: 100%; min-height: 36px; padding: 8px 10px; background: none; color: inherit; text-align: left;
+  font-size: 11px; letter-spacing: .06em; border-radius: 0; display: flex; gap: 4px; align-items: center;
+}
+.finds th button:hover:not(:disabled) { background: #2f2a2a; }
+.finds th.num button { justify-content: flex-end; }
+.finds th .arrow { opacity: .55; font-size: 10px; }
+.finds td { padding: 8px 10px; border-top: 1px solid var(--line); border-right: 1px solid #eeece8; vertical-align: top; }
+.finds tbody tr:hover td { background: #fbfaf8; }
+.finds td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.finds td.nowrap { white-space: nowrap; }
+.finds td.content { min-width: 220px; max-width: 320px; }
+.finds td.content div { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.finds td a { color: var(--coral-dark); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.finds td a:hover { text-decoration: underline; }
+.finds td.eng { font-weight: 700; }
+.finds .chip { font-size: 10px; padding: 2px 7px; white-space: nowrap; }
+.finds .audit { min-height: 28px; padding: 4px 10px; font-size: 10.5px; letter-spacing: .08em; white-space: nowrap; }
+.finds .dash { color: #c4c0ba; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 /* ---------- report pane ---------- */
 .report { background: var(--paper-2); overflow-y: auto; position: relative; }
 .empty {
@@ -343,6 +424,8 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   .beats li { grid-template-columns: 1fr; gap: 2px; }
   .actions { position: static; }
   .actions button { flex: 1; }
+  #finds { padding: var(--space-5) var(--space-4) 48px; }
+  .table-wrap { max-height: none; }
 }
 @media (max-width: 480px) {
   .brand .tool { display: none; }
@@ -352,7 +435,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 @media print {
-  header, .panel, .actions, .more, .skip-link { display: none !important; }
+  header, .panel, .actions, .more, .skip-link, #finds { display: none !important; }
   main { display: block; height: auto; }
   .report { background: #fff; overflow: visible; }
   #result { padding: 0; max-width: none; }
@@ -383,34 +466,81 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   <div class="account" id="account" hidden><a id="accountEmail" href="/welcome" title="Change your name"></a><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
-<main id="main-content">
-  <section class="panel" aria-label="Audit a post">
+<main id="main-content" data-view="audit">
+  <section class="panel" aria-label="Post Auditor">
     <div>
       <h1>Post<span class="accent">Auditor</span></h1>
     </div>
-    <p class="lede">
+    <div class="tabs" role="tablist" aria-label="Choose a tool">
+      <button type="button" role="tab" id="tabAudit" aria-selected="true" aria-controls="result">Audit a post</button>
+      <button type="button" role="tab" id="tabFind" aria-selected="false" aria-controls="finds">Find content</button>
+    </div>
+
+    <p class="lede audit-only">
       Paste a post that is performing well. The post, its numbers and its video are
       pulled in, the first three seconds are broken down frame by frame, and you get
       why it works and exactly how to use the same moves in your own posts.
     </p>
+    <p class="lede find-only">
+      Search a topic or a profile. The platforms you tick are scraped and every post
+      comes back in one table with its numbers, ranked by engagement per day. Audit
+      any TikTok, Instagram or LinkedIn result in one click.
+    </p>
 
-    <form id="form">
+    <form id="findForm" class="find-only">
+      <label id="findModeLabel">Search by</label>
+      <div class="seg" role="group" aria-labelledby="findModeLabel">
+        <button type="button" id="modeTopic" aria-pressed="true">Topic</button>
+        <button type="button" id="modeProfile" aria-pressed="false">Profile</button>
+      </div>
+      <label for="findQuery" id="findQueryLabel">Topic</label>
+      <input id="findQuery" type="text" required maxlength="200" placeholder="e.g. land investing"
+             spellcheck="false" autocapitalize="off" autocorrect="off">
+      <p class="hint-line" id="findHint">Several words are searched as one phrase on X, Reddit and Meta Ads. Instagram searches reels.</p>
+      <label for="findItems">Items per platform</label>
+      <input id="findItems" type="number" min="1" max="50" value="10" required>
+      <label id="findPlatformsLabel">Platforms</label>
+      <div class="row-2" role="group" aria-labelledby="findPlatformsLabel" id="findPlatforms">
+        <label class="check"><input type="checkbox" value="tiktok"> TikTok</label>
+        <label class="check"><input type="checkbox" value="instagram"> Instagram</label>
+        <label class="check"><input type="checkbox" value="youtube"> YouTube</label>
+        <label class="check"><input type="checkbox" value="youtube_shorts"> YouTube Shorts</label>
+        <label class="check"><input type="checkbox" value="linkedin"> LinkedIn</label>
+        <label class="check"><input type="checkbox" value="x"> X</label>
+        <label class="check"><input type="checkbox" value="reddit"> Reddit</label>
+        <label class="check"><input type="checkbox" value="meta_ads"> Meta Ads</label>
+      </div>
+      <button id="findGo" type="submit">Find content</button>
+    </form>
+
+    <div class="status find-only" id="findStatus" role="status" aria-live="polite">
+      <div class="head" hidden></div>
+      <div class="msg"></div>
+    </div>
+
+    <form id="form" class="audit-only">
       <label for="url">Post link</label>
       <input id="url" type="text" inputmode="url" required
              placeholder="https://www.tiktok.com/@account/video/…"
              autocomplete="url" spellcheck="false" autocapitalize="off" autocorrect="off">
       <button id="go" type="submit">Audit the post</button>
     </form>
-    <ul class="platforms" aria-label="Supported platforms">
+    <ul class="platforms audit-only" aria-label="Supported platforms">
       <li>TikTok</li><li>Instagram</li><li>Facebook</li><li>LinkedIn</li>
     </ul>
 
-    <div class="status" id="status" role="status" aria-live="polite">
-      <div class="head" id="statusHead" hidden></div>
-      <div class="msg" id="statusMsg"></div>
+    <div class="status audit-only" id="status" role="status" aria-live="polite">
+      <div class="head" hidden></div>
+      <div class="msg"></div>
     </div>
 
-    <footer>
+    <footer class="find-only">
+      Numbers are each platform's public counts when the search ran. Engagement is
+      likes, comments and shares divided by days since posting. Reddit gives upvotes
+      and comments only, and Meta Ads gives no counts at all. For a profile, tick only
+      the platforms where that handle exists, or paste that platform's profile link.
+    </footer>
+    <footer class="audit-only">
       Numbers are the platform's public counts at the moment of the audit. Claude
       sees still frames and the transcript, not the moving video, so editing and
       motion are read from the frames and the cut count. Facebook photo posts and
@@ -418,8 +548,18 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     </footer>
   </section>
 
-  <section class="report" aria-label="Post audit report">
-    <div class="empty" id="empty">
+  <section class="report" aria-label="Results">
+    <div class="empty find-only" id="findEmpty">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#2C2828" stroke-width="1.2" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5"/>
+        <path d="M15.5 15.5 21 21"/>
+      </svg>
+      <div class="title">No search yet</div>
+      <p>Search a topic or a profile and every post found appears here in one table,
+         with its views, likes, comments, shares and engagement per day.</p>
+    </div>
+    <div id="finds" class="find-only" aria-live="polite"></div>
+    <div class="empty audit-only" id="empty">
       <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#2C2828" stroke-width="1.2" aria-hidden="true">
         <rect x="3" y="3" width="18" height="18" rx="3"/>
         <path d="M10 8.5v7l6-3.5z"/>
@@ -428,7 +568,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
       <p>Paste a post link and the breakdown appears here: the hook, the structure,
          the numbers, why it works, and how to apply it.</p>
     </div>
-    <div id="result" aria-live="polite"></div>
+    <div id="result" class="audit-only" aria-live="polite"></div>
   </section>
 </main>
 
@@ -485,12 +625,9 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
 <script>
   const form   = document.getElementById('form');
   const button = document.getElementById('go');
-  const status = document.getElementById('status');
-  const head   = document.getElementById('statusHead');
-  const msg    = document.getElementById('statusMsg');
   const result = document.getElementById('result');
   const empty  = document.getElementById('empty');
-  let ticker = null;
+  const main   = document.getElementById('main-content');
 
   // Everything shown comes from the scraped post or the model, so it is only
   // ever inserted as text, never as HTML.
@@ -502,48 +639,54 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   };
   const add = (parent, ...children) => { children.filter(Boolean).forEach((c) => parent.appendChild(c)); return parent; };
 
-  const clearStatus = () => {
-    clearInterval(ticker);
-    status.removeAttribute('data-show');
-    status.classList.remove('error');
-    head.hidden = true;
-    msg.textContent = '';
+  // One progress / error box per tab, so a search and an audit can run side by side.
+  const statusBox = (root) => {
+    const head = root.querySelector('.head');
+    const msg = root.querySelector('.msg');
+    let ticker = null;
+    const reset = () => {
+      clearInterval(ticker);
+      root.classList.remove('error');
+      head.hidden = true;
+      msg.textContent = '';
+    };
+    return {
+      clear() { reset(); root.removeAttribute('data-show'); },
+      note(text) { reset(); msg.textContent = text; root.setAttribute('data-show', ''); },
+      // The server does not stream progress, so the steps are paced to how long each
+      // usually takes; the elapsed clock stops a slow run from reading as hung.
+      working(steps) {
+        reset();
+        const label = el('span');
+        add(msg, label, add(el('div', 'bar'), el('i')));
+        root.setAttribute('data-show', '');
+        const started = Date.now();
+        const tick = () => {
+          const seconds = Math.round((Date.now() - started) / 1000);
+          const step = steps.filter(([at]) => seconds >= at).pop()[1];
+          label.textContent = `${step}  ·  ${seconds}s`;
+        };
+        tick();
+        ticker = setInterval(tick, 1000);
+      },
+      problem(title, text) {
+        reset();
+        root.classList.add('error');
+        head.hidden = false;
+        head.textContent = title;
+        msg.textContent = text;
+        root.setAttribute('data-show', '');
+      },
+    };
   };
+  const auditStatus = statusBox(document.getElementById('status'));
 
-  // The server does not stream progress, so the steps are paced to how long each
-  // usually takes; the elapsed clock stops a slow run from reading as hung.
   const STEPS = [
     [0, 'Fetching the post and its numbers'],
     [25, 'Downloading the video and cutting frames'],
     [45, 'Claude is reading the hook, the frames and the transcript'],
     [110, 'Still analysing — longer videos take a little more time'],
   ];
-  const working = () => {
-    status.classList.remove('error');
-    head.hidden = true;
-    msg.textContent = '';
-    const label = el('span');
-    add(msg, label, add(el('div', 'bar'), el('i')));
-    status.setAttribute('data-show', '');
-    const started = Date.now();
-    const tick = () => {
-      const seconds = Math.round((Date.now() - started) / 1000);
-      const step = STEPS.filter(([at]) => seconds >= at).pop()[1];
-      label.textContent = `${step}  ·  ${seconds}s`;
-    };
-    tick();
-    clearInterval(ticker);
-    ticker = setInterval(tick, 1000);
-  };
-
-  const problem = (title, text) => {
-    clearInterval(ticker);
-    status.classList.add('error');
-    head.hidden = false;
-    head.textContent = title;
-    msg.textContent = text;
-    status.setAttribute('data-show', '');
-  };
 
   const compact = (n) => {
     if (n === null || n === undefined) return null;
@@ -889,7 +1032,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     if (!url) return;
 
     button.disabled = true;
-    working();
+    auditStatus.working(STEPS);
     try {
       const response = await fetch('/api/post-audit', {
         method: 'POST',
@@ -900,15 +1043,18 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
         let detail = 'Something went wrong. Try again in a moment.';
         try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
         const titles = { 400: 'Check the link', 422: 'Nothing to analyse in that post', 429: 'Too many audits for now', 503: 'Not available right now' };
-        problem(titles[response.status] || 'Could not audit that post', detail);
+        auditStatus.problem(titles[response.status] || 'Could not audit that post', detail);
         return;
       }
       const data = await response.json();
       render(data);
-      clearStatus();
-      if (data.history_id) window.history.replaceState(null, '', '/post-audit?audit=' + encodeURIComponent(data.history_id));
+      auditStatus.clear();
+      if (data.history_id) {
+        auditPath = '/post-audit?audit=' + encodeURIComponent(data.history_id);
+        if (main.dataset.view === 'audit') window.history.replaceState(null, '', auditPath);
+      }
     } catch (error) {
-      problem('Connection failed', 'Could not reach the auditor. Check your connection and try again.');
+      auditStatus.problem('Connection failed', 'Could not reach the auditor. Check your connection and try again.');
     } finally {
       button.disabled = false;
     }
@@ -918,26 +1064,274 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   const savedId = new URLSearchParams(location.search).get('audit');
   if (savedId) {
     (async () => {
-      head.hidden = true;
-      msg.textContent = 'Opening the saved audit…';
-      status.setAttribute('data-show', '');
+      auditStatus.note('Opening the saved audit…');
       try {
         const response = await fetch('/api/history/' + encodeURIComponent(savedId), { cache: 'no-store' });
         if (!response.ok) {
           let detail = 'Could not open that audit.';
           try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
-          problem('Saved audit not available', detail);
+          auditStatus.problem('Saved audit not available', detail);
           return;
         }
         const data = await response.json();
         render(data);
-        clearStatus();
+        auditStatus.clear();
         if (data.post && data.post.url) document.getElementById('url').value = data.post.url;
       } catch (error) {
-        problem('Connection failed', 'Could not reach the server. Check your connection and try again.');
+        auditStatus.problem('Connection failed', 'Could not reach the server. Check your connection and try again.');
       }
     })();
   }
+
+  // ---------- content finder ----------
+  // The left panel switches between auditing one post and finding many; each
+  // tab keeps its own results on the right, so going back and forth loses nothing.
+  const tabs = { audit: $('tabAudit'), find: $('tabFind') };
+  let auditPath = savedId ? '/post-audit?audit=' + encodeURIComponent(savedId) : '/post-audit';
+  const setView = (view) => {
+    main.dataset.view = view;
+    for (const [name, tab] of Object.entries(tabs)) tab.setAttribute('aria-selected', String(name === view));
+    window.history.replaceState(null, '', view === 'find' ? '/post-audit?tab=find' : auditPath);
+  };
+  tabs.audit.addEventListener('click', () => setView('audit'));
+  tabs.find.addEventListener('click', () => setView('find'));
+
+  const findForm = $('findForm');
+  const findGo = $('findGo');
+  const findQuery = $('findQuery');
+  const finds = $('finds');
+  const findStatus = statusBox($('findStatus'));
+  const platformBoxes = [...document.querySelectorAll('#findPlatforms input')];
+  let findMode = 'topic';
+
+  const setMode = (mode) => {
+    findMode = mode;
+    $('modeTopic').setAttribute('aria-pressed', String(mode === 'topic'));
+    $('modeProfile').setAttribute('aria-pressed', String(mode === 'profile'));
+    $('findQueryLabel').textContent = mode === 'topic' ? 'Topic' : '@handle or profile link';
+    findQuery.placeholder = mode === 'topic' ? 'e.g. land investing' : 'e.g. @garyvee or https://www.tiktok.com/@garyvee';
+    $('findHint').textContent = mode === 'topic'
+      ? 'Several words are searched as one phrase on X, Reddit and Meta Ads. Instagram searches reels.'
+      : 'A handle is looked up on every platform you tick. A profile link is used as-is on its own platform.';
+  };
+  $('modeTopic').addEventListener('click', () => setMode('topic'));
+  $('modeProfile').addEventListener('click', () => setMode('profile'));
+
+  // The ticked platforms are remembered per browser; most people search the same few.
+  try {
+    const saved = JSON.parse(localStorage.getItem('rd-find-platforms') || '[]');
+    platformBoxes.forEach((box) => { box.checked = saved.includes(box.value); });
+  } catch (e) { /* storage blocked */ }
+
+  const FIND_STEPS = [
+    [0, 'Starting the scrapers'],
+    [8, 'Searching every platform you ticked at once'],
+    [60, 'Still searching — some platforms take a couple of minutes'],
+    [150, 'Waiting on the slowest platform'],
+  ];
+  // The CSV keeps the Viral Content Ideas sheet's columns; on screen, the search
+  // term and time are the same on every row, so they live in the heading instead.
+  const COLUMNS = [
+    { key: 'search_term', label: 'Search Term', csvOnly: true },
+    { key: 'platform_label', label: 'Platform' },
+    { key: 'scraped_at', label: 'Scraped At', csvOnly: true },
+    { key: 'posted_at', label: 'Posted At' },
+    { key: 'author', label: 'Author' },
+    { key: 'content', label: 'Content' },
+    { key: 'url', label: 'URL' },
+    { key: 'views', label: 'Views', num: true },
+    { key: 'likes', label: 'Likes', num: true },
+    { key: 'comments', label: 'Comments', num: true },
+    { key: 'shares', label: 'Shares', num: true },
+    { key: 'days_since', label: 'Days Since', num: true },
+    { key: 'engagement', label: 'Engagement', num: true },
+  ];
+  const SHOWN = COLUMNS.filter((c) => !c.csvOnly);
+  let findData = null;
+  let sortKey = 'engagement';
+  let sortDir = -1;
+  let filter = 'all';
+
+  const blank = (v) => v === null || v === undefined || v === '';
+  const dash = () => el('span', 'dash', '—');
+  const shortDate = (iso, withTime) => {
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleString([], withTime
+      ? { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }
+      : { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  // Blanks always sink to the bottom, whichever way the column is sorted.
+  const visibleRows = () => {
+    const col = COLUMNS.find((c) => c.key === sortKey);
+    return findData.rows
+      .filter((r) => filter === 'all' || r.platform === filter)
+      .map((r, i) => [r, i])
+      .sort(([a, ia], [b, ib]) => {
+        const x = a[sortKey], y = b[sortKey];
+        if (blank(x) !== blank(y)) return blank(x) ? 1 : -1;
+        if (blank(x)) return ia - ib;
+        const order = col.num ? x - y : String(x).localeCompare(String(y));
+        return order * sortDir || ia - ib;
+      })
+      .map(([r]) => r);
+  };
+
+  const auditRow = (row) => {
+    setView('audit');
+    if (button.disabled) return;  // one audit at a time; the running one stays on screen
+    $('url').value = row.url;
+    form.requestSubmit();
+  };
+
+  const cell = (row, col) => {
+    const td = el('td');
+    const value = row[col.key];
+    if (col.num) {
+      td.className = 'num' + (col.key === 'engagement' ? ' eng' : '');
+      td.appendChild(blank(value) ? dash() : document.createTextNode(value.toLocaleString()));
+    } else if (col.key === 'platform_label') {
+      td.appendChild(el('span', 'chip soft', value));
+    } else if (col.key === 'url') {
+      if (!value) { td.appendChild(dash()); return td; }
+      const link = el('a', null, 'Open ↗');
+      link.href = value; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = value;
+      td.appendChild(link);
+    } else if (col.key === 'content') {
+      td.className = 'content';
+      const text = el('div', null, value || '—');
+      if (value) text.title = value;
+      td.appendChild(text);
+    } else if (col.key === 'scraped_at' || col.key === 'posted_at') {
+      td.className = 'nowrap';
+      td.appendChild(blank(value) ? dash() : document.createTextNode(shortDate(value, col.key === 'scraped_at')));
+    } else {
+      td.textContent = value || '—';
+    }
+    return td;
+  };
+
+  const csvCell = (v) => {
+    if (blank(v)) return '';
+    let s = String(v);
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;  // keep spreadsheets from running it as a formula
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const downloadCsv = () => {
+    const lines = [COLUMNS.map((c) => c.label).join(',')]
+      .concat(visibleRows().map((r) => COLUMNS.map((c) => csvCell(r[c.key])).join(',')));
+    const name = `content-${findData.term.replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'search'}-${findData.scraped_at.slice(0, 10)}.csv`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  };
+
+  const renderFinds = () => {
+    const rows = visibleRows();
+    finds.textContent = '';
+
+    const csv = el('button', null, 'Download CSV');
+    csv.type = 'button';
+    csv.addEventListener('click', downloadCsv);
+    const what = findData.mode === 'profile' ? 'Profile' : 'Topic';
+    add(finds, add(el('div', 'finds-head'),
+      add(el('div'), el('div', 'label', `${what} search`), el('h2', null, findData.term),
+          el('div', 'sub', `${findData.rows.length} posts · ${findData.platforms.length} platform${findData.platforms.length === 1 ? '' : 's'} · ${shortDate(findData.scraped_at, true)}`)),
+      el('div', 'grow'), csv));
+
+    // One chip per platform that returned something, to narrow the table.
+    const counts = {};
+    findData.rows.forEach((r) => { counts[r.platform] = (counts[r.platform] || 0) + 1; });
+    const chip = (key, label, count) => {
+      const b = add(el('button', null, label), el('b', null, String(count)));
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(filter === key));
+      b.addEventListener('click', () => { filter = key; renderFinds(); });
+      return b;
+    };
+    add(finds, add(el('div', 'filters'), chip('all', 'All', findData.rows.length),
+      ...findData.platforms.filter((p) => counts[p.platform]).map((p) => chip(p.platform, p.label, counts[p.platform]))));
+
+    if (findData.errors.length) {
+      add(finds, add(el('ul', 'notes'), ...findData.errors.map((e) =>
+        add(el('li'), el('b', null, e.label + ': '), document.createTextNode(e.message)))));
+    }
+
+    const headRow = el('tr');
+    SHOWN.forEach((col) => {
+      const th = el('th', col.num ? 'num' : null);
+      const sortBy = add(el('button', null, col.label), el('span', 'arrow', sortKey === col.key ? (sortDir < 0 ? '▼' : '▲') : ''));
+      sortBy.type = 'button';
+      sortBy.addEventListener('click', () => {
+        if (sortKey === col.key) sortDir = -sortDir;
+        else { sortKey = col.key; sortDir = col.num ? -1 : 1; }
+        renderFinds();
+      });
+      if (sortKey === col.key) th.setAttribute('aria-sort', sortDir < 0 ? 'descending' : 'ascending');
+      th.appendChild(sortBy);
+      headRow.appendChild(th);
+    });
+    headRow.appendChild(add(el('th'), el('span', 'sr-only', 'Audit')));
+
+    const body = el('tbody');
+    rows.forEach((row) => {
+      const tr = add(el('tr'), ...SHOWN.map((col) => cell(row, col)));
+      const action = el('td');
+      if (row.auditable) {
+        const go = el('button', 'audit', 'Audit');
+        go.type = 'button';
+        go.title = 'Run the full Post Auditor on this post';
+        go.addEventListener('click', () => auditRow(row));
+        action.appendChild(go);
+      }
+      body.appendChild(add(tr, action));
+    });
+    add(finds, add(el('div', 'table-wrap'), add(el('table', 'finds'), add(el('thead'), headRow), body)));
+
+    $('findEmpty').style.display = 'none';
+    finds.setAttribute('data-show', '');
+  };
+
+  findForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const query = findQuery.value.trim();
+    const platforms = platformBoxes.filter((b) => b.checked).map((b) => b.value);
+    if (!query) { findQuery.focus(); return; }
+    if (!platforms.length) { findStatus.problem('Pick a platform', 'Tick at least one platform to search.'); return; }
+    try { localStorage.setItem('rd-find-platforms', JSON.stringify(platforms)); } catch (e) { /* storage blocked */ }
+
+    findGo.disabled = true;
+    findStatus.working(FIND_STEPS);
+    try {
+      const response = await fetch('/api/post-find', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: findMode, query, items: Number($('findItems').value) || 10, platforms }),
+      });
+      if (!response.ok) {
+        let detail = 'Something went wrong. Try again in a moment.';
+        try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
+        const titles = { 400: 'Check the search', 429: 'Too many searches for now', 502: 'Nothing found', 503: 'Not available right now' };
+        findStatus.problem(titles[response.status] || 'Could not search', detail);
+        return;
+      }
+      findData = await response.json();
+      sortKey = 'engagement'; sortDir = -1; filter = 'all';
+      renderFinds();
+      findStatus.clear();
+    } catch (error) {
+      findStatus.problem('Connection failed', 'Could not reach the server. Check your connection and try again.');
+    } finally {
+      findGo.disabled = false;
+    }
+  });
+
+  if (!savedId && new URLSearchParams(location.search).get('tab') === 'find') setView('find');
 </script>
 <script>
   // Shows who is signed in, once sign-in is switched on; hidden otherwise.
