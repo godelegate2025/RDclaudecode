@@ -42,11 +42,15 @@ class SearchParsingTest(unittest.TestCase):
             ("https://www.linkedin.com/in/garyvaynerchuk/", "linkedin", "garyvaynerchuk"),
             ("https://x.com/garyvee", "x", "garyvee"),
             ("https://www.reddit.com/user/spez/", "reddit", "spez"),
-            ("https://www.facebook.com/gary", "meta_ads", "gary"),
+            ("https://www.facebook.com/gary", "facebook", "gary"),
         ):
             search = finder.parse_search("profile", link)
             self.assertEqual((search.url_platform, search.handle), (platform, handle), link)
             self.assertNotIn("?", search.url)
+
+    def test_facebook_profile_php_keeps_its_id(self):
+        search = finder.parse_search("profile", "https://www.facebook.com/profile.php?id=100064792144187&ref=x")
+        self.assertEqual(search.url, "https://www.facebook.com/profile.php?id=100064792144187&ref=x")
 
     def test_bad_searches_say_why(self):
         for mode, raw in (("topic", "  "), ("profile", "not a handle!"), ("profile", "https://example.com/a"),
@@ -96,6 +100,19 @@ class ActorInputTest(unittest.TestCase):
         _, tiktok = finder.actor_call("tiktok", search, 5)
         self.assertEqual(tiktok["profiles"], ["GaryVee"])
 
+    def test_facebook_topic_searches_and_profile_reads_the_page(self):
+        actor, payload = finder.actor_call("facebook", finder.parse_search("topic", "land investing"), 7)
+        self.assertEqual(actor, finder.DEFAULT_ACTORS["facebook_search"])
+        self.assertEqual(payload, {"query": "land investing", "resultsCount": 7, "searchType": "top"})
+        actor, payload = finder.actor_call("facebook", finder.parse_search("profile", "@redefineph"), 7)
+        self.assertEqual(actor, finder.DEFAULT_ACTORS["facebook"])
+        self.assertEqual(payload["startUrls"], [{"url": "https://www.facebook.com/redefineph"}])
+
+    def test_a_facebook_link_also_finds_that_pages_ads(self):
+        search = finder.parse_search("profile", "https://www.facebook.com/redefineph/")
+        _, ads = finder.actor_call("meta_ads", search, 5)
+        self.assertEqual(ads["startUrls"], [{"url": "https://www.facebook.com/redefineph/"}])
+
     def test_linkedin_profile_uses_the_posts_actor(self):
         actor, _ = finder.actor_call("linkedin", finder.parse_search("profile", "@ana"), 5)
         self.assertEqual(actor, finder.DEFAULT_ACTORS["linkedin_profile"])
@@ -143,6 +160,20 @@ class RowTest(unittest.TestCase):
         self.assertEqual((row["author"], row["content"]), ("landflippingsimplified", "Comment LAND for the ebook"))
         self.assertEqual((row["views"], row["likes"], row["comments"], row["shares"]), (10052855, 35198, 455, 1601))
         self.assertTrue(row["auditable"])
+
+    def test_facebook_search_and_page_shapes(self):
+        searched = {"url": "https://www.facebook.com/example/posts/123456789012345", "timestamp": 1743735597000,
+                    "postText": "Land deal closed", "reactionsCount": 25, "commentsCount": 3, "sharesCount": 2,
+                    "author": {"name": "Example Author"}}
+        row = finder.finish(finder.NORMALISERS["facebook"](searched), "land", NOW)
+        self.assertEqual((row["author"], row["content"], row["posted_at"]), ("Example Author", "Land deal closed", "2025-04-04"))
+        self.assertEqual((row["likes"], row["comments"], row["shares"]), (25, 3, 2))
+        self.assertTrue(row["auditable"])
+        page = {"url": "https://www.facebook.com/cern/posts/pfbid02", "time": "2026-01-20T13:00:05.000Z",
+                "user": {"name": "CERN"}, "pageName": "cern", "text": "Higgs", "likes": 147, "comments": 2,
+                "shares": 3, "viewsCount": 309624}
+        row = finder.finish(finder.NORMALISERS["facebook"](page), "@cern", NOW)
+        self.assertEqual((row["author"], row["views"], row["likes"], row["posted_at"]), ("CERN", 309624, 147, "2026-01-20"))
 
     def test_reddit_uses_the_thread_not_the_linked_article(self):
         item = {"title": "Investing in land", "selftext": "", "author": "mrgrassydassy", "score": 326,

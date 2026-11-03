@@ -149,14 +149,17 @@ text rather than video, so those audits read stills and captions only; the
 report says so.
 
 **Find content** (the second tab on `/post-audit`) searches a topic or a
-profile (@handle or profile link) across TikTok, Instagram, YouTube, YouTube
-Shorts, LinkedIn, X, Reddit and Meta Ads (`post_audit/finder.py`,
+profile (@handle or profile link) across TikTok, Instagram, Facebook, YouTube,
+YouTube Shorts, LinkedIn, X, Reddit and Meta Ads (`post_audit/finder.py`,
 `POST /api/post-find`). One Apify actor runs per ticked platform, all at once,
 and every result becomes one row: posted at, author, content, link, views,
 likes, comments, shares, days since posting, and engagement (likes + comments
 + shares per day since posting). The table sorts and filters by platform,
 downloads as a CSV with the Viral Content Ideas sheet's columns, and any
-TikTok, Instagram or LinkedIn row opens straight into an audit. An Instagram
+TikTok, Instagram, Facebook or LinkedIn row opens straight into an audit. A
+Facebook topic goes to a keyword post search (`APIFY_FIND_ACTOR_FACEBOOK_SEARCH`)
+and a Facebook page to the official posts scraper; a Facebook page link also
+finds that page's ads when Meta Ads is ticked. An Instagram
 topic goes to Instagram's reel keyword search (hashtag feeds are newest-first
 and no longer show top posts); a several-word topic is searched as a phrase on
 X, Reddit and Meta Ads, whose searches otherwise match any one of the words,

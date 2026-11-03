@@ -22,11 +22,12 @@ from urllib.parse import quote, urlparse
 from . import platforms as audit_platforms
 from .apify import ScrapeError, _get, _int, run_actor
 
-PLATFORMS = ("tiktok", "instagram", "youtube", "youtube_shorts", "linkedin", "x", "reddit", "meta_ads")
+PLATFORMS = ("tiktok", "instagram", "facebook", "youtube", "youtube_shorts", "linkedin", "x", "reddit", "meta_ads")
 
 LABELS = {
     "tiktok": "TikTok",
     "instagram": "Instagram",
+    "facebook": "Facebook",
     "youtube": "YouTube",
     "youtube_shorts": "YouTube Shorts",
     "linkedin": "LinkedIn",
@@ -41,6 +42,9 @@ DEFAULT_ACTORS = {
     # so a topic goes to Instagram's own reel keyword search instead.
     "instagram": "apify~instagram-scraper",
     "instagram_search": "patient_discovery~instagram-search-reels",
+    # Facebook's official scraper reads pages; keyword search is a separate actor.
+    "facebook": "apify~facebook-posts-scraper",
+    "facebook_search": "scraper_one~facebook-posts-search",
     "youtube": "streamers~youtube-scraper",
     "youtube_shorts": "streamers~youtube-scraper",
     # LinkedIn search and a person's own posts are separate actors.
@@ -61,9 +65,13 @@ _DOMAINS = {
     "x.com": "x",
     "twitter.com": "x",
     "reddit.com": "reddit",
-    "facebook.com": "meta_ads",
-    "fb.com": "meta_ads",
+    "facebook.com": "facebook",
+    "fb.com": "facebook",
 }
+
+# Which network's pasted link each platform can use: Shorts live on a YouTube
+# channel, and a page's ads are found from its Facebook link.
+_LINK_FROM = {"youtube_shorts": "youtube", "meta_ads": "facebook"}
 
 MAX_ITEMS = int(os.environ.get("FIND_MAX_ITEMS", "50"))
 TIMEOUT_S = int(os.environ.get("FIND_TIMEOUT_S", "180"))
@@ -115,7 +123,9 @@ def _profile_link(term: str) -> Search:
     handle = parts[0].lstrip("@") if parts else ""
     if not _HANDLE.match(handle):
         raise FindError("Could not find the account name in that link. Paste the profile page itself.")
-    url = parsed._replace(scheme="https", query="", fragment="").geturl()
+    # Facebook profiles without a username are profile.php?id=<number>; the id is the profile.
+    query = parsed.query if platform == "facebook" and handle == "profile.php" else ""
+    url = parsed._replace(scheme="https", query=query, fragment="").geturl()
     return Search("profile", term, handle=handle, url=url, url_platform=platform)
 
 
@@ -137,7 +147,7 @@ def actor_for(key: str) -> str:
 
 def _profile_url(search: Search, platform: str, default: str) -> str:
     """The pasted link when it is for this network, otherwise one built from the handle."""
-    wanted = "youtube" if platform == "youtube_shorts" else platform
+    wanted = _LINK_FROM.get(platform, platform)
     return search.url if search.url and search.url_platform == wanted else default
 
 
@@ -164,6 +174,11 @@ def actor_call(platform: str, search: Search, items: int) -> tuple[str, dict]:
         start = _profile_url(search, platform, f"https://www.instagram.com/{handle}/")
         return actor_for("instagram"), {"directUrls": [start], "resultsType": "posts",
                                         "resultsLimit": items, "addParentData": False}
+    if platform == "facebook":
+        if topic:
+            return actor_for("facebook_search"), {"query": term, "resultsCount": items, "searchType": "top"}
+        page = _profile_url(search, platform, f"https://www.facebook.com/{handle}")
+        return actor_for("facebook"), {"startUrls": [{"url": page}], "resultsLimit": items}
     if platform in ("youtube", "youtube_shorts"):
         shorts = platform == "youtube_shorts"
         counts = {"maxResults": 0 if shorts else items, "maxResultsShorts": items if shorts else 0,
@@ -266,6 +281,15 @@ def _instagram(item: dict) -> dict:
                 shares=_get(item, "reshareCount", "share_count"))
 
 
+def _facebook(item: dict) -> dict:
+    # Search returns postText / reactionsCount / a millisecond timestamp; the page scraper text / likes / time.
+    page = item.get("pageName")
+    return _row("facebook", author=_get(item, "author.name", "user.name") or (page if isinstance(page, str) else ""),
+                content=_get(item, "postText", "text"), url=item.get("url"), posted=_get(item, "time", "timestamp"),
+                views=_get(item, "viewsCount", "videoPostViewCount"), likes=_get(item, "reactionsCount", "likes"),
+                comments=_get(item, "commentsCount", "comments"), shares=_get(item, "sharesCount", "shares"))
+
+
 def _youtube(platform: str):
     def normalise(item: dict) -> dict:
         title, about = item.get("title") or "", item.get("text") or ""
@@ -318,6 +342,7 @@ def _meta_ads(item: dict) -> dict:
 NORMALISERS = {
     "tiktok": _tiktok,
     "instagram": _instagram,
+    "facebook": _facebook,
     "youtube": _youtube("youtube"),
     "youtube_shorts": _youtube("youtube_shorts"),
     "linkedin": _linkedin,
@@ -348,7 +373,7 @@ def _expand(raw: list[dict]) -> list[dict]:
 
 
 # Meta Ads links are on facebook.com too, but an Ad Library page is not a post.
-AUDITABLE = ("tiktok", "instagram", "linkedin")
+AUDITABLE = ("tiktok", "instagram", "facebook", "linkedin")
 
 
 def _auditable(url: str) -> bool:
