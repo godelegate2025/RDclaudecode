@@ -1435,5 +1435,171 @@ class MoveToSupabaseTest(unittest.TestCase):
         self.assertEqual(self.store.get("tickets", 8)["status"], "In progress")
 
 
+class PublicAddressTest(DeskTestCase):
+    """Pages opened on the Cloud Run address move to the desk's own domain; machines' calls don't."""
+
+    RUN_APP = "https://care-desk-1015165980124.us-central1.run.app"
+
+    def setUp(self):
+        super().setUp()
+        env = mock.patch.dict(os.environ, {**SIGN_IN, "DESK_WEBHOOK_KEY": "hook-secret",
+                                           "DESK_PUBLIC_URL": "https://caredesk.redefineph.com"})
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("DESK_DEV_EMAIL", None)
+        self.app = create_app(self.desk)
+
+    def client(self, base):
+        return TestClient(self.app, base_url=base, follow_redirects=False)
+
+    def test_pages_on_the_cloud_run_address_redirect(self):
+        c = self.client(self.RUN_APP)
+        for path in ("/", "/tickets", "/login?next=/inbox", "/unsubscribe?t=abc"):
+            r = c.get(path)
+            self.assertEqual((r.status_code, r.headers["location"]),
+                             (301, "https://caredesk.redefineph.com" + path), path)
+
+    def test_webhooks_the_clock_and_sign_in_still_work_there(self):
+        c = self.client(self.RUN_APP)
+        self.assertEqual(c.post("/hooks/ghl?key=hook-secret", json={"message": "hi"}).status_code, 200)
+        self.assertEqual(c.post("/api/desk/tick").status_code, 401)  # no cron key: refused, not redirected
+        self.assertEqual(c.get("/api/desk/state").status_code, 401)  # what deploy-desk.ps1 checks
+        self.assertNotEqual(c.post("/auth/google", json={"credential": "x"}).status_code, 301)
+
+    def test_the_own_domain_and_a_desk_without_one_are_served_as_they_are(self):
+        self.assertEqual(self.client("https://caredesk.redefineph.com").get("/login").status_code, 200)
+        with mock.patch.dict(os.environ, {"DESK_PUBLIC_URL": self.RUN_APP}):
+            self.assertEqual(self.client(self.RUN_APP).get("/login").status_code, 200)
+        with mock.patch.dict(os.environ, {"DESK_PUBLIC_URL": ""}):
+            self.assertEqual(self.client(self.RUN_APP).get("/login").status_code, 200)
+
+
+class ClientSettingsTest(unittest.TestCase):
+    """Each desk is set up from care_desk/clients/<client>.json."""
+
+    def use_client(self, name, data):
+        import importlib
+        import json
+
+        path = config.CLIENTS / f"{name}.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        self.addCleanup(path.unlink)
+        self.addCleanup(importlib.reload, config)  # back to Redefine's desk for every other test
+        with mock.patch.dict(os.environ, {"DESK_CLIENT": name}):
+            importlib.reload(config)
+
+    def test_redefine_is_the_desk_by_default_and_sorts_as_before(self):
+        self.assertEqual((config.CLIENT, config.BRAND, config.TICKET_PREFIX), ("redefine", "Redefine", "RD"))
+        self.assertTrue(config.WITH_REDEFINE_APP)
+        self.assertEqual(config.CATEGORIES["Service inquiry"]["hint"],
+                         "Wants Redefine to make something: a website, videos, branding, social media management, ads.")
+        self.assertEqual(config.INTERESTS[-1], "Other")
+        self.assertIn("Website", config.INTERESTS)
+
+    def test_a_clients_desk_speaks_for_that_client(self):
+        self.use_client("zz-test-dental", {"brand": "Acme Dental", "about": "a dental clinic in Cebu",
+                                           "services": ["Cleaning", "Braces"],
+                                           "category_hints": {"Complaint": "Unhappy with a visit."}})
+        self.assertFalse(config.WITH_REDEFINE_APP)
+        self.assertEqual((config.TICKET_PREFIX, config.SIGN_OFF), ("AC", "The Acme Dental team"))
+        self.assertEqual(config.INTERESTS, ["Cleaning", "Braces", "Other"])
+        self.assertIn("Cleaning, Braces", config.CATEGORIES["Service inquiry"]["hint"])
+        self.assertEqual(config.CATEGORIES["Complaint"]["hint"], "Unhappy with a visit.")
+        self.assertNotIn("Redefine", str(config.CATEGORIES) + str(config.JOURNEYS))
+        from care_desk.sorter import _system
+
+        self.assertIn("for Acme Dental, a dental clinic in Cebu.", _system())
+
+    def test_bad_client_files_stop_the_desk_from_starting(self):
+        for name in ("../secrets", "_example", "Redefine", "no-such-client"):
+            with self.assertRaises(RuntimeError, msg=name):
+                config.load_client(name)
+        with self.assertRaises(RuntimeError):  # a hint for a category the desk doesn't have
+            self.use_client("zz-test-bad", {"brand": "X", "about": "y", "services": ["Z"],
+                                            "category_hints": {"Made up": "?"}})
+
+    def test_the_example_is_a_complete_client_file(self):
+        import json
+
+        data = json.loads((config.CLIENTS / "_example.json").read_text(encoding="utf-8"))
+        for field in ("brand", "about", "services"):
+            self.assertTrue(data[field])
+        self.assertTrue(data["deploy"]["owners"])
+        self.assertNotIn("with_redefine_app", data)
+
+
+class ClientDeskTest(DeskTestCase):
+    """A client's desk shares nothing about its people with Redefine's."""
+
+    def setUp(self):
+        super().setUp()
+        from service import email_login, profiles
+
+        self._env = {k: os.environ.get(k) for k in (*SIGN_IN, "DESK_DEV_EMAIL")}
+        os.environ.update(SIGN_IN)
+        os.environ.pop("DESK_DEV_EMAIL", None)
+        self.app_team = team.use_store(team.MemoryStore())
+        self.app_team.add("redefine-staff@redefine.ph", "admin", "owner@redefine.ph")
+        self.app_names = profiles.use_store(profiles.MemoryStore())
+        self.app_names.set_name("redefine-staff@redefine.ph", "Redefine Staff")
+        patcher = mock.patch.object(config, "WITH_REDEFINE_APP", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(profiles.use_store, profiles.MemoryStore())
+        self.addCleanup(email_login.use_store, email_login.MemoryStore())
+        self.client = TestClient(create_app(self.desk))
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        team.use_store(team.MemoryStore())
+
+    def sign_in(self, email="owner@redefine.ph"):
+        self.client.cookies.set(team_auth.COOKIE, team_auth.make_session(email, SIGN_IN["SESSION_SECRET"].encode()))
+
+    def test_redefines_team_is_not_copied_in(self):
+        self.sign_in("redefine-staff@redefine.ph")
+        self.assertEqual(self.client.get("/api/desk/state").status_code, 401)
+        self.sign_in()
+        people = [p["email"] for p in self.client.get("/api/desk/team").json()["people"]]
+        self.assertEqual(people, ["owner@redefine.ph"])
+        self.assertIsNone(self.store.get("settings", "team"))
+
+    def test_names_and_sign_in_codes_stay_in_the_desks_own_database(self):
+        from service import email_login
+
+        self.sign_in()
+        h = {"X-Requested-With": "desk"}
+        self.assertEqual(self.client.post("/auth/name", json={"name": "Dr Owner"}, headers=h).status_code, 200)
+        self.assertEqual(self.store.get("profiles", "owner@redefine.ph")["name"], "Dr Owner")
+        self.assertIsNone(self.app_names.store.get("owner@redefine.ph"))
+        state = self.client.get("/api/desk/state").json()
+        self.assertEqual(state["user"]["name"], "Dr Owner")
+        self.assertNotIn("redefine-staff@redefine.ph", state["people"])
+        with mock.patch.dict(os.environ, {"RESEND_API_KEY": "re_test", "LOGIN_FROM_EMAIL": "x@x.ph"}), \
+                mock.patch.object(email_login, "_send", lambda *a, **k: None):
+            self.assertEqual(self.client.post("/auth/email/start", json={"email": "owner@redefine.ph"}).status_code, 200)
+        self.assertIn("digest", self.store.get("login_codes", "owner@redefine.ph"))
+
+    def test_a_clients_desk_never_falls_back_to_redefines_firestore(self):
+        from care_desk.app import _store
+
+        with mock.patch.dict(os.environ, {"SUPABASE_DB_URL": "", "DESK_STORE": ""}):
+            with self.assertRaises(RuntimeError):
+                _store()
+
+    def test_no_facebook_replies_without_the_clients_own_page(self):
+        from care_desk import meta
+
+        with mock.patch.dict(os.environ, {"META_PAGE_TOKEN": "token", "META_PAGE_ID": ""}):
+            self.assertFalse(meta.configured())
+        with mock.patch.dict(os.environ, {"META_PAGE_TOKEN": "token", "META_PAGE_ID": "123"}):
+            self.assertTrue(meta.configured())
+            self.assertEqual(meta.page_id(), "123")
+
+
 if __name__ == "__main__":
     unittest.main()

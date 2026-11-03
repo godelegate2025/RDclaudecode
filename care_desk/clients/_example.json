@@ -1,0 +1,20 @@
+{
+  "brand": "Acme Dental",
+  "company": "Acme Dental Clinic",
+  "about": "a dental clinic in Cebu City offering check-ups, cleaning, braces and whitening",
+  "languages": "English, Filipino, Cebuano or a mix",
+  "ticket_prefix": "AD",
+  "sign_off": "The Acme Dental team",
+  "facebook_page": "Acme Dental",
+  "services": ["Check-up", "Cleaning", "Braces", "Whitening"],
+  "category_hints": {},
+  "deploy": {
+    "service": "care-desk-acme",
+    "owners": ["owner@acmedental.ph", "go.delegate2025@gmail.com"],
+    "from_email": "Acme Dental <hello@acmedental.ph>",
+    "reply_to": "hello@acmedental.ph",
+    "public_url": "",
+    "meta_page_id": "",
+    "min_instances": 1
+  }
+}

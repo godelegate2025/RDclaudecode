@@ -50,6 +50,9 @@ export function App() {
 
   // A refresh that fails once the desk is showing says so, instead of blanking the page.
   useEffect(() => { if (error && desk) toast(error.message, 'u'); }, [error, desk, toast]);
+  // Every desk is a Redefine product; a client's desk also names the business it serves.
+  const deskName = desk && !desk.config.with_redefine_app ? `${desk.config.brand} Care Desk` : 'Care Desk';
+  useEffect(() => { if (desk) document.title = `${desk.config.brand} Care Desk`; }, [desk?.config.brand]);
 
   // The page also drives the clock (escalations, journey emails) whenever it is open.
   useEffect(() => {
@@ -68,7 +71,7 @@ export function App() {
           <img src="/static/favicon.svg" alt="Redefine" width={32} height={32} />
           <span className="word">Redefine</span>
           <span className="divider" aria-hidden="true" />
-          <span className="tool">Care Desk</span>
+          <span className="tool">{deskName}</span>
         </div>
         {desk && <>
           <span className={`pill ${desk.status.sorting === 'claude' ? 'ok' : 'warn'}`}>

@@ -1125,6 +1125,8 @@ class Desk:
                 "categories": {k: v["intent"] for k, v in config.CATEGORIES.items()},
                 "channels": config.CHANNELS, "sla": config.SLA, "interests": config.INTERESTS,
                 "ticket_prefix": config.TICKET_PREFIX, "sign_off": config.SIGN_OFF,
+                "brand": config.BRAND, "facebook_page": config.FACEBOOK_PAGE,
+                "with_redefine_app": config.WITH_REDEFINE_APP,
             },
             "status": {
                 "sorting": "claude" if os.environ.get("ANTHROPIC_API_KEY") else "rules",

@@ -3,13 +3,14 @@
 The desk keeps its own list, separate from the Redefine App's team: being on
 one does not put you on the other. Each person is an Admin, who can manage
 this list on the desk's Team page, or an Agent, who works tickets and leads.
-The app's owners (ALLOWED_EMAILS) are always desk Admins and cannot be
-removed here, so nobody can lock everyone out.
+The owners (ALLOWED_EMAILS on the desk's server) are always desk Admins and
+cannot be removed here, so nobody can lock everyone out.
 
-The list lives in Firestore as `desk_team`, one document per email. The first
-time it is read it is filled from the app's team, so the people who used the
-desk before it had its own list keep their access: app admins become desk
-Admins, everyone else Agents. After that the two lists are independent.
+The list lives in the desk's own store as `team`, one document per email. On
+Redefine's own desk, the first time it is read it is filled from the app's
+team, so the people who used the desk before it had its own list keep their
+access: app admins become desk Admins, everyone else Agents. After that the two
+lists are independent. A client's desk starts with its owners alone.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from service.email_login import DIVIDER, button, heading, layout, para
 from service.firestore_db import StoreUnavailable
 from service.profiles import get_profiles
 from service.team import EMAIL, get_team
+
+from . import config
 
 log = logging.getLogger("care-desk")
 
@@ -46,17 +49,18 @@ def invite_message(email: str, role: str, by: str, desk_url: str, logo_url: str 
     as_role = "an admin" if role == "admin" else "an agent"
     can = ("As an admin you can also manage who has access to the desk."
            if role == "admin" else "You'll work support tickets, contacts and follow-up emails.")
-    subject = "You're invited to the Redefine Care Desk"
-    text = (f"You're invited to the Redefine Care Desk\n\n"
-            f"{by} added you to Redefine's Care Desk as {as_role}. The Care Desk is where the team answers "
+    brand = config.BRAND
+    subject = f"You're invited to the {brand} Care Desk"
+    text = (f"You're invited to the {brand} Care Desk\n\n"
+            f"{by} added you to {brand}'s Care Desk as {as_role}. The Care Desk is where the team answers "
             f"comments, works support tickets and follows up contacts. {can}\n\n"
             f"Open the Care Desk: {desk_url}\n\n"
             f"Sign in with Google, or choose \"Continue with email\" and we'll send a code to {email}. "
             "Use this address: the desk only lets in the people on its team.\n\n"
             "Not expecting this? You can ignore this email.\n\n"
-            "Redefine Agency\nYou're getting this because a Care Desk admin added this address to the team.")
+            f"{config.COMPANY}\nYou're getting this because a Care Desk admin added this address to the team.")
     body = (heading("You're invited to the Care Desk")
-            + para(f'<strong style="color:#191616">{escape(by)}</strong> added you to Redefine\'s Care Desk as '
+            + para(f'<strong style="color:#191616">{escape(by)}</strong> added you to {escape(brand)}\'s Care Desk as '
                    f"{as_role}. The Care Desk is where the team answers comments, works support tickets and "
                    f"follows up contacts. {escape(can)}", margin="0 0 22px")
             + button("Open the Care Desk", desk_url)
@@ -66,7 +70,7 @@ def invite_message(email: str, role: str, by: str, desk_url: str, logo_url: str 
             + DIVIDER
             + para('<strong style="color:#4A4545">Not expecting this?</strong> You can ignore this email.',
                    small=True, margin="20px 0 0"))
-    footer = "Redefine Agency<br>You're getting this because a Care Desk admin added this address to the team."
+    footer = f"{escape(config.COMPANY)}<br>You're getting this because a Care Desk admin added this address to the team."
     return subject, text, layout(subject, f"{by} added you as {as_role}. Open the desk to sign in.", body, footer, logo_url)
 
 
@@ -85,7 +89,7 @@ class DeskTeam:
 
     def _seed(self) -> None:
         """Copy the app's team in, once, so turning on the desk's own list locks nobody out."""
-        if self.db.get("settings", "team"):
+        if not config.WITH_REDEFINE_APP or self.db.get("settings", "team"):
             return
         try:
             members = get_team().store.all()
@@ -165,7 +169,7 @@ class DeskTeam:
         if role not in ROLES:
             raise TeamError("Choose Admin or Agent.")
         if email in self.owners():
-            raise TeamError(f"{email} is an owner of the Redefine App, so they already run the desk.")
+            raise TeamError(f"{email} is an owner of this desk (set on the server), so they already run it.")
         if email in self._members(fresh=True):
             raise TeamError(f"{email} is already on the desk team.")
         self.db.put("team", email, {"email": email, "role": role, "added_by": by, "added_at": _today()})

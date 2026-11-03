@@ -158,6 +158,9 @@ export interface StatePayload {
   config: {
     ticket_prefix: string;
     sign_off: string;
+    brand: string;               // the business this desk serves (care_desk/clients/<client>.json)
+    facebook_page: string;       // the Page public replies post as
+    with_redefine_app: boolean;  // Redefine's own desk, whose owners are the Redefine App's
     sla: Record<Priority, { first: number; resolve: number }>;  // minutes
     [k: string]: unknown;
   };

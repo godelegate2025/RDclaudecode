@@ -1,6 +1,16 @@
 # Builds the Care Desk image from Dockerfile.desk, runs the desk's tests inside
 # it, and only then pushes it. `gcloud run deploy --source` only reads a file
 # named Dockerfile, which belongs to the auditors.
+#
+# One image runs every desk (DESK_CLIENT picks the business). deploy-desk.ps1
+# runs this with _ROLL_OUT=no and deploys the desks itself; the trigger made by
+# `deploy-desk.ps1 -AutoDeploy` runs it with _ROLL_OUT=yes on every push.
+
+substitutions:
+  _REGION: us-central1
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/care-desk:latest
+  _ROLL_OUT: "no"
+
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
@@ -27,6 +37,37 @@ steps:
       - -c
       - pip install --quiet --root-user-action=ignore httpx && cd /app && python -m unittest tests.test_care_desk
 
-# Pushed only once every step above has passed, so a failing test stops
-# deploy-desk.ps1 before anything reaches Cloud Run.
-images: ["${_IMAGE}"]
+  # Pushed only once every step above has passed, so a failing test stops
+  # here before anything reaches Cloud Run.
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "${_IMAGE}"]
+
+  # Every desk in care_desk/clients that already exists moves to the new image,
+  # keeping its own settings and secrets. A desk not created yet is skipped:
+  # deploy-desk.ps1 -Client <name> creates it.
+  - id: roll-out
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        [ "${_ROLL_OUT}" = "yes" ] || { echo "Not rolling out: deploy-desk.ps1 deploys the desks."; exit 0; }
+        failed=0
+        for service in $$(python3 -c "import glob, json; [print(json.load(open(f))['deploy'].get('service') or 'care-desk-' + f.split('/')[-1][:-5]) for f in sorted(glob.glob('care_desk/clients/[!_]*.json'))]"); do
+          if ! gcloud run services describe "$$service" --region=${_REGION} --format="value(name)" >/dev/null 2>&1; then
+            echo "$$service: not created yet, skipped"
+            continue
+          fi
+          echo "Updating $$service"
+          gcloud run services update "$$service" --image=${_IMAGE} --region=${_REGION} --quiet || failed=1
+        done
+        exit $$failed
+
+options:
+  # _IMAGE is built from other substitutions, which needs this on.
+  dynamicSubstitutions: true
+  # Required when the trigger runs as a user-chosen service account.
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s

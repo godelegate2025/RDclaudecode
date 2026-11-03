@@ -40,7 +40,7 @@ export function InboxView({ desk }: { desk: Desk }) {
   return <>
     <div className="vh">
       <div><div className="eyebrow">02 · Comment intelligence</div><h1>Inbox</h1></div>
-      <p>Every comment, message and email from Redefine's GHL lands here and is sorted by issue type. Concerns become tickets. Questions about services and prices become contacts.</p>
+      <p>Every comment, message and email from {desk.config.brand}'s GHL lands here and is sorted by issue type. Concerns become tickets. Questions about services and prices become contacts.</p>
     </div>
     {!desk.status.webhook && <Banner>
       <span>The GHL webhook is not switched on yet, so only messages you add by hand arrive. Set <code>DESK_WEBHOOK_KEY</code> on the server and add the workflow in GHL.</span>

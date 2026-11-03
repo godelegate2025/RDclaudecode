@@ -7,8 +7,10 @@ role on the app, so the desk keeps GHL as the source of names and uses Meta
 only for ids, post links and replies.
 
 Settings:
-  META_PAGE_TOKEN  a long-lived Page token for Redefine Ph (Secret Manager: meta-page-token)
-  META_PAGE_ID     the Page's id; defaults to Redefine Ph's
+  META_PAGE_TOKEN  a long-lived Page token for the desk's Page (Redefine Ph's is the
+                   meta-page-token secret)
+  META_PAGE_ID     the Page's id; Redefine's own desk defaults to Redefine Ph's, a
+                   client's desk needs it set (deploy.meta_page_id in its client file)
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import requests
+
+from . import config
 
 GRAPH = "https://graph.facebook.com/v26.0"
 REDEFINE_PH = "1316682498188449"
@@ -40,8 +44,13 @@ class Comment:
     comment_url: str | None
 
 
+def page_id() -> str:
+    return os.environ.get("META_PAGE_ID", "").strip() or (REDEFINE_PH if config.WITH_REDEFINE_APP else "")
+
+
 def configured() -> bool:
-    return bool(os.environ.get("META_PAGE_TOKEN", "").strip())
+    # Never another business's Page: a client desk without its own Page id has no Facebook replies.
+    return bool(os.environ.get("META_PAGE_TOKEN", "").strip() and page_id())
 
 
 def _token() -> str:
@@ -79,7 +88,7 @@ def _call(method: str, path: str, **params) -> dict:
 
 def recent_comments() -> list[Comment]:
     """The newest comments, replies included, on the Page's newest posts."""
-    page = os.environ.get("META_PAGE_ID", REDEFINE_PH).strip() or REDEFINE_PH
+    page = page_id()
     fields = (f"id,permalink_url,comments.filter(stream).order(reverse_chronological).limit({COMMENTS})"
               "{id,message,from,created_time,permalink_url}")
     body = _call("GET", f"{page}/feed", fields=fields, limit=POSTS)

@@ -58,7 +58,7 @@ SCHEMA = {
 def _system() -> str:
     cats = "\n".join(f"- {name}: {c['hint']}" for name, c in config.CATEGORIES.items())
     return f"""You sort incoming social media comments, direct messages and emails for {config.BRAND}, \
-a creative agency in the Philippines that makes websites, videos, branding and social media content for businesses.
+{config.ABOUT}.
 
 Pick exactly one category:
 {cats}
@@ -67,7 +67,7 @@ Priority: Urgent only for Urgent issue, or when someone is losing money, data or
 High for complaints and clients waiting on a deliverable. Normal for everything else.
 
 The suggested reply is posted publicly under the comment by a person after review, so:
-- Keep it to one or two short, warm sentences in the language the person wrote in (English, Filipino, Cebuano or a mix).
+- Keep it to one or two short, warm sentences in the language the person wrote in ({config.LANGUAGES}).
 - Never promise prices, dates or outcomes, and never ask for passwords or payment details in public.
 - For sales questions, thank them and invite them to send a direct message.
 - For concerns and complaints, acknowledge it and move the conversation to a direct message.

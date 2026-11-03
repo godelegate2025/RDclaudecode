@@ -290,6 +290,8 @@ file, deploy script, requirements, `CARE_DESK.md` and `tests/test_care_desk.py`)
 are skipped: the trigger's *Ignored files* list them, and `deploy-desk.ps1`
 runs the desk's tests itself. A push that also touches anything else (for
 example `service/`, whose sign-in code the desk shares) still runs everything.
+The desks have a trigger of their own, `deploy-desks-on-push`, made by
+`deploy-desk.ps1 -AutoDeploy` (CARE_DESK.md, "Automatic deploys").
 
 Set it up once:
 

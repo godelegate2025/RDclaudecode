@@ -4,9 +4,11 @@ It is kept apart from the auditors on purpose: they handle one request at a
 time and an audit can take minutes, so GHL's webhooks and staff clicks would
 queue behind them.
 
-Sign-in is the Redefine App's: the same Google client, team list and session
-secret (service/auth.py, service/team.py), so whoever can use the app can use
-the desk, and removing someone on the app's team page removes them here too.
+Sign-in works like the Redefine App's (service/auth.py), against the desk's own
+team list (team.py). Each desk serves one business (config.py, DESK_CLIENT).
+Redefine's own desk shares the app's session secret, owners and people's names;
+a client's desk has its own secret and owners, and keeps names and sign-in
+codes in its own database, so nothing about its people reaches Redefine's.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import os
 import re
 import time
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -34,9 +36,9 @@ from service import team as app_team
 from service.profiles import NameError_, get_profiles
 from service.firestore_db import StoreUnavailable
 
-from . import auth, intake
+from . import auth, config, intake
 from .desk import LOAD, Desk, DeskError, NotFound
-from .store import FirestoreStore, MemoryStore, SupabaseStore
+from .store import FirestoreStore, Keyed, MemoryStore, SupabaseStore
 from .team import DeskTeam, TeamError, invite_message
 
 log = logging.getLogger("care-desk")
@@ -160,7 +162,13 @@ def _store():
     if os.environ.get("DESK_STORE") == "memory":
         return MemoryStore()
     url = os.environ.get("SUPABASE_DB_URL", "").strip()
-    return SupabaseStore(url) if url else FirestoreStore()
+    if url:
+        # One Supabase project can hold several desks, each in a schema of its own.
+        return SupabaseStore(url, schema=os.environ.get("DESK_DB_SCHEMA", "").strip() or "care_desk")
+    if not config.WITH_REDEFINE_APP:
+        # Firestore's desk_ collections are Redefine's desk: a client's would mix with them.
+        raise RuntimeError(f"The {config.BRAND} desk needs its own database: set SUPABASE_DB_URL (CARE_DESK.md).")
+    return FirestoreStore()
 
 
 def create_app(desk: Desk | None = None) -> FastAPI:
@@ -170,6 +178,10 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     if os.environ.get("DESK_STORE") == "memory":
         app_team.use_store(app_team.MemoryStore())  # nor the app's team list, which the desk team is filled from
         profiles.use_store(profiles.MemoryStore())
+    if not config.WITH_REDEFINE_APP:
+        # A client's people: their names and sign-in codes stay in this desk's database.
+        profiles.use_store(Keyed(app.state.desk.db, "profiles"))
+        email_login.use_store(Keyed(app.state.desk.db, "login_codes"))
 
     app.state.team = DeskTeam(app.state.desk.db)
 
@@ -181,6 +193,16 @@ def create_app(desk: Desk | None = None) -> FastAPI:
 
     def role_of(email: str) -> str | None:
         return "owner" if dev_email() else team().role_of(email)
+
+    @app.middleware("http")
+    async def to_public_address(request: Request, call_next):
+        """Pages opened on the Cloud Run address go to the desk's own domain (DESK_PUBLIC_URL).
+
+        Only page visits: GHL, n8n and Cloud Scheduler post to /hooks and /api
+        on the Cloud Run address, and a redirect would drop what they send.
+        """
+        target = public_redirect(request)
+        return RedirectResponse(target, status_code=301) if target else await call_next(request)
 
     @app.exception_handler(StoreUnavailable)
     async def no_firestore(_request: Request, exc: StoreUnavailable) -> JSONResponse:
@@ -326,7 +348,7 @@ def create_app(desk: Desk | None = None) -> FastAPI:
     def email_code_start(payload: EmailCode, request: Request) -> JSONResponse:
         email_login_on()
         try:
-            email_login.request_code(payload.email, team_auth.config().secret, app="Care Desk",
+            email_login.request_code(payload.email, team_auth.config().secret, app=f"{config.BRAND} Care Desk",
                                      logo_url=email_login.logo_for(request), allowed=team().is_allowed)
         except email_login.LoginError as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -631,6 +653,19 @@ def create_app(desk: Desk | None = None) -> FastAPI:
         return HTMLResponse(_note("You are unsubscribed", f"We will not send follow-up emails to {email} again."))
 
     return app
+
+
+def public_redirect(request: Request) -> str | None:
+    """Where a page visit to the Cloud Run address belongs, or None to serve it here."""
+    public = os.environ.get("DESK_PUBLIC_URL", "").strip().rstrip("/")
+    host = request.headers.get("host", "").split(":")[0].lower()
+    if (not public or request.method not in ("GET", "HEAD") or not host.endswith(".run.app")
+            or request.url.path.startswith(("/api/", "/hooks/"))):
+        return None
+    if urlsplit(public).hostname == host:  # the desk has no domain of its own yet
+        return None
+    query = request.url.query
+    return public + request.url.path + (f"?{query}" if query else "")
 
 
 def _note(title: str, text: str) -> str:

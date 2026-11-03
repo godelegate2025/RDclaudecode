@@ -383,6 +383,27 @@ class SupabaseStore:
             self._pool.close()
 
 
+class Keyed:
+    """One desk collection as a {key: document} store: the shape of the stores in
+    service/profiles.py and service/email_login.py.
+
+    A client's desk keeps people's names and sign-in codes here, in its own
+    database, rather than in the Redefine App's Firestore.
+    """
+
+    def __init__(self, db, coll: str):
+        self.db, self.coll = db, coll
+
+    def get(self, key: str) -> dict | None:
+        return self.db.get(self.coll, key)
+
+    def put(self, key: str, data: dict) -> None:
+        self.db.put(self.coll, key, {**data, "key": key})
+
+    def all(self) -> dict[str, dict]:
+        return {d["key"]: d for d in self.db.all(self.coll) if d.get("key")}
+
+
 def chunks(values: Iterable, size: int = 30) -> list[list]:
     """Firestore's `in` takes at most 30 values."""
     values = list(values)

@@ -1,32 +1,83 @@
-"""Redefine's desk settings: issue types, teams, response targets and email journeys.
+"""One desk's settings: who it is for, issue types, teams, response targets and email journeys.
 
-Everything a second client would change lives here, so a later multi-client
-version only has to move this into the database.
+Each desk serves one business, named by DESK_CLIENT (default "redefine"). What
+differs between businesses is in care_desk/clients/<client>.json: the brand,
+what the business does, its services, the hints the AI sorts by, and, under
+"deploy", what deploy-desk.ps1 needs. Everything else here is the same for
+every desk. Redefine's own desk is the one that shares sign-in, names and the
+team list with the Redefine App ("with_redefine_app"); a client's desk keeps
+all of that, and its data, to itself.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
+from pathlib import Path
 
-BRAND = os.environ.get("DESK_BRAND", "Redefine")
-TICKET_PREFIX = os.environ.get("DESK_TICKET_PREFIX", "RD")
-SIGN_OFF = os.environ.get("DESK_SIGN_OFF", "The Redefine team")
+CLIENTS = Path(__file__).parent / "clients"
+
+
+def load_client(name: str) -> dict:
+    """The settings file for one client; refuses names that could reach outside clients/."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name or ""):
+        raise RuntimeError(f"DESK_CLIENT must be a client file name like 'redefine', not {name!r}.")
+    path = CLIENTS / f"{name}.json"
+    if not path.is_file():
+        raise RuntimeError(f"No settings for client {name!r}: add care_desk/clients/{name}.json "
+                           "(copy _example.json).")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    missing = [k for k in ("brand", "about", "services") if not data.get(k)]
+    if missing:
+        raise RuntimeError(f"care_desk/clients/{name}.json is missing {', '.join(missing)}.")
+    return data
+
+
+CLIENT = os.environ.get("DESK_CLIENT", "").strip().lower() or "redefine"
+_CLIENT = load_client(CLIENT)
+
+BRAND = _CLIENT["brand"]
+COMPANY = _CLIENT.get("company") or BRAND           # the footer of every email
+ABOUT = _CLIENT["about"]                            # "a dental clinic in Cebu that ...", for the AI
+LANGUAGES = _CLIENT.get("languages") or "English"   # what customers write in
+TICKET_PREFIX = _CLIENT.get("ticket_prefix") or BRAND[:2].upper()
+SIGN_OFF = _CLIENT.get("sign_off") or f"The {BRAND} team"
+FACEBOOK_PAGE = _CLIENT.get("facebook_page") or BRAND
+# Only Redefine's own desk: sign-in, names and the starting team come from the Redefine App.
+WITH_REDEFINE_APP = bool(_CLIENT.get("with_redefine_app"))
 
 CHANNELS = ["facebook", "instagram", "messenger", "tiktok", "linkedin", "threads", "email", "website", "other"]
 
+INTERESTS = [s for s in _CLIENT["services"] if s != "Other"] + ["Other"]
+
 # intent decides the route: sales becomes a lead, service a ticket, other is logged.
-CATEGORIES = {
-    "Service inquiry": {"intent": "sales", "hint": "Wants Redefine to make something: a website, videos, branding, social media management, ads."},
-    "Pricing question": {"intent": "sales", "hint": "Asks how much a service costs or for a quote."},
-    "Urgent issue": {"intent": "service", "hint": "Something is broken or at risk now: a client's site is down, an account was hacked, an ad is running wrong, a legal or safety problem."},
-    "Client concern": {"intent": "service", "hint": "An existing client asks about a deliverable, a delay, revisions, or the status of their project."},
-    "Complaint": {"intent": "service", "hint": "Unhappy with Redefine's work, service or response time."},
-    "Billing question": {"intent": "service", "hint": "Invoices, payments, refunds, receipts."},
-    "General question": {"intent": "service", "hint": "Any other question that needs an answer from the team."},
-    "Job inquiry": {"intent": "other", "hint": "Applying for a job or internship, or asking if Redefine is hiring."},
-    "Engagement": {"intent": "other", "hint": "Praise, reactions, emojis, tagging friends, short remarks like 'wow' or '#highlight'. Nothing to answer."},
-    "Spam": {"intent": "other", "hint": "Bots, scams, unrelated promotions."},
+# A client file can replace any hint ("category_hints"); the categories themselves are fixed.
+_HINTS = {
+    "Service inquiry": f"Wants {BRAND} to provide something it offers: {', '.join(INTERESTS[:-1])}.",
+    "Pricing question": "Asks how much a service costs or for a quote.",
+    "Urgent issue": "Something is broken or at risk now: a service failed, an account was hacked, "
+                    "a legal or safety problem.",
+    "Client concern": "An existing customer asks about something already booked or bought: a delay, a change, "
+                      "or its status.",
+    "Complaint": f"Unhappy with {BRAND}'s work, service or response time.",
+    "Billing question": "Invoices, payments, refunds, receipts.",
+    "General question": "Any other question that needs an answer from the team.",
+    "Job inquiry": f"Applying for a job or internship, or asking if {BRAND} is hiring.",
+    "Engagement": "Praise, reactions, emojis, tagging friends, short remarks like 'wow' or '#highlight'. Nothing to answer.",
+    "Spam": "Bots, scams, unrelated promotions.",
 }
+_INTENTS = {
+    "Service inquiry": "sales", "Pricing question": "sales",
+    "Urgent issue": "service", "Client concern": "service", "Complaint": "service",
+    "Billing question": "service", "General question": "service",
+    "Job inquiry": "other", "Engagement": "other", "Spam": "other",
+}
+_unknown = set(_CLIENT.get("category_hints") or {}) - set(_INTENTS)
+if _unknown:
+    raise RuntimeError(f"care_desk/clients/{CLIENT}.json has hints for unknown categories: {', '.join(sorted(_unknown))}.")
+CATEGORIES = {name: {"intent": intent, "hint": (_CLIENT.get("category_hints") or {}).get(name) or _HINTS[name]}
+              for name, intent in _INTENTS.items()}
 
 TEAMS = {
     "Urgent issue": "Client success",
@@ -34,11 +85,9 @@ TEAMS = {
     "Complaint": "Client success",
     "Billing question": "Finance",
     "General question": "Client success",
+    **(_CLIENT.get("teams") or {}),
 }
-DEFAULT_TEAM = "Client success"
-
-INTERESTS = ["Website", "Social media management", "Video production", "Branding", "Paid ads",
-             "Content creation", "Photography", "Other"]
+DEFAULT_TEAM = _CLIENT.get("default_team") or "Client success"
 
 PRIORITIES = ["Urgent", "High", "Normal"]
 
@@ -52,7 +101,7 @@ SLA = {
 DAY = 24 * 60 * 60 * 1000
 
 # Templates use {first_name}, {ticket}, {team}, {interest} and {sign_off}.
-# Anything in [SQUARE BRACKETS] is for Redefine to fill in; a journey that still
+# Anything in [SQUARE BRACKETS] is for the business to fill in; a journey that still
 # has one cannot go live, so a placeholder never reaches a real inbox.
 JOURNEYS = {
     "received": {
@@ -100,7 +149,7 @@ JOURNEYS = {
         "steps": [
             {"delay": 0, "label": "Day 0", "subject": "Still thinking about {interest}?",
              "body": "Hi {first_name},\n\nYou asked us about {interest} a while back. If it is still on your mind, we can pick up where we left off.\n\nReply to this email and we will set up a quick call.\n\n{sign_off}"},
-            {"delay": 4 * DAY, "label": "Day 4", "subject": "What's new at Redefine",
+            {"delay": 4 * DAY, "label": "Day 4", "subject": f"What's new at {BRAND}",
              "body": "Hi {first_name},\n\n[WHAT IS NEW OR ON OFFER THIS MONTH]\n\nReply if you want to hear more.\n\n{sign_off}"},
             {"delay": 10 * DAY, "label": "Day 10", "subject": "Should we close your inquiry?",
              "body": "Hi {first_name},\n\nWe do not want to fill your inbox. If you are no longer interested, there is nothing to do and we will stop here.\n\nIf you are, reply \"yes\" and we will reach out this week.\n\n{sign_off}"},

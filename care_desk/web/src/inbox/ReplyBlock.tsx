@@ -101,7 +101,7 @@ function SocialReply({ desk, m }: { desk: Desk; m: Message }) {
   if (m.fb_match === 'matched') {
     const send = async () => {
       if (!text.trim()) { document.getElementById(`reply-${m.id}`)?.focus(); return toast('Write the reply first.'); }
-      if (!confirm('Post this reply publicly on Facebook as Redefine Ph?')) return;
+      if (!confirm(`Post this reply publicly on Facebook as ${desk.config.facebook_page}?`)) return;
       setBusy(true);
       const r = await act(`/api/desk/messages/${m.id}/send`, { text }, 'Reply posted on Facebook');
       setBusy(false);
@@ -109,7 +109,7 @@ function SocialReply({ desk, m }: { desk: Desk; m: Message }) {
     };
     return <>
       <div className="replybox">
-        <label className="eyebrow" htmlFor={`reply-${m.id}`}>Public reply · posts as Redefine Ph under this comment</label>
+        <label className="eyebrow" htmlFor={`reply-${m.id}`}>Public reply · posts as {desk.config.facebook_page} under this comment</label>
         <textarea id={`reply-${m.id}`} maxLength={8000} value={text} onChange={e => setText(e.target.value)} />
       </div>
       <div className="acts">

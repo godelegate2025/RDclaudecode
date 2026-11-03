@@ -1,0 +1,31 @@
+{
+  "brand": "Redefine",
+  "company": "Redefine Agency",
+  "about": "a creative agency in the Philippines that makes websites, videos, branding and social media content for businesses",
+  "languages": "English, Filipino, Cebuano or a mix",
+  "ticket_prefix": "RD",
+  "sign_off": "The Redefine team",
+  "facebook_page": "Redefine Ph",
+  "services": ["Website", "Social media management", "Video production", "Branding", "Paid ads",
+               "Content creation", "Photography"],
+  "category_hints": {
+    "Service inquiry": "Wants Redefine to make something: a website, videos, branding, social media management, ads.",
+    "Urgent issue": "Something is broken or at risk now: a client's site is down, an account was hacked, an ad is running wrong, a legal or safety problem.",
+    "Client concern": "An existing client asks about a deliverable, a delay, revisions, or the status of their project.",
+    "Complaint": "Unhappy with Redefine's work, service or response time."
+  },
+  "with_redefine_app": true,
+  "deploy": {
+    "service": "care-desk",
+    "from_email": "Redefine <info@redefineph.com>",
+    "reply_to": "info@redefineph.com",
+    "public_url": "https://caredesk.redefineph.com",
+    "min_instances": 0,
+    "secrets": {
+      "webhook": "desk-webhook-key",
+      "cron": "desk-cron-key",
+      "db": "supabase-db-url",
+      "meta": "meta-page-token"
+    }
+  }
+}

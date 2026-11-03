@@ -8,6 +8,12 @@ services and prices become leads with an email follow-up journey.
 It runs as its own Cloud Run service next to the Redefine App, because it keeps
 data and must answer GHL's webhooks quickly while audits run for minutes.
 
+**One desk per business.** Redefine's own desk is `care-desk`. Each client gets
+a desk of its own: its own Cloud Run service, database, owners, sign-in secret
+and web address, all from one file, `care_desk/clients/<client>.json` (see
+"New client desk"). Every desk runs the same code; nothing one client's desk
+holds is visible from another's.
+
 | Piece | What it uses |
 |---|---|
 | Staff | The Redefine App's sign-in (Google or an emailed code), checked against the desk's own team list |
@@ -97,7 +103,8 @@ in the same way (Google, or an emailed code) with the address on the list.
   between Admin and Agent, remove them. Only admins see the page; the server
   refuses its API to anyone else.
 - **Agents** work tickets, leads and email, but cannot see or change the team.
-- **Owners** (the app's `ALLOWED_EMAILS`) are always desk admins and cannot be
+- **Owners** (`ALLOWED_EMAILS`: the app's on Redefine's desk, `deploy.owners`
+  in the client file on a client's) are always desk admins and cannot be
   changed or removed here, so nobody can lock everyone out. Nobody can change
   their own role or remove themselves.
 
@@ -112,14 +119,15 @@ add: being on the list is what grants access.
 signs in with an emailed code is asked for their name on their first visit.
 The desk shows names instead of emails in the top bar, on the Team page, as
 ticket owners, on notes and in Activity (records still store the email).
-Clicking your name in the top bar changes it. Names are shared with the
-Redefine App, in the Firestore collection `user_profiles`, and a name someone
-typed is never replaced by their Google name.
+Clicking your name in the top bar changes it. On Redefine's desk, names are
+shared with the Redefine App, in the Firestore collection `user_profiles`; a
+client's desk keeps them (and sign-in codes) in its own database. A name
+someone typed is never replaced by their Google name.
 
-Removing someone signs them out within a minute. The list is the Firestore
-collection `desk_team`. The first time it was read it was filled from the
-app's team (app admins as desk Admins, everyone else as Agents); after that the
-two lists are independent.
+Removing someone signs them out within a minute. The list is the desk's `team`
+collection. On Redefine's desk, the first time it was read it was filled from
+the app's team (app admins as desk Admins, everyone else as Agents); after that
+the two lists are independent. A client's desk starts with its owners alone.
 
 ## Run it on a laptop
 
@@ -169,38 +177,43 @@ use TanStack Table.
 ## Deploy
 
 Team sign-in and the Firestore database must already be set up for the Redefine
-App (DEPLOY.md, "Team sign-in"). Then:
+App (DEPLOY.md, "Team sign-in"). Then, for Redefine's own desk:
 
 ```powershell
-.\deploy-desk.ps1 -FromEmail "Redefine <hello@redefine.ph>" -ReplyTo "hello@redefine.ph"
+.\deploy-desk.ps1
 ```
 
-The script copies `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and `SESSION_SECRET` from
-the running `redefine-apps` service (pass `-AppService` for another name), reuses
-the Post Auditor's Claude key (the `anthropic-api-key` secret if there is one,
-otherwise the key set on the app), creates the webhook and cron keys, builds
-`Dockerfile.desk`, runs the desk's tests (`tests/test_care_desk.py`) inside
-that image, deploys `care-desk` to `us-central1` and schedules the 5-minute
-clock. If a test fails, the image is never pushed and nothing is deployed.
-Re-run it after code changes, and after changing the app's sign-in settings.
+The script reads `care_desk/clients/redefine.json` (sender, reply-to, public
+address, secret names), copies `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` and
+`SESSION_SECRET` from the running `redefine-apps` service (pass `-AppService`
+for another name), reuses the Post Auditor's Claude key (the
+`anthropic-api-key` secret if there is one, otherwise the key set on the app),
+creates the webhook and cron keys, builds `Dockerfile.desk`, runs the desk's
+tests (`tests/test_care_desk.py`) inside that image, deploys `care-desk` to
+`us-central1` and schedules the 5-minute clock. If a test fails, the image is
+never pushed and nothing is deployed. Re-run it after code changes, and after
+changing the app's sign-in settings.
 
-Pushing desk-only changes does not rebuild the Redefine App: the push trigger
-ignores the desk's files (DEPLOY.md, "Automatic deploys"). The desk deploys
-only when you run `deploy-desk.ps1`.
+| Command | What it does |
+|---|---|
+| `.\deploy-desk.ps1` | Builds, tests and updates Redefine's desk |
+| `.\deploy-desk.ps1 -Client acme` | Creates or updates the desk in `care_desk/clients/acme.json` |
+| `.\deploy-desk.ps1 -All` | Builds and tests once, then updates every desk in `care_desk/clients` |
+| `.\deploy-desk.ps1 -AutoDeploy` | Once: sets up a push trigger that updates every desk on each push (below) |
 
-Then, once:
+Then, once per desk:
 
 1. **Google sign-in.** Console → Google Auth Platform → Clients → the app's
    client → *Authorised JavaScript origins*: add the desk's URL (the script
    prints it). Without this, Google's button refuses to sign in on the desk.
-2. **Email (optional).** Add and verify Redefine's domain in Resend (it gives
+2. **Email (optional).** Add and verify the sending domain in Resend (it gives
    you DNS records to add), then store the key and re-run the script:
 
    ```powershell
    "re_..." | gcloud secrets create resend-api-key --data-file=-
    ```
 
-3. **Link it from the Redefine App:**
+3. **Link Redefine's desk from the Redefine App:**
 
    ```powershell
    gcloud run services update redefine-apps --region us-central1 --update-env-vars CARE_DESK_URL=https://caredesk.redefineph.com/
@@ -208,8 +221,69 @@ Then, once:
 
    The Care Desk card on the app's home page then opens it.
 
-The automatic deploy on push (cloudbuild.yaml) runs the desk's tests but does
-not deploy the desk; `deploy-desk.ps1` does.
+### Automatic deploys
+
+Pushing desk-only changes does not rebuild the Redefine App: its push trigger
+ignores the desk's files (DEPLOY.md, "Automatic deploys"). Until
+`.\deploy-desk.ps1 -AutoDeploy` has been run once, desks update only when you
+run `deploy-desk.ps1`.
+
+After it, a second trigger, `deploy-desks-on-push`, runs `cloudbuild.desk.yaml`
+on every push to the same branch that touches the desk (its code, the shared
+sign-in code, its tests or its build files): build, run the desk's tests, push
+the image, then move every desk that exists to it, each keeping its own
+settings and secrets. A failing test stops it before any desk changes. A new
+client's desk still starts with `.\deploy-desk.ps1 -Client <name>`, because
+that is what makes its secrets and its clock.
+
+### New client desk
+
+1. **Settings.** Copy `care_desk/clients/_example.json` to
+   `care_desk/clients/<client>.json` (lower case, letters, digits and dashes).
+   Fill in:
+
+   | Field | What it is |
+   |---|---|
+   | `brand`, `company` | The name customers know, and the legal name in email footers |
+   | `about` | One line on what the business does, for the AI that sorts messages |
+   | `languages` | What customers write in |
+   | `services` | What people ask about; becomes the Interest list and the "Service inquiry" hint |
+   | `ticket_prefix`, `sign_off` | Ticket numbers (`AD-1001`) and the last line of every email |
+   | `facebook_page` | The Page name staff see when posting public replies |
+   | `category_hints` | Optional: replace the AI's hint for any issue type (`Complaint`, `Urgent issue`…) |
+   | `deploy.service` | The Cloud Run service, e.g. `care-desk-acme` |
+   | `deploy.owners` | Emails that always run the desk (the client's owner, and Redefine's) |
+   | `deploy.from_email`, `deploy.reply_to` | The client's sender, on a domain verified in Resend |
+   | `deploy.public_url` | The desk's own domain, once mapped; empty uses the Cloud Run address |
+   | `deploy.meta_page_id` | The client's Facebook Page id, with secret `<service>-meta-page-token` |
+   | `deploy.min_instances` | `1` keeps one copy always running: no slow first load (about $5–15 a month) |
+   | `deploy.db_schema` | Optional: a schema name, to keep several desks in one Supabase project |
+
+2. **Database.** Make a Supabase project for the client (or reuse one with
+   `deploy.db_schema`), copy its *Session pooler* connection string, then:
+
+   ```powershell
+   Get-Clipboard | gcloud secrets create care-desk-acme-db-url --data-file=-
+   ```
+
+   A client's desk will not start without its own database: Firestore's
+   `desk_` collections are Redefine's desk.
+
+3. **Deploy:** `.\deploy-desk.ps1 -Client acme`. It makes the desk's own
+   session secret and webhook and cron keys (`care-desk-acme-…`), deploys it
+   with `DESK_CLIENT=acme`, and schedules its clock.
+
+4. **Once:** the Google sign-in origin (above), and the client's GHL workflow
+   and n8n inbox workflow pointed at the desk's `/hooks/ghl` and
+   `/hooks/email` with its own webhook key.
+
+What a client's desk shares with Redefine's: the Google sign-in button (one
+OAuth client), the sender of sign-in codes (`LOGIN_FROM_EMAIL`), the Resend
+account and the Claude key, so their costs land on Redefine's bills. Resend's
+free plan allows 100 emails a day across every desk.
+
+The Redefine logo stays in the corner of every desk (it is Redefine's product);
+a client's desk names the client beside it and in the tab title.
 
 ### Firestore costs
 
@@ -386,22 +460,25 @@ changes their password. When Send reply says the token stopped working:
 
 ## Settings
 
-Everything Redefine-specific (issue types, teams, response targets, interests
-and the default email templates) is in `care_desk/config.py`. Emails can also be
-edited on the Email screen; those edits are stored in Firestore.
+What differs between businesses (brand, description, services, the AI's hints,
+teams) is in `care_desk/clients/<client>.json`; what every desk shares (issue
+types, response targets, the default email templates) is in
+`care_desk/config.py`. Emails can also be edited on the Email screen; those
+edits are stored in the desk's database.
 
 | Variable | Purpose |
 |---|---|
-| `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS`, `SESSION_SECRET` | The Redefine App's sign-in, copied by the deploy script |
+| `DESK_CLIENT` | Which `care_desk/clients/<client>.json` this desk serves; default `redefine` |
+| `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS`, `SESSION_SECRET` | Sign-in. Redefine's desk copies the app's; a client's desk has its own owners and secret (`<service>-session-secret`) |
 | `LOGIN_FROM_EMAIL` | Sender of email sign-in codes, copied from the app; with `RESEND_API_KEY` it turns email sign-in on (DEPLOY.md, "Email sign-in") |
 | `DESK_WEBHOOK_KEY` | Must match `?key=` on the GHL webhook URL |
 | `DESK_CRON_KEY` | Lets Cloud Scheduler call the clock |
-| `DESK_PUBLIC_URL` | Base of unsubscribe links. The deploy script sets it from `-PublicUrl`, keeps it on later runs, and uses the service's address on a first run |
+| `DESK_PUBLIC_URL` | The desk's own address: base of unsubscribe links, and where pages opened on the `….run.app` address redirect to (`/api/` and `/hooks/` are never redirected, so webhooks and the clock keep working there). The deploy script sets it from `-PublicUrl` or `deploy.public_url`, keeps it on later runs, and uses the service's address on a first run |
 | `ANTHROPIC_API_KEY` | Claude sorting |
 | `DESK_MODEL`, `DESK_EFFORT` | Default `claude-opus-5-5` at `low` effort |
 | `RESEND_API_KEY`, `DESK_FROM_EMAIL`, `DESK_REPLY_TO` | Email sending |
-| `DESK_BRAND`, `DESK_TICKET_PREFIX`, `DESK_SIGN_OFF` | Default `Redefine`, `RD`, `The Redefine team` |
 | `META_PAGE_TOKEN` | Redefine Ph's Page token, for Facebook replies (secret `meta-page-token`) |
-| `META_PAGE_ID` | The Page to read comments from; defaults to Redefine Ph (`1316682498188449`) |
-| `SUPABASE_DB_URL` | Keeps the desk's data in Supabase (secret `supabase-db-url`); without it, Firestore |
+| `META_PAGE_ID` | The Page to read comments from; Redefine's desk defaults to Redefine Ph (`1316682498188449`), a client's has no Facebook replies without it |
+| `SUPABASE_DB_URL` | Keeps the desk's data in Supabase (secret `supabase-db-url`, or `<service>-db-url` for a client); without it, Firestore, on Redefine's desk only |
+| `DESK_DB_SCHEMA` | The Postgres schema; default `care_desk` |
 | `DESK_STORE`, `DESK_DEV_EMAIL` | Laptop runs only, see above |

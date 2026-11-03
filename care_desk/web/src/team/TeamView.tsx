@@ -104,7 +104,7 @@ export function TeamView({ desk }: { desk: Desk }) {
               : <><span className="chip a">Pending</span>
                   <span className={`sub${p.invite_error ? ' bad' : ''}`}>{p.invite_error ? 'Invite not sent'
                     : p.invited_at ? `Invited ${fmtDay(p.invited_at)}${p.invites > 1 ? ` · ${p.invites} invites` : ''}` : 'Not invited yet'}</span></>}</td>
-            <td>{withNames(p.added_by || '', desk.people)}<span className="sub">{owner ? 'Owner of the Redefine App' : fmtDay(p.added_at)}</span></td>
+            <td>{withNames(p.added_by || '', desk.people)}<span className="sub">{owner ? (desk.config.with_redefine_app ? 'Owner of the Redefine App' : 'Owner of this desk') : fmtDay(p.added_at)}</span></td>
             <td><div className="rowacts">
               {p.status === 'pending' && !owner && <button className="btn sm" disabled={off} onClick={() => invite(p)}>
                 <Icon name="send" size={14} />{p.invited_at ? 'Resend invite' : 'Send invite'}</button>}
