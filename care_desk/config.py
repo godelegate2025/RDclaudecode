@@ -16,7 +16,8 @@ import os
 import re
 from pathlib import Path
 
-CLIENTS = Path(__file__).parent / "clients"
+# DESK_CLIENTS_DIR is for tests: the app's own folder is read-only in the image.
+CLIENTS = Path(os.environ.get("DESK_CLIENTS_DIR") or Path(__file__).parent / "clients")
 
 
 def load_client(name: str) -> dict:

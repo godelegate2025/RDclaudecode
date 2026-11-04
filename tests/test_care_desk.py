@@ -1481,11 +1481,12 @@ class ClientSettingsTest(unittest.TestCase):
         import importlib
         import json
 
-        path = config.CLIENTS / f"{name}.json"
-        path.write_text(json.dumps(data), encoding="utf-8")
-        self.addCleanup(path.unlink)
+        # A folder of its own: care_desk/clients is read-only in the built image.
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        (Path(folder.name) / f"{name}.json").write_text(json.dumps(data), encoding="utf-8")
         self.addCleanup(importlib.reload, config)  # back to Redefine's desk for every other test
-        with mock.patch.dict(os.environ, {"DESK_CLIENT": name}):
+        with mock.patch.dict(os.environ, {"DESK_CLIENT": name, "DESK_CLIENTS_DIR": folder.name}):
             importlib.reload(config)
 
     def test_redefine_is_the_desk_by_default_and_sorts_as_before(self):
