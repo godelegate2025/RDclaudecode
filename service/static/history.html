@@ -147,6 +147,16 @@ button.ghost:disabled { opacity: .5; }
 .btn.plain:hover { background: var(--paper); }
 .batch:not([data-open]) .top-posts, .batch:not([data-open]) .more { display: none; }
 
+/* ---------- placeholder cards while the history loads ---------- */
+.skeleton { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px;
+            display: grid; gap: 10px; }
+.skeleton .bar { height: 12px; border-radius: 6px; width: var(--w, 60%);
+                 background: linear-gradient(90deg, var(--paper-2) 0%, #F7F6F3 50%, var(--paper-2) 100%) 0 0 / 200% 100%;
+                 animation: shimmer 1.2s ease-in-out infinite; }
+.skeleton .bar.title { height: 22px; --w: 38%; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton .bar { animation: none; } }
+
 @media (max-width: 760px) {
   header { padding: 0 16px; }
   .brand .tool, header .account #accountEmail, header .account .sep { display: none; }
@@ -433,9 +443,27 @@ button.ghost:disabled { opacity: .5; }
     shown.forEach((s, i) => list.appendChild(searchCard(s, i === 0)));
   };
 
+  // Until the history arrives, placeholder cards stand in: an empty list would
+  // read as "nothing saved" when it is only still loading.
+  let loading = true, failed = false;
+  const placeholders = (list) => {
+    for (let i = 0; i < 3; i++) {
+      const card = el('div', 'skeleton');
+      [['title'], ['', '72%'], ['', '46%']].forEach(([cls, width]) => {
+        const bar = el('div', 'bar' + (cls ? ' ' + cls : ''));
+        if (width) bar.style.setProperty('--w', width);
+        card.appendChild(bar);
+      });
+      list.appendChild(card);
+    }
+  };
+
   const render = () => {
     const list = $('list');
     list.textContent = '';
+    list.setAttribute('aria-busy', String(loading));
+    if (loading) { $('count').textContent = 'Loading…'; placeholders(list); return; }
+    if (failed) { $('count').textContent = ''; emptyState(list, 'Could not load the history. Refresh the page to try again.'); return; }
     (view === 'audits' ? renderAudits : renderSearches)(list, filtersNow());
   };
 
@@ -467,7 +495,12 @@ button.ghost:disabled { opacity: .5; }
       ]);
       const da = await ra.json().catch(() => ({}));
       const ds = await rs.json().catch(() => ({}));
-      if (!ra.ok && !rs.ok) { say(da.detail || ds.detail || 'Could not load the history.', false); return; }
+      if (!ra.ok && !rs.ok) {
+        say(da.detail || ds.detail || 'Could not load the history.', false);
+        loading = false; failed = true; render();
+        return;
+      }
+      loading = false;
       me = da.me || ds.me || '';
       canManage = !!(da.can_manage || ds.can_manage);
       audits = da.audits || [];
@@ -483,6 +516,7 @@ button.ghost:disabled { opacity: .5; }
       setView(view);
     } catch (e) {
       say('Could not reach the server. Try again.', false);
+      loading = false; failed = true; render();
     }
   };
 
@@ -495,6 +529,7 @@ button.ghost:disabled { opacity: .5; }
     { const who = document.getElementById('accountEmail'); who.textContent = info.name || info.email; who.title = `${info.email} · change your name`; who.href = '/welcome?next=' + encodeURIComponent(location.pathname + location.search); }
     document.getElementById('account').hidden = false;
   }).catch(() => {});
+  setView(view);  // the chosen tab and its placeholders straight away
   load();
 </script>
 </body>
