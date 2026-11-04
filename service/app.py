@@ -45,6 +45,7 @@ from .profiles import NameError_, get_profiles
 from .team import StoreUnavailable, TeamError, get_team
 from .brief_view import render_brief_html
 from .history import NotFound, get_history
+from .search_history import get_searches, to_csv
 from .post_pdf import attach_pdf, filename_for, render_pdf
 from .security import UnsafeURL, guard_route, validate
 
@@ -749,8 +750,9 @@ def post_find(payload: FindRequest, request: Request) -> JSONResponse:
     if wait:
         raise HTTPException(429, f"Rate limit reached. You can search again in {_minutes(wait)}.",
                             headers={"Retry-After": str(wait)})
+    items = finder.clean_items(payload.items)
     try:
-        result = finder.find(search, chosen, finder.clean_items(payload.items), os.environ["APIFY_TOKEN"])
+        result = finder.find(search, chosen, items, os.environ["APIFY_TOKEN"])
     except Exception as exc:  # noqa: BLE001
         refund(ip, FIND_RATE_COST)
         log.exception("content search failed")
@@ -761,7 +763,64 @@ def post_find(payload: FindRequest, request: Request) -> JSONResponse:
         raise HTTPException(502, f"Nothing came back. {reasons}" if reasons else "Nothing came back.")
     log.info("content search by %s: %s %r on %s, %s rows, %s platform(s) failed", _me(request) or ip,
              search.mode, search.term, ",".join(chosen), len(result["rows"]), len(result["errors"]))
+    try:
+        result["history_id"] = get_searches().save(result, by=_me(request), items=items)
+    except Exception:  # noqa: BLE001 - history is a convenience, the results are the product
+        log.exception("could not save the content search to history")
     return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
+def _saved_search(search_id: str) -> dict:
+    try:
+        return get_searches().get(search_id)
+    except NotFound as exc:
+        raise HTTPException(404, "That search is not in the history any more.") from exc
+    except StoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get("/api/search-history")
+def search_history_list(request: Request) -> JSONResponse:
+    me = _me(request)
+    try:
+        searches, ready, problem = get_searches().recent(), True, ""
+    except StoreUnavailable as exc:
+        searches, ready, problem = [], False, str(exc)
+    return JSONResponse({"me": me, "can_manage": bool(me) and get_team().can_manage(me),
+                         "ready": ready, "problem": problem, "searches": searches},
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/search-history/{search_id}")
+def search_history_item(search_id: str) -> JSONResponse:
+    return JSONResponse(_saved_search(search_id), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/search-history/{search_id}/csv")
+def search_history_csv(search_id: str) -> Response:
+    saved = _saved_search(search_id)
+    slug = "-".join("".join(c if c.isalnum() else " " for c in saved.get("term", "")).lower().split()) or "search"
+    name = f"content-{slug[:60]}-{(saved.get('scraped_at') or '')[:10]}.csv"
+    return Response(to_csv(saved.get("rows") or []), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+
+@app.delete("/api/search-history/{search_id}")
+def search_history_delete(search_id: str, request: Request) -> JSONResponse:
+    me = _me(request)
+    searches = get_searches()
+    try:
+        by = searches.owner_of(search_id)
+        # Same rule as audits: whoever ran it, or an owner or admin.
+        if auth.mode() == "on" and by.lower() != me.lower() and not get_team().can_manage(me):
+            raise HTTPException(403, "Only the person who ran this search, or an owner or admin, can delete it.")
+        searches.delete(search_id)
+    except NotFound as exc:
+        raise HTTPException(404, "That search is not in the history any more.") from exc
+    except StoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    log.info("search history: %s deleted %s", me or "someone", search_id)
+    return JSONResponse({"ok": True})
 
 
 # ------------------------------------------------------------------ audit history

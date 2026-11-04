@@ -462,7 +462,7 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   </a>
   <div class="spacer"></div>
   <div class="tagline">Build. Realize. Redefine</div>
-  <a class="nav" href="/history">Audit history</a>
+  <a class="nav" id="historyLink" href="/history">History</a>
   <div class="account" id="account" hidden><a id="accountEmail" href="/welcome" title="Change your name"></a><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
@@ -1089,10 +1089,13 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
   // tab keeps its own results on the right, so going back and forth loses nothing.
   const tabs = { audit: $('tabAudit'), find: $('tabFind') };
   let auditPath = savedId ? '/post-audit?audit=' + encodeURIComponent(savedId) : '/post-audit';
+  const savedSearchId = new URLSearchParams(location.search).get('search');
+  let findPath = savedSearchId ? '/post-audit?tab=find&search=' + encodeURIComponent(savedSearchId) : '/post-audit?tab=find';
   const setView = (view) => {
     main.dataset.view = view;
     for (const [name, tab] of Object.entries(tabs)) tab.setAttribute('aria-selected', String(name === view));
-    window.history.replaceState(null, '', view === 'find' ? '/post-audit?tab=find' : auditPath);
+    window.history.replaceState(null, '', view === 'find' ? findPath : auditPath);
+    $('historyLink').href = view === 'find' ? '/history?tab=searches' : '/history';
   };
   tabs.audit.addEventListener('click', () => setView('audit'));
   tabs.find.addEventListener('click', () => setView('find'));
@@ -1240,7 +1243,19 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     csv.type = 'button';
     csv.addEventListener('click', downloadCsv);
     const what = findData.mode === 'profile' ? 'Profile' : 'Topic';
-    add(finds, add(el('div', 'finds-head'),
+    // Where this search lives now: reopened from the history, or just saved to it.
+    let savedNote = null;
+    if (findData.saved) {
+      savedNote = el('p', 'saved-note', 'Saved search' + (findData.saved.by ? ` · run by ${findData.saved.by}` : '') + ' · ');
+    } else if (findData.history_id) {
+      savedNote = el('p', 'saved-note', 'Saved to the team history · ');
+    }
+    if (savedNote) {
+      const back = el('a', null, 'All searches');
+      back.href = '/history?tab=searches';
+      savedNote.appendChild(back);
+    }
+    add(finds, savedNote, add(el('div', 'finds-head'),
       add(el('div'), el('div', 'label', `${what} search`), el('h2', null, findData.term),
           el('div', 'sub', `${findData.rows.length} posts · ${findData.platforms.length} platform${findData.platforms.length === 1 ? '' : 's'} · ${shortDate(findData.scraped_at, true)}`)),
       el('div', 'grow'), csv));
@@ -1325,6 +1340,8 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
       sortKey = 'engagement'; sortDir = -1; filter = 'all';
       renderFinds();
       findStatus.clear();
+      findPath = findData.history_id ? '/post-audit?tab=find&search=' + encodeURIComponent(findData.history_id) : '/post-audit?tab=find';
+      if (main.dataset.view === 'find') window.history.replaceState(null, '', findPath);
     } catch (error) {
       findStatus.problem('Connection failed', 'Could not reach the server. Check your connection and try again.');
     } finally {
@@ -1332,7 +1349,32 @@ dialog.prompt::backdrop { background: rgba(25, 22, 22, .55); }
     }
   });
 
-  if (!savedId && new URLSearchParams(location.search).get('tab') === 'find') setView('find');
+  // /post-audit?tab=find&search=<id> reopens a saved search from the history, without scraping again.
+  if (savedSearchId) {
+    setView('find');
+    (async () => {
+      findStatus.note('Opening the saved search…');
+      try {
+        const response = await fetch('/api/search-history/' + encodeURIComponent(savedSearchId), { cache: 'no-store' });
+        if (!response.ok) {
+          let detail = 'Could not open that search.';
+          try { detail = (await response.json()).detail || detail; } catch (e) { /* keep default */ }
+          findStatus.problem('Saved search not available', detail);
+          return;
+        }
+        findData = await response.json();
+        sortKey = 'engagement'; sortDir = -1; filter = 'all';
+        setMode(findData.mode === 'profile' ? 'profile' : 'topic');
+        findQuery.value = findData.term || '';
+        renderFinds();
+        findStatus.clear();
+      } catch (error) {
+        findStatus.problem('Connection failed', 'Could not reach the server. Check your connection and try again.');
+      }
+    })();
+  } else if (!savedId && new URLSearchParams(location.search).get('tab') === 'find') {
+    setView('find');
+  }
 </script>
 <script>
   // Shows who is signed in, once sign-in is switched on; hidden otherwise.

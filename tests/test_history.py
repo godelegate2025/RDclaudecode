@@ -195,7 +195,9 @@ class HistoryApiTest(unittest.TestCase):
         self.assertEqual(anon.get("/history").status_code, 303)
         self.assertEqual(anon.get("/api/history").status_code, 401)
         signed_in = self.client("ana@gmail.com")
-        self.assertIn("Audit <span class=\"accent\">history</span>", signed_in.get("/history").text)
+        page = signed_in.get("/history").text
+        self.assertIn("Team <span class=\"accent\">history</span>", page)
+        self.assertIn('id="tabSearches"', page)
         self.assertIn('href="/history"', signed_in.get("/").text)
         self.assertIn('href="/history"', signed_in.get("/post-audit").text)
 

@@ -105,6 +105,14 @@ Each Post Auditor run is saved to Firestore (`service/history.py`, collection
 reopens the full report at `/post-audit?audit=<id>` and rebuilds its PDF on
 demand. A failed save never fails the audit.
 
+Content searches (Find content) are saved the same way (`service/search_history.py`,
+collection `post_searches`): who ran it, when, the term, per-platform counts and
+every result row. The **Searches** tab on `/history` shows one card per search
+with its top posts and the best post's engagement per day; **Open all results**
+reopens the table at `/post-audit?tab=find&search=<id>` without scraping again,
+and `/api/search-history/<id>/csv` downloads it in the sheet's columns. Whoever
+ran a search, or an owner or admin, can delete it.
+
 ## Post Auditor
 
 `/post-audit` audits a live TikTok, Instagram, Facebook or LinkedIn post: why it

@@ -76,6 +76,8 @@ _LINK_FROM = {"youtube_shorts": "youtube", "meta_ads": "facebook"}
 MAX_ITEMS = int(os.environ.get("FIND_MAX_ITEMS", "50"))
 TIMEOUT_S = int(os.environ.get("FIND_TIMEOUT_S", "180"))
 X_MIN_LIKES = int(os.environ.get("FIND_X_MIN_LIKES", "50"))
+# A platform that ran fine but matched nothing; listed with the errors, but not a failure.
+NOTHING_FOUND = "Nothing found."
 _HANDLE = re.compile(r"^[\w.\-]{1,100}$")
 
 
@@ -435,7 +437,7 @@ def find(search: Search, chosen: list[str], items: int, token: str) -> dict:
                                "message": "The scraper returned something unexpected."})
                 continue
             if not found:
-                errors.append({"platform": platform, "label": LABELS[platform], "message": "Nothing found."})
+                errors.append({"platform": platform, "label": LABELS[platform], "message": NOTHING_FOUND})
             rows.extend(found)
     rows.sort(key=_rank)
     return {

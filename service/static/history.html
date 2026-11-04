@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Audit history · Redefine App</title>
+<title>History · Redefine App</title>
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -32,6 +32,14 @@ header { height: var(--header-h); display: flex; align-items: center; gap: 16px;
 .brand .divider { width: 1px; height: 24px; background: var(--line); }
 .brand .tool { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 header .spacer { flex: 1; }
+header .back { font-size: 12.5px; font-weight: 700; color: var(--ink); text-decoration: none; white-space: nowrap;
+                padding: 7px 12px; border: 1.5px solid var(--line); border-radius: var(--radius); }
+header .back:hover { border-color: var(--coral); color: var(--coral-dark); }
+.crumbs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px;
+          font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.crumbs a { color: var(--muted); text-decoration: none; }
+.crumbs a:hover { color: var(--coral-dark); }
+.crumbs [aria-current] { color: var(--ink); }
 header .account { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 header .account a { color: var(--ink); font-weight: 600; }
 
@@ -45,7 +53,16 @@ h1 .accent { color: var(--coral); }
 .card h2 { font-family: var(--font-display); font-weight: 400; font-size: 20px; text-transform: uppercase;
            letter-spacing: .02em; margin: 0 0 12px; }
 
-.filters { display: grid; grid-template-columns: 1fr 180px auto; gap: 10px; align-items: center; margin-bottom: 18px; }
+.tabs { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--paper-2);
+        border-radius: var(--radius); margin-bottom: 20px; }
+.tabs button { font: inherit; font-weight: 700; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+               min-height: 38px; padding: 8px 22px; border: 0; border-radius: 7px; background: transparent;
+               color: var(--charcoal); cursor: pointer; }
+.tabs button:hover { background: rgba(255, 255, 255, .6); }
+.tabs button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(25, 22, 22, .12); }
+.tabs b { opacity: .55; margin-left: 6px; font-weight: 700; }
+
+.filters { display: grid; grid-template-columns: 1fr 180px 170px auto; gap: 10px; align-items: center; margin-bottom: 18px; }
 input, select {
   font: inherit; font-size: 15px; padding: 11px 13px; color: var(--ink); background: #fff;
   border: 1.5px solid var(--line); border-radius: var(--radius); min-width: 0;
@@ -53,6 +70,7 @@ input, select {
 input:focus, select:focus { outline: none; border-color: var(--coral); box-shadow: 0 0 0 3px rgba(252, 68, 82, .14); }
 label.mine { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 label.mine input { width: 18px; height: 18px; accent-color: var(--coral); }
+label.mine[hidden] { display: none; }
 .count { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
 
 .banner { display: none; border: 1.5px solid var(--warn); border-left-width: 4px; background: #FFF8EC;
@@ -93,9 +111,46 @@ button.ghost:disabled { opacity: .5; }
          border: 1px dashed var(--line); border-radius: var(--radius); }
 .empty a { color: var(--ink); font-weight: 600; }
 
+/* ---------- saved searches: one card per search ---------- */
+.batch { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.batch-head { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start; padding: 16px 18px 12px; }
+.term { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.term .q { font-family: var(--font-display); font-size: 24px; line-height: 1.05; text-transform: uppercase;
+           letter-spacing: .01em; overflow-wrap: anywhere; }
+.chip.dark { background: var(--ink); color: var(--paper); }
+.batch .meta { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.batch .meta b { color: var(--ink); font-weight: 700; }
+.plats { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.plats span { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--charcoal); }
+.plats span i { font-style: normal; color: var(--muted); margin-left: 4px; }
+.plats span.fail { border-style: dashed; color: var(--muted); }
+.stat.best b { color: var(--coral); }
+.toggle { background: none; border: 0; font: inherit; font-size: 12px; font-weight: 700; color: var(--coral-dark);
+          cursor: pointer; padding: 0; letter-spacing: .04em; }
+.toggle:hover { text-decoration: underline; }
+.top-posts { width: 100%; border-collapse: collapse; font-size: 13px; }
+.top-posts th { text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+                color: var(--muted); padding: 7px 18px; background: #FAF9F7; border-top: 1px solid var(--line); }
+.top-posts td { padding: 8px 18px; border-top: 1px solid #EEECE8; vertical-align: top; }
+.top-posts .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.top-posts td.content { color: var(--charcoal); max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-posts a { color: var(--coral-dark); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.top-posts a:hover { text-decoration: underline; }
+.batch-foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap;
+              padding: 10px 18px 14px; border-top: 1px solid #EEECE8; }
+.batch-foot .more { margin-right: auto; font-size: 12.5px; color: var(--muted); }
+.btn { font: inherit; font-weight: 700; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; min-height: 34px;
+       padding: 0 14px; border-radius: var(--radius); border: 0; background: var(--coral); color: #fff; cursor: pointer;
+       display: inline-flex; align-items: center; text-decoration: none; }
+.btn:hover { background: var(--coral-dark); }
+.btn.plain { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.btn.plain:hover { background: var(--paper); }
+.batch:not([data-open]) .top-posts, .batch:not([data-open]) .more { display: none; }
+
 @media (max-width: 760px) {
   header { padding: 0 16px; }
   .brand .tool, header .account #accountEmail, header .account .sep { display: none; }
+  header .back { padding: 6px 10px; }
   main { padding: 28px 16px 64px; }
   .filters { grid-template-columns: 1fr 1fr; }
   .filters input[type=search] { grid-column: 1 / -1; }
@@ -103,6 +158,8 @@ button.ghost:disabled { opacity: .5; }
   .thumb { width: 52px; height: 66px; }
   .side { grid-column: 1 / -1; justify-content: space-between; }
   .stats { text-align: left; }
+  .batch-head { grid-template-columns: 1fr; }
+  .top-posts th:nth-child(3), .top-posts td:nth-child(3), .top-posts th:nth-child(4), .top-posts td:nth-child(4) { display: none; }
 }
 </style>
 </head>
@@ -115,20 +172,32 @@ button.ghost:disabled { opacity: .5; }
     <span class="tool">History</span>
   </a>
   <div class="spacer"></div>
+  <a class="back" id="backLink" href="/post-audit">← Back to Post Auditor</a>
   <div class="account" id="account" hidden><a id="accountEmail" href="/welcome" title="Change your name"></a><span class="sep"> · </span><a href="/auth/logout">Sign out</a></div>
 </header>
 
 <main>
-  <h1>Audit <span class="accent">history</span></h1>
-  <p class="lede">Every post the team has audited, newest first. Open one to see the full report again
-    or download its PDF.</p>
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">Redefine App</a><span aria-hidden="true">/</span>
+    <a id="crumbAuditor" href="/post-audit">Post Auditor</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Team history</span>
+  </nav>
+  <h1>Team <span class="accent">history</span></h1>
+  <p class="lede">Every post audit and content search the team has run, newest first. Reopen an audit to see
+    its report, or a search to see all its results again without scraping twice.</p>
+
+  <div class="tabs" role="tablist" aria-label="History">
+    <button type="button" role="tab" id="tabAudits" aria-selected="true">Audits <b id="countAudits"></b></button>
+    <button type="button" role="tab" id="tabSearches" aria-selected="false">Searches <b id="countSearches"></b></button>
+  </div>
 
   <div class="banner" id="banner" role="status"><strong>History storage not set up</strong><span id="bannerText"></span></div>
   <div class="msg" id="msg" role="status"></div>
 
   <div class="filters">
-    <input id="search" type="search" placeholder="Search account, link or verdict" aria-label="Search audits">
+    <input id="search" type="search" placeholder="Search account, link or verdict" aria-label="Search the history">
     <select id="platform" aria-label="Platform"><option value="">All platforms</option></select>
+    <select id="person" aria-label="Who ran it"><option value="">Anyone</option></select>
     <label class="mine" id="mineLabel" hidden><input id="mine" type="checkbox"> Only mine</label>
   </div>
   <p class="count" id="count"></p>
@@ -163,30 +232,88 @@ button.ghost:disabled { opacity: .5; }
   };
   const pct = (v) => (v === null || v === undefined || isNaN(v)) ? '–' : Number(v).toFixed(1).replace(/\.0$/, '') + '%';
 
-  let me = '', canManage = false, audits = [];
+  const $ = (id) => document.getElementById(id);
+  let me = '', canManage = false, audits = [], searches = [];
+  let view = new URLSearchParams(location.search).get('tab') === 'searches' ? 'searches' : 'audits';
+  const isMine = (by) => !!me && (by || '').toLowerCase() === me.toLowerCase();
+  // Whoever ran it, an owner or admin, or anyone while sign-in is off.
+  const canDelete = (by) => canManage || isMine(by) || !me;
 
   const stat = (cls, value, label) => {
     const s = el('div', 'stat ' + cls);
     s.append(el('b', null, value), el('span', null, label));
     return s;
   };
+  const deleteButton = (kind, item) => {
+    const del = el('button', 'ghost', 'Delete');
+    del.type = 'button';
+    del.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); remove(kind, item, del); });
+    return del;
+  };
 
-  const render = () => {
-    const q = document.getElementById('search').value.trim().toLowerCase();
-    const platform = document.getElementById('platform').value;
-    const mine = document.getElementById('mine').checked;
+  // The platform and person pickers list only what the open tab holds.
+  const refill = (select, first, options) => {
+    const keep = select.value;
+    select.textContent = '';
+    const all = el('option', null, first);
+    all.value = '';
+    select.appendChild(all);
+    for (const [value, label] of options) {
+      const option = el('option', null, label);
+      option.value = value;
+      select.appendChild(option);
+    }
+    select.value = options.has(keep) ? keep : '';
+  };
+  const fillPickers = () => {
+    const platforms = new Map();
+    if (view === 'audits') audits.forEach((a) => { if (a.platform) platforms.set(a.platform, a.platform_label || a.platform); });
+    else searches.forEach((s) => (s.platforms || []).forEach((p) => { if (p.count) platforms.set(p.platform, p.label); }));
+    refill($('platform'), 'All platforms', platforms);
+    const items = view === 'audits' ? audits : searches;
+    refill($('person'), 'Anyone', new Map(items.filter((x) => x.by).map((x) => [x.by.toLowerCase(), x.by])));
+  };
+  const updateCounts = () => {
+    $('countAudits').textContent = audits.length;
+    $('countSearches').textContent = searches.length;
+  };
+  const setView = (next) => {
+    view = next;
+    $('tabAudits').setAttribute('aria-selected', String(view === 'audits'));
+    $('tabSearches').setAttribute('aria-selected', String(view === 'searches'));
+    $('search').placeholder = view === 'audits' ? 'Search account, link or verdict' : 'Search topic, handle or who ran it';
+    window.history.replaceState(null, '', view === 'searches' ? '/history?tab=searches' : '/history');
+    // Back to the tool this tab belongs to: searches come from Find content.
+    const back = view === 'searches' ? '/post-audit?tab=find' : '/post-audit';
+    $('backLink').href = back;
+    $('crumbAuditor').href = back;
+    fillPickers();
+    render();
+  };
+
+  const filtersNow = () => ({
+    q: $('search').value.trim().toLowerCase(),
+    platform: $('platform').value,
+    person: $('person').value,
+    mine: $('mine').checked,
+  });
+  const emptyState = (list, text, linkText, href) => {
+    const empty = el('div', 'empty', text);
+    if (linkText) { const a = el('a', null, linkText); a.href = href; empty.appendChild(a); }
+    list.appendChild(empty);
+  };
+
+  const renderAudits = (list, f) => {
     const shown = audits.filter((a) =>
-      (!platform || a.platform === platform) &&
-      (!mine || (a.by || '').toLowerCase() === me.toLowerCase()) &&
-      (!q || [a.author, a.handle, a.url, a.verdict, a.by, a.hook_type].join(' ').toLowerCase().includes(q)));
-    document.getElementById('count').textContent = audits.length
+      (!f.platform || a.platform === f.platform) &&
+      (!f.person || (a.by || '').toLowerCase() === f.person) &&
+      (!f.mine || isMine(a.by)) &&
+      (!f.q || [a.author, a.handle, a.url, a.verdict, a.by, a.hook_type].join(' ').toLowerCase().includes(f.q)));
+    $('count').textContent = audits.length
       ? (shown.length === audits.length ? `${audits.length} audits` : `${shown.length} of ${audits.length} audits`) : '';
-    const list = document.getElementById('list');
-    list.textContent = '';
     if (!shown.length) {
-      const empty = el('div', 'empty', audits.length ? 'No audits match.' : 'No audits saved yet. ');
-      if (!audits.length) { const a = el('a', null, 'Audit a post'); a.href = '/post-audit'; empty.appendChild(a); }
-      list.appendChild(empty);
+      if (audits.length) emptyState(list, 'No audits match.');
+      else emptyState(list, 'No audits saved yet. ', 'Audit a post', '/post-audit');
       return;
     }
     for (const a of shown) {
@@ -208,26 +335,124 @@ button.ghost:disabled { opacity: .5; }
       const stats = el('div', 'stats');
       stats.append(stat('hook', a.hook_score ?? '–', 'Hook /10'), stat('', compact(a.views), 'Views'), stat('', pct(a.engagement), 'Eng.'));
       side.appendChild(stats);
-      if (canManage || (me && (a.by || '').toLowerCase() === me.toLowerCase()) || !me) {
-        const del = el('button', 'ghost', 'Delete');
-        del.type = 'button';
-        del.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); remove(a, del); });
-        side.appendChild(del);
-      }
+      if (canDelete(a.by)) side.appendChild(deleteButton('audits', a));
       item.append(thumb, who, side);
       list.appendChild(item);
     }
   };
 
-  const remove = async (a, button) => {
-    if (!confirm(`Delete the audit of ${a.author || a.handle || 'this post'}? This cannot be undone.`)) return;
+  const num = (n) => (n === null || n === undefined || n === '' || isNaN(n)) ? '–' : Number(n).toLocaleString();
+  const topPosts = (rows) => {
+    const table = el('table', 'top-posts');
+    const head = el('tr');
+    [['Platform'], ['Author'], ['Content'], ['Views', 'num'], ['Likes', 'num'], ['Eng./day', 'num'], ['']].forEach(([t, cls]) => head.appendChild(el('th', cls, t)));
+    const body = el('tbody');
+    for (const r of rows) {
+      const tr = el('tr');
+      const platform = el('td');
+      platform.appendChild(el('span', 'chip', r.platform_label || ''));
+      const content = el('td', 'content', r.content || '—');
+      if (r.content) content.title = r.content;
+      const open = el('td');
+      if (/^https?:\/\//.test(r.url || '')) {
+        const link = el('a', null, 'Open ↗');
+        link.href = r.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        open.appendChild(link);
+      }
+      tr.append(platform, el('td', null, r.author || '—'), content,
+                el('td', 'num', num(r.views)), el('td', 'num', num(r.likes)), el('td', 'num', num(r.engagement)), open);
+      body.appendChild(tr);
+    }
+    const thead = el('thead');
+    thead.appendChild(head);
+    table.append(thead, body);
+    return table;
+  };
+
+  const searchCard = (s, open) => {
+    const card = el('section', 'batch');
+    if (open) card.setAttribute('data-open', '');
+    const top = s.top || [];
+
+    const left = el('div');
+    const term = el('div', 'term');
+    term.append(el('span', 'q', s.term || '—'), el('span', 'chip dark', s.mode === 'profile' ? 'Profile' : 'Topic'));
+    const meta = el('div', 'meta');
+    meta.append(document.createTextNode('Run by '), el('b', null, s.by || 'someone'),
+                document.createTextNode(` · ${fmtDate(s.created_at, true)}` + (s.items ? ` · ${s.items} per platform` : '')));
+    if (top.length) {
+      const toggle = el('button', 'toggle');
+      toggle.type = 'button';
+      const sync = () => { toggle.textContent = card.hasAttribute('data-open') ? 'Hide top posts ▴' : 'Show top posts ▾'; };
+      toggle.addEventListener('click', () => { card.toggleAttribute('data-open'); sync(); });
+      sync();
+      meta.append(document.createTextNode(' · '), toggle);
+    }
+    const plats = el('div', 'plats');
+    for (const p of s.platforms || []) {
+      const chip = el('span', p.count ? null : 'fail', p.label);
+      chip.appendChild(el('i', null, p.count ? String(p.count) : (p.error ? 'failed' : '0')));
+      if (p.error) chip.title = p.error;
+      plats.appendChild(chip);
+    }
+    left.append(term, meta, plats);
+    const stats = el('div', 'stats');
+    stats.append(stat('', String(s.total ?? 0), 'Posts'), stat('best', num(s.best), 'Best post / day'));
+    const head = el('div', 'batch-head');
+    head.append(left, stats);
+    card.appendChild(head);
+    if (top.length) card.appendChild(topPosts(top));
+
+    const foot = el('div', 'batch-foot');
+    const failed = (s.platforms || []).filter((p) => p.error).map((p) => `${p.label}: ${p.error}`);
+    if (top.length) foot.appendChild(el('span', 'more', [`Top ${top.length} of ${s.total} posts`, ...failed].join(' · ')));
+    const csv = el('a', 'btn plain', 'Download CSV');
+    csv.href = '/api/search-history/' + encodeURIComponent(s.id) + '/csv';
+    const all = el('a', 'btn', 'Open all results');
+    all.href = '/post-audit?tab=find&search=' + encodeURIComponent(s.id);
+    foot.append(csv, all);
+    if (canDelete(s.by)) foot.appendChild(deleteButton('searches', s));
+    card.appendChild(foot);
+    return card;
+  };
+
+  const renderSearches = (list, f) => {
+    const shown = searches.filter((s) =>
+      (!f.platform || (s.platforms || []).some((p) => p.platform === f.platform && p.count)) &&
+      (!f.person || (s.by || '').toLowerCase() === f.person) &&
+      (!f.mine || isMine(s.by)) &&
+      (!f.q || [s.term, s.by, s.mode, ...(s.top || []).map((t) => t.author)].join(' ').toLowerCase().includes(f.q)));
+    $('count').textContent = searches.length
+      ? (shown.length === searches.length ? `${searches.length} searches` : `${shown.length} of ${searches.length} searches`) : '';
+    if (!shown.length) {
+      if (searches.length) emptyState(list, 'No searches match.');
+      else emptyState(list, 'No searches saved yet. ', 'Find content', '/post-audit?tab=find');
+      return;
+    }
+    // The newest search opens with its top posts; older ones stay folded to keep the list short.
+    shown.forEach((s, i) => list.appendChild(searchCard(s, i === 0)));
+  };
+
+  const render = () => {
+    const list = $('list');
+    list.textContent = '';
+    (view === 'audits' ? renderAudits : renderSearches)(list, filtersNow());
+  };
+
+  const remove = async (kind, item, button) => {
+    const what = kind === 'audits' ? `the audit of ${item.author || item.handle || 'this post'}` : `the search for “${item.term}”`;
+    if (!confirm(`Delete ${what}? This cannot be undone.`)) return;
     button.disabled = true;
     try {
-      const res = await fetch('/api/history/' + encodeURIComponent(a.id), { method: 'DELETE' });
+      const base = kind === 'audits' ? '/api/history/' : '/api/search-history/';
+      const res = await fetch(base + encodeURIComponent(item.id), { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { say(data.detail || 'Could not delete it.', false); button.disabled = false; return; }
-      audits = audits.filter((x) => x.id !== a.id);
-      say('Audit deleted.', true);
+      if (kind === 'audits') audits = audits.filter((x) => x.id !== item.id);
+      else searches = searches.filter((x) => x.id !== item.id);
+      say(kind === 'audits' ? 'Audit deleted.' : 'Search deleted.', true);
+      updateCounts();
+      fillPickers();
       render();
     } catch (e) {
       say('Could not reach the server. Try again.', false);
@@ -237,33 +462,33 @@ button.ghost:disabled { opacity: .5; }
 
   const load = async () => {
     try {
-      const res = await fetch('/api/history', { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { say(data.detail || 'Could not load the history.', false); return; }
-      me = data.me || '';
-      canManage = !!data.can_manage;
-      audits = data.audits || [];
-      document.getElementById('mineLabel').hidden = !me;
-      if (!data.ready) {
-        document.getElementById('bannerText').textContent =
-          `${data.problem} Audits still work, they just are not saved. See DEPLOY.md, "Audit history".`;
-        document.getElementById('banner').setAttribute('data-show', '');
+      const [ra, rs] = await Promise.all([
+        fetch('/api/history', { cache: 'no-store' }), fetch('/api/search-history', { cache: 'no-store' }),
+      ]);
+      const da = await ra.json().catch(() => ({}));
+      const ds = await rs.json().catch(() => ({}));
+      if (!ra.ok && !rs.ok) { say(da.detail || ds.detail || 'Could not load the history.', false); return; }
+      me = da.me || ds.me || '';
+      canManage = !!(da.can_manage || ds.can_manage);
+      audits = da.audits || [];
+      searches = ds.searches || [];
+      $('mineLabel').hidden = !me;
+      const problem = (ra.ok && !da.ready && da.problem) || (rs.ok && !ds.ready && ds.problem);
+      if (problem) {
+        $('bannerText').textContent =
+          `${problem} Audits and searches still work, they just are not saved. See DEPLOY.md, "Audit history".`;
+        $('banner').setAttribute('data-show', '');
       }
-      const pick = document.getElementById('platform');
-      const seen = new Map(audits.map((a) => [a.platform, a.platform_label || a.platform]));
-      for (const [value, label] of seen) {
-        if (!value) continue;
-        const option = el('option', null, label);
-        option.value = value;
-        pick.appendChild(option);
-      }
-      render();
+      updateCounts();
+      setView(view);
     } catch (e) {
       say('Could not reach the server. Try again.', false);
     }
   };
 
-  for (const id of ['search', 'platform', 'mine']) document.getElementById(id).addEventListener('input', render);
+  for (const id of ['search', 'platform', 'person', 'mine']) $(id).addEventListener('input', render);
+  $('tabAudits').addEventListener('click', () => setView('audits'));
+  $('tabSearches').addEventListener('click', () => setView('searches'));
 
   fetch('/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((info) => {
     if (!info.signed_in) return;

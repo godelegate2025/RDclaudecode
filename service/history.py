@@ -58,8 +58,9 @@ def _doc(store, audit_id: str) -> dict:
 class MemoryStore:
     """For tests and local runs without Firestore."""
 
-    def __init__(self):
+    def __init__(self, fields: list[str] = SUMMARY_FIELDS):
         self.docs: dict[str, dict] = {}
+        self.fields = fields
         self._next = 0
 
     def add(self, data: dict) -> str:
@@ -73,39 +74,45 @@ class MemoryStore:
 
     def recent(self, limit: int) -> list[tuple[str, dict]]:
         rows = sorted(self.docs.items(), key=lambda kv: kv[1].get("created_at", ""), reverse=True)[:limit]
-        return [(k, {f: v.get(f) for f in SUMMARY_FIELDS}) for k, v in rows]
+        return [(k, {f: v.get(f) for f in self.fields}) for k, v in rows]
 
     def delete(self, audit_id: str) -> None:
         self.docs.pop(audit_id, None)
 
 
 class FirestoreStore:
+    """One Firestore collection: audits by default, saved searches too (service/search_history.py)."""
+
+    def __init__(self, collection: str = COLLECTION, fields: list[str] = SUMMARY_FIELDS):
+        self.collection = collection
+        self.fields = fields
+
     def add(self, data: dict) -> str:
         def write(collection):
             ref = collection.document()
             ref.set(data)
             return ref.id
-        return firestore_db.call(COLLECTION, write)
+        return firestore_db.call(self.collection, write)
 
     def get(self, audit_id: str) -> dict | None:
         def read(collection):
             doc = collection.document(audit_id).get()
             return doc.to_dict() if doc.exists else None
-        return firestore_db.call(COLLECTION, read)
+        return firestore_db.call(self.collection, read)
 
     def recent(self, limit: int) -> list[tuple[str, dict]]:
         from google.cloud import firestore
 
-        # Only the summary fields: the list never downloads frames or analyses.
-        return firestore_db.call(COLLECTION, lambda c: [
+        # Only the summary fields: the list never downloads frames, analyses or result rows.
+        return firestore_db.call(self.collection, lambda c: [
             (doc.id, doc.to_dict() or {})
-            for doc in c.select(SUMMARY_FIELDS)
+            for doc in c.select(self.fields)
                         .order_by("created_at", direction=firestore.Query.DESCENDING)
                         .limit(limit).stream()
         ])
 
     def delete(self, audit_id: str) -> None:
-        firestore_db.call(COLLECTION, lambda c: c.document(audit_id).delete())
+        firestore_db.call(self.collection, lambda c: c.document(audit_id).delete())
 
 
 # ------------------------------------------------------------------ images
