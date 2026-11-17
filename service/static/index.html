@@ -110,10 +110,44 @@ h1 .accent { color: var(--coral); display: block; }
 
 /* ---------- form ---------- */
 form { display: flex; flex-direction: column; gap: var(--space-3); }
-form > label {
+form > label, .field-label {
+  display: block;
   font-size: 11px; font-weight: 700; letter-spacing: .14em;
   text-transform: uppercase; color: var(--muted);
 }
+.field { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* ---------- source switch: a website or an HTML file ---------- */
+.source {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  background: #fff; border: 1.5px solid var(--line); border-radius: var(--radius);
+}
+.source label {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  min-height: 40px; border-radius: 7px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--charcoal);
+  transition: background .15s ease, color .15s ease;
+}
+.source input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.source label:hover { background: var(--paper); }
+.source label:has(input:checked) { background: var(--ink); color: var(--paper); }
+.source label:has(input:focus-visible) { outline: 2px solid var(--coral); outline-offset: 2px; }
+
+.file-pick {
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  padding: 16px 15px; background: #fff;
+  border: 1.5px dashed var(--line); border-radius: var(--radius);
+  transition: border-color .15s ease;
+}
+.file-pick:hover, .file-pick:focus-within { border-color: var(--coral); }
+.file-pick input[type=file] { font: inherit; font-size: 13.5px; color: var(--charcoal); max-width: 100%; }
+.file-pick input[type=file]::file-selector-button {
+  margin-right: 10px; padding: 8px 14px; font: inherit; font-size: 12px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--ink); cursor: pointer;
+  background: var(--paper); border: 1.5px solid var(--line); border-radius: 7px;
+}
+.file-pick .hint { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+[hidden] { display: none !important; }
 input[type=text] {
   width: 100%; padding: 14px 15px; font: inherit; font-size: 15px;
   color: var(--ink); background: #fff;
@@ -287,14 +321,30 @@ button:disabled { opacity: .5; cursor: progress; }
       fonts, colour palette, WCAG contrast, structure and findability. Pages are
       compared with each other, which is the only way cross-page problems show up.
       You get a scored PDF report with a fix for every finding, and for a whole
-      site a build brief you can paste into any site builder.
+      site a build brief you can paste into any site builder. A design that isn't
+      live yet can be uploaded as an HTML file instead.
     </p>
 
     <form id="form">
-      <label for="url">Website to audit</label>
-      <input id="url" type="text" inputmode="url" placeholder="https://example.com" required
-             autocomplete="url" spellcheck="false" autocapitalize="off" autocorrect="off">
-      <div class="modes" role="radiogroup" aria-label="Audit scope">
+      <div class="source" role="radiogroup" aria-label="What to audit">
+        <label><input type="radio" name="source" value="url" checked>Website</label>
+        <label><input type="radio" name="source" value="file">HTML file</label>
+      </div>
+      <div class="field" id="urlFields">
+        <label for="url" class="field-label">Website to audit</label>
+        <input id="url" type="text" inputmode="url" placeholder="https://example.com" required
+               autocomplete="url" spellcheck="false" autocapitalize="off" autocorrect="off">
+      </div>
+      <div class="field" id="fileFields" hidden>
+        <label for="file" class="field-label">Design file to audit</label>
+        <div class="file-pick">
+          <input id="file" type="file" accept=".html,.htm,text/html">
+          <span class="hint">One standalone .html file, such as a design exported from a design
+            tool or site builder. Fonts and images it links to online are loaded; files sitting
+            beside it are not. Sitemap, robots.txt and load speed are left out.</span>
+        </div>
+      </div>
+      <div class="modes" id="modes" role="radiogroup" aria-label="Audit scope">
         <label class="mode">
           <input type="radio" name="mode" value="site" checked>
           <span><strong>Whole site</strong>Every page found, compared against each other</span>
@@ -481,25 +531,68 @@ button:disabled { opacity: .5; cursor: progress; }
     return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : 'https://' + trimmed;
   };
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
+  // A website or an HTML file. A file has no address and no site to crawl, so
+  // the address box and the scope choice step aside for it.
+  const MAX_FILE_MB = 10;
+  const fileInput = document.getElementById('file');
+  const sourceOf = () => document.querySelector('input[name="source"]:checked').value;
+  const showSource = () => {
+    const isFile = sourceOf() === 'file';
+    document.getElementById('urlFields').hidden = isFile;
+    document.getElementById('modes').hidden = isFile;
+    document.getElementById('fileFields').hidden = !isFile;
+    document.getElementById('url').required = !isFile;
+    fileInput.required = isFile;
+  };
+  document.querySelectorAll('input[name="source"]').forEach((r) => r.addEventListener('change', showSource));
+  showSource();
+
+  // What to send: { kind, mode, name, endpoint, body }, or null when there is nothing to audit.
+  const nextJob = async () => {
+    if (sourceOf() === 'file') {
+      const file = fileInput.files[0];
+      if (!file) return null;
+      if (!/\.html?$/i.test(file.name)) {
+        problem('Not an HTML file', 'Choose a file ending in .html or .htm.');
+        return null;
+      }
+      if (file.size > MAX_FILE_MB * 1024 * 1024) {
+        problem('File too large', `That file is ${(file.size / 1048576).toFixed(1)} MB; the limit is ${MAX_FILE_MB} MB.`);
+        return null;
+      }
+      const html = await file.text();
+      return { kind: 'file', mode: 'page', name: file.name,
+               endpoint: '/api/audit-upload', body: { filename: file.name, html } };
+    }
     const field = document.getElementById('url');
     const url = normalise(field.value);
-    if (!url) return;
+    if (!url) return null;
     field.value = url;
-
     const mode = document.querySelector('input[name="mode"]:checked').value;
+    return { kind: 'url', mode, name: url,
+             endpoint: '/api/audit', body: { url, mode, brief: mode === 'site' } };
+  };
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const job = await nextJob();
+    if (!job) return;
+    const mode = job.mode;
+    const url = job.name;
+
     button.disabled = true;
     summary.removeAttribute('data-show');
-    working(mode === 'site'
-      ? 'Finding pages, rendering each one, then comparing them — 1 to 3 minutes.'
-      : 'Rendering the page and measuring it — 20 to 60 seconds.');
+    working(job.kind === 'file'
+      ? 'Rendering the file and measuring it — 20 to 60 seconds.'
+      : mode === 'site'
+        ? 'Finding pages, rendering each one, then comparing them — 1 to 3 minutes.'
+        : 'Rendering the page and measuring it — 20 to 60 seconds.');
 
     try {
-      const response = await fetch('/api/audit', {
+      const response = await fetch(job.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, mode, brief: mode === 'site' }),
+        body: JSON.stringify(job.body),
       });
 
       if (!response.ok) {
@@ -517,7 +610,8 @@ button:disabled { opacity: .5; cursor: progress; }
           problem('Too many audits for now', detail);
           return;
         }
-        problem(response.status === 422 ? 'Site blocked the audit' : 'Could not audit that page', detail);
+        problem(response.status === 422 ? 'Site blocked the audit'
+          : job.kind === 'file' ? 'Could not audit that file' : 'Could not audit that page', detail);
         return;
       }
 
@@ -541,9 +635,10 @@ button:disabled { opacity: .5; cursor: progress; }
       document.getElementById('host').textContent = host;
       document.getElementById('detail').textContent =
         `Grade ${grade} · ${findings} findings · ` +
-        (pages > 1 ? `${pages} pages audited` : 'this page only');
+        (job.kind === 'file' ? 'uploaded file' : pages > 1 ? `${pages} pages audited` : 'this page only');
 
-      const filename = (result && result.report.filename) ||
+      const sentName = ((response.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1];
+      const filename = (result && result.report.filename) || sentName ||
         `${host.replace(/[^a-z0-9.-]/gi, '-')}-${pages > 1 ? 'site-' : ''}audit.pdf`;
       views.report = {
         viewUrl: (await publish(blob, filename)) || objectUrl,

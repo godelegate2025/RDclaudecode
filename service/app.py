@@ -12,6 +12,7 @@ import html
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -47,7 +48,7 @@ from .brief_view import render_brief_html
 from .history import NotFound, get_history
 from .search_history import get_searches, to_csv
 from .post_pdf import attach_pdf, filename_for, render_pdf
-from .security import UnsafeURL, guard_route, validate
+from .security import UnsafeURL, guard_route, upload_guard, validate
 
 log = logging.getLogger("website-audit")
 logging.basicConfig(level=logging.INFO)
@@ -150,6 +151,15 @@ class AuditRequest(BaseModel):
     mode: str = "site"          # "site" audits every page found; "page" just this one
     limit: int | None = None
     brief: bool = False         # site mode only: also return the build brief; the response becomes JSON
+
+
+class UploadAuditRequest(BaseModel):
+    filename: str = ""
+    html: str = ""
+
+
+# A design exported as one file can carry its images inline as base64.
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 
 
 RATE_WINDOW_SECONDS = 3600
@@ -275,6 +285,52 @@ def run_audit(target: str, work_dir: Path):
         pdf_path = work_dir / "report.pdf"
         html_to_pdf(render_html(data, results), pdf_path, work_dir, browser=browser)
     return pdf_path, data, results
+
+
+def run_upload_audit(html_text: str, filename: str, work_dir: Path):
+    """Audit an uploaded HTML file. Returns (pdf_path, data, results)."""
+    with browser_session() as browser:
+        data = collect(
+            "",
+            work_dir,
+            timeout_ms=AUDIT_TIMEOUT_MS,
+            browser=browser,
+            route_guard=upload_guard(),
+            html=html_text,
+            label=filename,
+        )
+        results = analyse(data)
+        pdf_path = work_dir / "report.pdf"
+        html_to_pdf(render_html(data, results), pdf_path, work_dir, browser=browser)
+    return pdf_path, data, results
+
+
+def upload_name(raw: str) -> str:
+    """The uploaded file's name, safe to show and to use in a download name."""
+    name = Path(raw.replace("\\", "/")).name.strip() or "design.html"
+    stem, dot, ext = name.rpartition(".")
+    if not dot or ext.lower() not in ("html", "htm"):
+        raise HTTPException(400, "Upload an .html file.")
+    stem = re.sub(r"[^A-Za-z0-9._ &()-]+", "-", stem).strip(" .-")[:80] or "design"
+    return f"{stem}.{ext.lower()}"
+
+
+def pdf_response(pdf_path: Path, filename: str, scores: dict, findings: list, host: str, pages: int) -> Response:
+    return Response(
+        content=pdf_path.read_bytes(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            # The page reads these to render the summary without a second call.
+            "X-Audit-Score": str(scores["overall"]),
+            "X-Audit-Grade": scores["grade"],
+            "X-Audit-Findings": str(len(findings)),
+            "X-Audit-Host": host,
+            "X-Audit-Pages": str(pages),
+            "Access-Control-Expose-Headers":
+                "X-Audit-Score, X-Audit-Grade, X-Audit-Findings, X-Audit-Host, X-Audit-Pages",
+        },
+    )
 
 
 class GoogleCredential(BaseModel):
@@ -649,21 +705,7 @@ def audit(payload: AuditRequest, request: Request) -> Response:
 
 
         delivered = True
-        return Response(
-            content=pdf_path.read_bytes(),
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'inline; filename="{filename}"',
-                # The page reads these to render the summary without a second call.
-                "X-Audit-Score": str(scores["overall"]),
-                "X-Audit-Grade": scores["grade"],
-                "X-Audit-Findings": str(len(findings)),
-                "X-Audit-Host": host,
-                "X-Audit-Pages": str(pages),
-                "Access-Control-Expose-Headers":
-                    "X-Audit-Score, X-Audit-Grade, X-Audit-Findings, X-Audit-Host, X-Audit-Pages",
-            },
-        )
+        return pdf_response(pdf_path, filename, scores, findings, host, pages)
     except HTTPException:
         raise
     except BlockedError as exc:
@@ -675,6 +717,49 @@ def audit(payload: AuditRequest, request: Request) -> Response:
     finally:
         if not delivered:
             refund(ip, cost)
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@app.post("/api/audit-upload")
+def audit_upload(payload: UploadAuditRequest, request: Request) -> Response:
+    """Audit one uploaded HTML file — a design that is not on a website yet."""
+    filename = upload_name(payload.filename)
+    size = len(payload.html.encode("utf-8"))
+    if not payload.html.strip() or "<" not in payload.html:
+        raise HTTPException(400, "That file is empty or is not HTML.")
+    if size > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"That file is {size / 1048576:.1f} MB; the limit is "
+                                 f"{MAX_UPLOAD_BYTES / 1048576:.0f} MB.")
+
+    ip = client_ip(request)
+    wait = seconds_until_allowed(ip, 1)
+    if wait:
+        raise rate_limit_response(ip, False, wait)
+
+    work_dir = Path(tempfile.mkdtemp(prefix="audit-"))
+    started = time.time()
+    delivered = False
+    try:
+        if not _audit_lock.acquire(timeout=360):
+            raise HTTPException(503, "The auditor is busy with another audit. Try again shortly.")
+        try:
+            pdf_path, data, results = run_upload_audit(payload.html, filename, work_dir)
+        finally:
+            _audit_lock.release()
+        scores, findings = results["scores"], results["findings"]
+        log.info("audited upload %s (%d bytes) in %.1fs — score %s, %s findings",
+                 filename, size, time.time() - started, scores["overall"], len(findings))
+        stem = filename.rsplit(".", 1)[0].replace(" ", "-")
+        delivered = True
+        return pdf_response(pdf_path, f"{stem}-audit.pdf", scores, findings, filename, 1)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - one bad file must not kill the instance
+        log.exception("audit failed for upload %s", filename)
+        raise HTTPException(502, f"Could not audit that file: {exc}") from exc
+    finally:
+        if not delivered:
+            refund(ip, 1)
         shutil.rmtree(work_dir, ignore_errors=True)
 
 

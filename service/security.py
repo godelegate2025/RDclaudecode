@@ -128,3 +128,33 @@ def guard_route(route, request) -> None:
             route.abort("blockedbyclient")
             return
     route.continue_()
+
+
+def upload_guard():
+    """A route handler for an audit of an uploaded file: check every request.
+
+    `guard_route` re-checks only navigations, because a public website decides
+    what its own page loads. An uploaded file is written by whoever uploads it,
+    so its images, fonts, scripts and fetches are all checked against the
+    blocklist. Each host is resolved once per audit.
+    """
+    verdicts: dict[str, bool] = {}
+
+    def handler(route, request) -> None:
+        parsed = urlparse(request.url)
+        if parsed.scheme in ("data", "blob"):
+            route.continue_()
+            return
+        key = f"{parsed.scheme}://{parsed.netloc}"
+        if key not in verdicts:
+            try:
+                validate(request.url)
+                verdicts[key] = True
+            except UnsafeURL:
+                verdicts[key] = False
+        if verdicts[key]:
+            route.continue_()
+        else:
+            route.abort("blockedbyclient")
+
+    return handler

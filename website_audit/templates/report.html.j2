@@ -174,8 +174,8 @@
   </div>
   <div class="eyebrow">Website design audit</div>
   <h1>{{ host }}</h1>
-  <div class="cover-url">{{ data.final_url }}</div>
-  <small>Generated {{ generated_at }} · Chromium {{ viewport.width }}×{{ viewport.height }} · HTTP {{ data.status or '—' }}</small>
+  <div class="cover-url">{{ data.display_url }}</div>
+  <small>Generated {{ generated_at }} · Chromium {{ viewport.width }}×{{ viewport.height }}{% if not data.is_upload %} · HTTP {{ data.status or '—' }}{% endif %}</small>
 </div>
 
 <div class="hero">
@@ -212,7 +212,11 @@
   <div class="fact"><div class="n">{{ typography.content_families|length }}</div><div class="k">Typefaces</div></div>
   <div class="fact"><div class="n">{{ palette|length }}</div><div class="k">Colour clusters</div></div>
   <div class="fact"><div class="n">{{ contrast_issues|length }}</div><div class="k">Contrast fails</div></div>
+  {% if data.is_upload %}
+  <div class="fact"><div class="n">{{ (total_bytes / 1024)|round|int }} KB</div><div class="k">Page weight</div></div>
+  {% else %}
   <div class="fact"><div class="n">{{ '%.1f'|format(data.load_ms / 1000) }}s</div><div class="k">DOM ready</div></div>
+  {% endif %}
 </div>
 
 <div class="shots">
@@ -448,7 +452,7 @@
 </section>
 
 <footer>
-  <strong>Redefine</strong> · automated design audit of {{ data.final_url }} · generated {{ generated_at }}.
+  <strong>Redefine</strong> · automated design audit of {{ data.display_url }} · generated {{ generated_at }}.
   Measurements come from a real Chromium render of the page as loaded; they describe this page only,
   not the whole site. Recommendations are heuristics — a designer's judgement still outranks them.
 </footer>

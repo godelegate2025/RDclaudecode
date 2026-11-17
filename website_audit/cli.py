@@ -29,7 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="website-audit",
         description="Audit a website's typography, colour palette and automatable improvements.",
     )
-    parser.add_argument("url", help="Website to audit, e.g. example.com or https://example.com/pricing")
+    parser.add_argument("url", help="Website to audit, e.g. example.com or https://example.com/pricing, "
+                                    "or a local .html file (a design that is not live yet)")
     parser.add_argument("-o", "--output", help="PDF path (default: ./reports/<host>-audit-<date>.pdf)")
     parser.add_argument("--json", dest="json_path", nargs="?", const="auto",
                         help="Also write the findings as JSON (path optional)")
@@ -52,8 +53,15 @@ def main(argv: list[str] | None = None) -> int:
 
     from datetime import date
 
+    local = Path(args.url)
+    upload = local.suffix.lower() in (".html", ".htm") and local.is_file()
+    if upload and args.site:
+        print("--site needs a website; a file is audited as one page.", file=sys.stderr)
+        return 2
+
     kind = "site-audit" if args.site else "audit"
-    name = f"{slug(args.url)}-{kind}-{date.today():%Y-%m-%d}"
+    base = (re.sub(r"[^a-z0-9]+", "-", local.stem.lower()).strip("-") or "design") if upload else slug(args.url)
+    name = f"{base}-{kind}-{date.today():%Y-%m-%d}"
     pdf_path = Path(args.output) if args.output else Path("reports") / f"{name}.pdf"
     if pdf_path.is_dir():
         pdf_path = pdf_path / f"{name}.pdf"
@@ -99,9 +107,13 @@ def main(argv: list[str] | None = None) -> int:
         # One browser for the audit and the print — launching twice doubles the
         # startup cost and the peak memory for no gain.
         with browser_session() as browser:
-            data = collect(args.url, work_dir, timeout_ms=args.timeout, browser=browser)
+            if upload:
+                data = collect("", work_dir, timeout_ms=args.timeout, browser=browser,
+                               html=local.read_text(encoding="utf-8", errors="replace"), label=local.name)
+            else:
+                data = collect(args.url, work_dir, timeout_ms=args.timeout, browser=browser)
 
-            verdict = detect_block(data)
+            verdict = None if upload else detect_block(data)
             if verdict:
                 print(
                     "WARNING: " + explain_block(verdict, urlparse(data.final_url).netloc),

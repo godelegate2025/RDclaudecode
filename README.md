@@ -14,7 +14,19 @@ python3 -m website_audit https://example.com/pricing -o reports/pricing.pdf --js
 
 # Whole site: discover pages from the sitemap, measure each, compare them
 python3 -m website_audit example.com --site --limit 25
+
+# A design that isn't live yet: one standalone HTML file
+python3 -m website_audit designs/homepage.html
 ```
+
+A file is audited as one page. Its online fonts and images load; files beside it
+on disk don't. Robots.txt, sitemap, canonical-URL and load-time checks need a
+live site, so they're left out. The hosted page offers the same as an
+**HTML file** switch (`POST /api/audit-upload`, 10 MB limit). Every request the
+file makes is checked against the private-address blocklist, not only page loads.
+
+Claude.ai artifact links can't be audited by address: claude.ai puts a bot check
+in front of them, and a Claude Design canvas only renders inside Claude's viewer.
 
 The PDF path goes to stdout; a one-line summary goes to stderr:
 

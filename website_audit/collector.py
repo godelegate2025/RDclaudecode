@@ -20,6 +20,13 @@ PROBE = (Path(__file__).parent / "probe.js").read_text()
 DESKTOP = {"width": 1440, "height": 900}
 MOBILE = {"width": 390, "height": 844}
 
+# An uploaded HTML file is served to Chromium from this address, which only
+# exists inside the browser: `.invalid` never resolves (RFC 6761). Serving it
+# over https rather than file:// keeps the page off the local disk; a file://
+# page can frame other local files.
+UPLOAD_ORIGIN = "https://uploaded-design.invalid"
+UPLOAD_URL = UPLOAD_ORIGIN + "/"
+
 
 @dataclass
 class PageData:
@@ -35,6 +42,16 @@ class PageData:
     console_errors: list[str] = field(default_factory=list)
     screenshots: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    source: str = "url"   # "upload" when the page came from an HTML file, not a website
+    label: str = ""       # the uploaded file's name
+
+    @property
+    def is_upload(self) -> bool:
+        return self.source == "upload"
+
+    @property
+    def display_url(self) -> str:
+        return f"Uploaded file: {self.label}" if self.is_upload else self.final_url
 
 
 # Anything already carrying a scheme is left alone; only a bare host gets https://.
@@ -53,6 +70,8 @@ def collect(
     timeout_ms: int = 45000,
     browser: Browser | None = None,
     route_guard=None,
+    html: str | None = None,
+    label: str = "",
 ) -> PageData:
     """Render the page and gather the evidence.
 
@@ -60,8 +79,13 @@ def collect(
     one a private session is launched and closed around this call. `route_guard`
     is a Playwright route handler given every request — a public deployment uses
     it to re-check redirect targets against its blocklist.
+
+    Pass `html` to audit a file instead of a website: `url` is ignored, the
+    markup is served at UPLOAD_URL, and `label` (the file name) stands in for
+    the address in the report. Its relative links have nowhere to resolve, so
+    they get a 404; absolute ones (fonts, CDNs) load as usual.
     """
-    url = _normalise(url)
+    url = UPLOAD_URL if html is not None else _normalise(url)
     out_dir.mkdir(parents=True, exist_ok=True)
     resources: list[dict[str, Any]] = []
     console_errors: list[str] = []
@@ -77,6 +101,9 @@ def collect(
         page = context.new_page()
         if route_guard is not None:
             page.route("**/*", route_guard)
+        if html is not None:
+            # Registered after the guard, so Playwright consults it first.
+            page.route(UPLOAD_ORIGIN + "/**", lambda route, request: _serve_upload(route, request, html))
 
         def on_response(response):
             try:
@@ -151,7 +178,8 @@ def collect(
         url=url,
         final_url=final_url,
         raw_html=raw_html,
-        site_files=site_files(final_url),
+        # robots.txt and a sitemap belong to a host; a file has none.
+        site_files=None if html is not None else site_files(final_url),
         status=response.status if response else None,
         load_ms=load_ms,
         probe=probe,
@@ -160,4 +188,13 @@ def collect(
         console_errors=console_errors[:20],
         screenshots={"desktop": str(desktop_shot), "mobile": str(mobile_shot)},
         warnings=warnings,
+        source="upload" if html is not None else "url",
+        label=label or ("design.html" if html is not None else ""),
     )
+
+
+def _serve_upload(route, request, html: str) -> None:
+    if request.url.split("#")[0] == UPLOAD_URL:
+        route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
+    else:
+        route.fulfill(status=404, content_type="text/plain", body="Not part of the uploaded file.")

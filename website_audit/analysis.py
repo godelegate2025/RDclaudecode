@@ -372,6 +372,10 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
     def add(**kwargs):
         findings.append(Finding(**kwargs))
 
+    # An uploaded file was served from inside the browser: its timing says
+    # nothing about real hosting, and it has no address to be canonical for.
+    hosted = not getattr(data, "is_upload", False)
+
     # ---- resources
     by_type: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0, "bytes": 0})
     for res in data.resources:
@@ -770,7 +774,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
             automation="A bundler step merges and minifies stylesheets; a critical-CSS plugin inlines above-the-fold rules.",
         )
 
-    if data.load_ms > 4000:
+    if hosted and data.load_ms > 4000:
         add(
             id="perf-load-time",
             category="Performance",
@@ -939,7 +943,7 @@ def analyse(data) -> dict[str, Any]:  # noqa: C901 - a rules table, deliberately
             automation="Generate the markup from the same content that renders the FAQ.",
         )
 
-    if not probe.get("canonical"):
+    if hosted and not probe.get("canonical"):
         add(
             id="find-no-canonical",
             category="Findability",

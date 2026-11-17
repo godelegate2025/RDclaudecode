@@ -92,6 +92,13 @@ def _env() -> Environment:
     return env
 
 
+def report_host(data) -> str:
+    """The report's headline: the website's host, or the uploaded file's name."""
+    if getattr(data, "is_upload", False):
+        return data.label
+    return urlparse(data.final_url).netloc or data.final_url
+
+
 def render_html(data, results: dict[str, Any]) -> str:
     env = _env()
     template = env.get_template("report.html.j2")
@@ -101,7 +108,7 @@ def render_html(data, results: dict[str, Any]) -> str:
     return template.render(
         data=data,
         probe=data.probe,
-        host=urlparse(data.final_url).netloc or data.final_url,
+        host=report_host(data),
         generated_at=datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC"),
         viewport={"width": 1440, "height": 900},
         palette=results["palette"],
@@ -177,6 +184,8 @@ def write_json(data, results: dict[str, Any], path: Path) -> Path:
     """Machine-readable twin of the PDF, for wiring the audit into other automation."""
     payload = {
         "url": data.final_url,
+        "source": getattr(data, "source", "url"),
+        "file": getattr(data, "label", "") or None,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": data.status,
         "load_ms": data.load_ms,
