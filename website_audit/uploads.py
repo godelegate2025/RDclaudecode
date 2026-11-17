@@ -17,14 +17,19 @@ CLAUDE_PAGE = (
     "so it isn't in the saved file. Upload the design's own HTML file instead."
 )
 
-# Claude's viewer frames the design from a per-artifact claudeusercontent.com
-# host; a page saved from claude.ai also carries Chrome's "saved from" comment.
-CLAUDE_MARKERS = re.compile(
-    r"claudeusercontent\.com"
-    r"|saved from url=\(\d+\)https?://claude\.ai/"
-    r"|https?://claude\.ai/(?:artifact|public/artifacts|chat)/",
-    re.IGNORECASE,
+CLAUDE_DESIGN_PAGE = (
+    "This is Claude Design's presentation page saved from the browser, not the design "
+    "itself. The browser saved the design beside it: open the folder that ends in "
+    "\"_files\" next to this file and upload the _bootstrap.html inside it."
 )
+
+# The wrapper, not the design: a page Chrome saved from claude.ai itself, or one
+# that frames a claudeusercontent.com host. The design's own frame, saved on its
+# own, is "saved from" claudeusercontent.com and may load images from there, so
+# a bare mention of that host must not count.
+SAVED_FROM_CLAUDE = re.compile(r"saved from url=\(\d+\)https?://claude\.ai/", re.IGNORECASE)
+FRAMES_CLAUDE = re.compile(r"<iframe\b[^>]*\bsrc=[\"']https?://[^\"']*claudeusercontent\.com", re.IGNORECASE)
+DESIGN_BOOTSTRAP = re.compile(r"<iframe\b[^>]*\bsrc=[\"'][^\"']*_files/_bootstrap\.html", re.IGNORECASE)
 
 
 class NotTheDesign(ValueError):
@@ -33,7 +38,10 @@ class NotTheDesign(ValueError):
 
 def check_markup(html: str) -> str | None:
     """A reason to refuse the file before rendering it, or None."""
-    if CLAUDE_MARKERS.search(html[:2_000_000]):
+    head = html[:2_000_000]
+    if SAVED_FROM_CLAUDE.search(head) and DESIGN_BOOTSTRAP.search(head):
+        return CLAUDE_DESIGN_PAGE
+    if SAVED_FROM_CLAUDE.search(head) or FRAMES_CLAUDE.search(head):
         return CLAUDE_PAGE
     return None
 

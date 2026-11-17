@@ -205,6 +205,24 @@ class NotTheDesignTest(unittest.TestCase):
         self.assertIn("claude.ai page", check_markup(SAVED_CLAUDE_PAGE))
         self.assertIsNone(check_markup(FIXTURE.read_text(encoding="utf-8")))
 
+    def test_a_saved_claude_design_page_points_at_the_design_beside_it(self):
+        from website_audit.uploads import check_markup
+
+        wrapper = ("<!DOCTYPE html>\n<!-- saved from url=(0080)https://claude.ai/design/p/b5285434"
+                   "?file=Pages.dc.html&present=1 -->\n<html><body><iframe data-testid=\"present-mode-iframe\" "
+                   "src=\"./Wind &amp; Water Website Drafts_files/_bootstrap.html\"></iframe></body></html>")
+        self.assertIn("_bootstrap.html", check_markup(wrapper))
+
+    def test_the_design_frame_saved_on_its_own_is_accepted(self):
+        """It was served from claudeusercontent.com and loads its photos from there: still the design."""
+        from website_audit.uploads import check_markup
+
+        frame = ("<!DOCTYPE html>\n<!-- saved from url=(0120)https://b5285434.claudeusercontent.com/v1/design/"
+                 "projects/b5285434/serve/Pages.dc.html -->\n<html><body><h1>Where your dreams find a home</h1>"
+                 "<img alt=\"\" src=\"https://b5285434.claudeusercontent.com/v1/design/projects/b5285434/serve/"
+                 "uploads/hero.jpg\"></body></html>")
+        self.assertIsNone(check_markup(frame))
+
     def test_the_endpoint_refuses_it_before_any_browser_starts(self):
         import service.app as app_module
 
