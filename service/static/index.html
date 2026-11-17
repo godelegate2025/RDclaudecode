@@ -610,8 +610,9 @@ button:disabled { opacity: .5; cursor: progress; }
           problem('Too many audits for now', detail);
           return;
         }
-        problem(response.status === 422 ? 'Site blocked the audit'
-          : job.kind === 'file' ? 'Could not audit that file' : 'Could not audit that page', detail);
+        problem(job.kind === 'file'
+          ? (response.status === 422 ? "That file isn't the design" : 'Could not audit that file')
+          : (response.status === 422 ? 'Site blocked the audit' : 'Could not audit that page'), detail);
         return;
       }
 

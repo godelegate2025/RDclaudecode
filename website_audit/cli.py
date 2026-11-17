@@ -17,6 +17,7 @@ from .browser import browser_session
 from .collector import collect
 from .report import html_to_pdf, render_html, render_site_html, write_json
 from .site import audit_site
+from .uploads import check_markup, check_render
 
 
 def slug(url: str) -> str:
@@ -108,8 +109,15 @@ def main(argv: list[str] | None = None) -> int:
         # startup cost and the peak memory for no gain.
         with browser_session() as browser:
             if upload:
-                data = collect("", work_dir, timeout_ms=args.timeout, browser=browser,
-                               html=local.read_text(encoding="utf-8", errors="replace"), label=local.name)
+                markup = local.read_text(encoding="utf-8", errors="replace")
+                reason = check_markup(markup)
+                if reason is None:
+                    data = collect("", work_dir, timeout_ms=args.timeout, browser=browser,
+                                   html=markup, label=local.name)
+                    reason = check_render(data)
+                if reason:
+                    print(f"Not audited: {reason}", file=sys.stderr)
+                    return 1
             else:
                 data = collect(args.url, work_dir, timeout_ms=args.timeout, browser=browser)
 

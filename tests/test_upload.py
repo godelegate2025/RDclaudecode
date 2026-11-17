@@ -189,6 +189,75 @@ class UploadEndpointTest(unittest.TestCase):
         self.assertIn("/api/audit-upload", page)
 
 
+SAVED_CLAUDE_PAGE = """<!DOCTYPE html>
+<!-- saved from url=(0049)https://claude.ai/artifact/HnGVUhG59M3jKY2y4WGVNb -->
+<html><head><title>Wind &amp; Water Website Redesign</title></head>
+<body><header>Wind &amp; Water Website Redesign · Artifact by you <button>Share</button></header>
+<iframe src="https://87e43c20.frame.claudeusercontent.com/_f/1/"></iframe></body></html>"""
+
+
+class NotTheDesignTest(unittest.TestCase):
+    """A shell around a design must be refused, never scored."""
+
+    def test_a_saved_claude_page_is_recognised_from_its_markup(self):
+        from website_audit.uploads import check_markup
+
+        self.assertIn("claude.ai page", check_markup(SAVED_CLAUDE_PAGE))
+        self.assertIsNone(check_markup(FIXTURE.read_text(encoding="utf-8")))
+
+    def test_the_endpoint_refuses_it_before_any_browser_starts(self):
+        import service.app as app_module
+
+        app_module._hits.clear()
+        original = app_module.run_upload_audit
+        app_module.run_upload_audit = lambda *a, **k: self.fail("browser should not start")
+        try:
+            response = TestClient(app).post(
+                "/api/audit-upload",
+                json={"filename": "Wind & Water Website Redesign.html", "html": SAVED_CLAUDE_PAGE},
+            )
+        finally:
+            app_module.run_upload_audit = original
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("Upload the design's own HTML file", response.json()["detail"])
+        self.assertEqual(app_module._hits.get("testclient", []), [])
+
+    def test_a_frame_whose_file_was_not_uploaded_is_caught_after_rendering(self):
+        """What the browser's 'save page' makes of a framed design: a local frame file left behind."""
+        from website_audit.uploads import check_render
+
+        html = ("<!doctype html><html lang='en'><head><title>Saved</title></head><body>"
+                "<h1>Viewer</h1><iframe src='Saved_files/saved_resource.html'></iframe></body></html>")
+        data = collect("", Path(tempfile.mkdtemp(prefix="upload-frame-")), html=html, label="Saved.html",
+                       route_guard=upload_guard())
+        self.assertEqual(data.missing_frames, ["/Saved_files/saved_resource.html"])
+        self.assertIn("weren't uploaded", check_render(data))
+
+    def test_a_framed_design_endpoint_refunds_and_explains(self):
+        import service.app as app_module
+        from website_audit.uploads import NotTheDesign
+
+        app_module._hits.clear()
+        original = app_module.run_upload_audit
+        app_module.run_upload_audit = lambda *a, **k: (_ for _ in ()).throw(NotTheDesign("frames missing"))
+        try:
+            response = TestClient(app).post(
+                "/api/audit-upload", json={"filename": "x.html", "html": "<p>hi</p>"})
+        finally:
+            app_module.run_upload_audit = original
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "frames missing")
+        self.assertEqual(app_module._hits.get("testclient", []), [])
+
+    def test_an_ordinary_file_has_no_missing_frames(self):
+        from website_audit.uploads import check_render
+
+        data = collect("", Path(tempfile.mkdtemp(prefix="upload-plain-")), html="<p>ok</p>",
+                       route_guard=upload_guard())
+        self.assertEqual(data.missing_frames, [])
+        self.assertIsNone(check_render(data))
+
+
 class CommandLineTest(unittest.TestCase):
     def test_a_local_html_file_is_audited(self):
         from website_audit.cli import main

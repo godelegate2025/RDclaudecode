@@ -27,6 +27,9 @@ file makes is checked against the private-address blocklist, not only page loads
 
 Claude.ai artifact links can't be audited by address: claude.ai puts a bot check
 in front of them, and a Claude Design canvas only renders inside Claude's viewer.
+Saving that viewer page from the browser doesn't capture the design either, so the
+auditor refuses such a file (`website_audit/uploads.py`) rather than score Claude's
+interface. It also refuses a file whose frames point at files that weren't uploaded.
 
 The PDF path goes to stdout; a one-line summary goes to stderr:
 

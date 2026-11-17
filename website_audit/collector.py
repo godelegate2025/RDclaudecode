@@ -44,6 +44,7 @@ class PageData:
     warnings: list[str] = field(default_factory=list)
     source: str = "url"   # "upload" when the page came from an HTML file, not a website
     label: str = ""       # the uploaded file's name
+    missing_frames: list[str] = field(default_factory=list)  # frames an upload pointed at files it lacked
 
     @property
     def is_upload(self) -> bool:
@@ -90,6 +91,7 @@ def collect(
     resources: list[dict[str, Any]] = []
     console_errors: list[str] = []
     warnings: list[str] = []
+    missing_frames: list[str] = []
 
     with browser_session() if browser is None else nullcontext(browser) as active:
         context = active.new_context(
@@ -117,6 +119,11 @@ def collect(
                         "bytes": int(size) if size and size.isdigit() else 0,
                     }
                 )
+                # A frame in an uploaded file pointing at a file that wasn't uploaded.
+                if (html is not None and request.resource_type == "document"
+                        and response.status == 404 and response.url.startswith(UPLOAD_ORIGIN)
+                        and request.frame != page.main_frame):
+                    missing_frames.append(response.url[len(UPLOAD_ORIGIN):][:80])
             except Exception:  # noqa: BLE001 - never fail the audit on telemetry
                 pass
 
@@ -189,6 +196,7 @@ def collect(
         screenshots={"desktop": str(desktop_shot), "mobile": str(mobile_shot)},
         warnings=warnings,
         source="upload" if html is not None else "url",
+        missing_frames=missing_frames,
         label=label or ("design.html" if html is not None else ""),
     )
 

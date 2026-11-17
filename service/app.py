@@ -40,6 +40,7 @@ from website_audit.brief import build_brief
 from website_audit.collector import collect
 from website_audit.report import html_to_pdf, render_html, render_site_html, write_json
 from website_audit.site import audit_site
+from website_audit.uploads import NotTheDesign, check_markup, check_render
 
 from . import auth, email_login
 from .profiles import NameError_, get_profiles
@@ -299,6 +300,9 @@ def run_upload_audit(html_text: str, filename: str, work_dir: Path):
             html=html_text,
             label=filename,
         )
+        reason = check_render(data)
+        if reason:
+            raise NotTheDesign(reason)
         results = analyse(data)
         pdf_path = work_dir / "report.pdf"
         html_to_pdf(render_html(data, results), pdf_path, work_dir, browser=browser)
@@ -730,6 +734,9 @@ def audit_upload(payload: UploadAuditRequest, request: Request) -> Response:
     if size > MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"That file is {size / 1048576:.1f} MB; the limit is "
                                  f"{MAX_UPLOAD_BYTES / 1048576:.0f} MB.")
+    reason = check_markup(payload.html)
+    if reason:
+        raise HTTPException(422, reason)
 
     ip = client_ip(request)
     wait = seconds_until_allowed(ip, 1)
@@ -754,6 +761,9 @@ def audit_upload(payload: UploadAuditRequest, request: Request) -> Response:
         return pdf_response(pdf_path, f"{stem}-audit.pdf", scores, findings, filename, 1)
     except HTTPException:
         raise
+    except NotTheDesign as exc:
+        log.info("upload %s is not a standalone design", filename)
+        raise HTTPException(422, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 - one bad file must not kill the instance
         log.exception("audit failed for upload %s", filename)
         raise HTTPException(502, f"Could not audit that file: {exc}") from exc
